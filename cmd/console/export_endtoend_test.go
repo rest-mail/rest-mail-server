@@ -26,7 +26,9 @@ import (
 // public router on PostgreSQL, each on a database of its own.
 
 // exportKey is an API key of the destination's administrator that may read
-// the domain's mail, as an operator exporting an account would hold.
+// and export the domain's mail, as an operator exporting an account would
+// hold. The administrator created the accounts it exports, so it owns them,
+// and the owner role holds mail:export; its admin role does not.
 func (s *migrationServer) exportKey(t *testing.T) string {
 	t.Helper()
 	var holder models.Mailbox
@@ -35,6 +37,7 @@ func (s *migrationServer) exportKey(t *testing.T) string {
 	}
 	_, key, err := repositories.NewCredentialRepository(s.db).CreateAPIKey(holder.ID, holder.ID, "export", []auth.ScopedPermission{
 		{Capability: models.CapMailRead, Scope: grants.Domain(migrationDomain)},
+		{Capability: models.CapMailExport, Scope: grants.Domain(migrationDomain)},
 	}, nil)
 	if err != nil {
 		t.Fatalf("create the export key: %v", err)

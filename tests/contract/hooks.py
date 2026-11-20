@@ -6493,6 +6493,93 @@ def close_an_import_session_the_run_opened(transaction):
         on_the_admins_import_account(transaction)
 
 
+# The documented session that never existed (closeExportSession/session_not_found).
+UNKNOWN_EXPORT_SESSION = "ffeeddccbbaa99887766554433221100"
+
+
+def on_the_admins_export_account(transaction):
+    """The path's account becomes the fixture admin's own, for an export
+    request with the fixture admin's session: an account exports itself, and
+    the example's account 12 is a number, not a fixture. Answers the new
+    path's parts, or None when it is left alone."""
+    if not with_the_fixture_admins_session(transaction):
+        return None
+    path, _, query = transaction.get("fullPath", "").partition("?")
+    parts = path.split("/")
+    if len(parts) < 6 or parts[5] != "exports" or not positive_id(parts[4]):
+        return None
+    parts[4] = str(mailbox_id(origin_of(transaction), ADMIN))
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+    return parts
+
+
+@hooks.before("createExportSession")
+def open_an_export_on_the_admins_account(transaction):
+    # Each documented open (201), one for each kind of data in its own format,
+    # opens an export of the run's own account; the after hook closes it as
+    # aborted, so no session is left for the sweeper.
+    if " > 201 > " in transaction.get("name", ""):
+        on_the_admins_export_account(transaction)
+
+
+@hooks.after("createExportSession")
+def close_the_opened_export(transaction):
+    # An export opened with the fixture admin's session is the fixture admin's
+    # to close, so its close must answer that export: the same data and format,
+    # ended as aborted. One opened by another principal is not the fixture
+    # admin's, and its close is not found.
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    session, account = data.get("id"), data.get("account_id")
+    if not isinstance(session, str) or type(account) is not int or account < 1:
+        return
+    own = with_the_fixture_admins_session(transaction)
+    closed = fixture_call(
+        transaction,
+        "POST",
+        f"/api/v1/accounts/{account:d}/exports/{session}/close",
+        {"result": "aborted", "rows": 0, "bytes": 0},
+        expect=(404,),
+    )
+    if not own:
+        return
+    answered = {key: (closed or {}).get(key) for key in ("id", "data", "format", "result")}
+    wanted = {"id": session, "data": data.get("data"), "format": data.get("format"), "result": "aborted"}
+    if answered != wanted:
+        transaction["fail"] = f"closing the export it opened answered {answered}, not {wanted}"
+
+
+@hooks.before("closeExportSession")
+def close_an_export_the_run_opened(transaction):
+    # The documented close (200) needs an export that is open: one is opened
+    # for the run's own account and its id put in the path. The documented
+    # unknown session (404) is asked of the run's own account, so what it
+    # finds missing is the session and not the account.
+    name = transaction.get("name", "")
+    path, separator, query = transaction.get("fullPath", "").partition("?")
+    parts = path.split("/")
+    if len(parts) != 8 or parts[7] != "close":
+        return
+    if " > 200 > " in name:
+        if not re.fullmatch(r"[0-9a-f]{32}", parts[6]):
+            return
+        parts = on_the_admins_export_account(transaction)
+        if parts is None:
+            return
+        opened = fixture_call(
+            transaction,
+            "POST",
+            f"/api/v1/accounts/{parts[4]}/exports",
+            {"data": "mail", "format": "maildir"},
+        )
+        session = (opened or {}).get("id")
+        if not isinstance(session, str):
+            raise RuntimeError("the export-session fixture returned no id")
+        parts[6] = session
+        transaction["fullPath"] = "/".join(parts) + separator + query
+    elif parts[6] == UNKNOWN_EXPORT_SESSION:
+        on_the_admins_export_account(transaction)
+
+
 # The grant examples that need the caller to hold a grant in a given state
 # (#1162): eligible_grant and active_grant. A grant change acts only on the
 # caller's own grant, so the grant is made for the two-factor administrator,

@@ -26,9 +26,10 @@ func TestDataExportsThroughPublicAPI(t *testing.T) {
 	source := newMigrationServer(t)
 	from := source.newAccount(t, "export-from@"+migrationDomain)
 	other := source.newAccount(t, "export-other@"+migrationDomain)
-	ownerKey := dataExportKey(t, source, from, "export-from@"+migrationDomain, models.CapMailRead)
-	otherKey := dataExportKey(t, source, other, "export-other@"+migrationDomain, models.CapMailRead)
-	writeKey := dataExportKey(t, source, from, "export-from@"+migrationDomain, models.CapMailWrite)
+	ownerKey := dataExportKey(t, source, from, "export-from@"+migrationDomain, models.CapMailRead, models.CapMailExport)
+	otherKey := dataExportKey(t, source, other, "export-other@"+migrationDomain, models.CapMailRead, models.CapMailExport)
+	// It may export, so what it lacks is reading the data.
+	writeKey := dataExportKey(t, source, from, "export-from@"+migrationDomain, models.CapMailWrite, models.CapMailExport)
 	var contacts []map[string]string
 	for index := range 103 {
 		contacts = append(contacts, map[string]string{"email": fmt.Sprintf("person%03d@example.test", index), "name": fmt.Sprintf("Person %03d, Élodie; \\ notes\n%s", index, strings.Repeat("猫", 30))})
@@ -133,11 +134,14 @@ func TestDataExportsThroughPublicAPI(t *testing.T) {
 	}
 }
 
-func dataExportKey(t *testing.T, server *migrationServer, holder uint, address, capability string) string {
+// dataExportKey is an API key of holder's with capabilities on its own mailbox.
+func dataExportKey(t *testing.T, server *migrationServer, holder uint, address string, capabilities ...string) string {
 	t.Helper()
-	_, token, err := repositories.NewCredentialRepository(server.db).CreateAPIKey(holder, holder, "data-export", []auth.ScopedPermission{
-		{Capability: capability, Scope: grants.Mailbox(address)},
-	}, nil)
+	var permissions []auth.ScopedPermission
+	for _, capability := range capabilities {
+		permissions = append(permissions, auth.ScopedPermission{Capability: capability, Scope: grants.Mailbox(address)})
+	}
+	_, token, err := repositories.NewCredentialRepository(server.db).CreateAPIKey(holder, holder, "data-export", permissions, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

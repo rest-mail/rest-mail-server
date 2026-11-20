@@ -36,7 +36,7 @@ func runDataExport(t *testing.T, command, server, path string, extra ...string) 
 func TestExportContactsStreamsPagesAsVCard(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "contacts.vcf")
 	requests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/accounts/12/contacts" || r.Header.Get("Authorization") != "Bearer private-test-key" || r.URL.Query().Get("limit") != "100" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
@@ -115,7 +115,7 @@ const exportedICS = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other app//EN\r
 
 func TestExportCalendarStreamsOriginalInvitations(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "calendar")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer private-test-key" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL)
 		}
@@ -176,7 +176,7 @@ func TestDataExportsDoNotPublishPartialOutput(t *testing.T) {
 			}
 			t.Run(command+"/"+failure, func(t *testing.T) {
 				path := filepath.Join(t.TempDir(), "export")
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/do-not-follow" {
 						t.Error("followed an export redirect")
 					}
@@ -278,7 +278,7 @@ func TestExportContactsOverwriteIsAtomic(t *testing.T) {
 	}
 	var fail atomic.Bool
 	fail.Store(true)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("offset") == "0" {
 			_, _ = fmt.Fprint(w, `{"data":[{"id":1,"email":"alice@example.test"}],"pagination":{"has_more":true}}`)
 		} else if fail.Load() {
@@ -311,7 +311,7 @@ func TestExportCalendarRefusesUnexportableSource(t *testing.T) {
 	for _, problem := range []string{"size", "missing-part", "unknown-encoding", "bad-base64", "repeated-cursor", "late-failure", "too-deep"} {
 		t.Run(problem, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "calendar")
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/v1/accounts/12/folders":
 					_, _ = fmt.Fprint(w, `{"data":[{"name":"INBOX"}]}`)
@@ -390,7 +390,7 @@ func TestDataExportsCancelAndRequireAKey(t *testing.T) {
 func TestExportMaildirRejectsAListWithoutData(t *testing.T) {
 	for _, body := range []string{`{}`, `{"pagination":{"has_more":false}}`} {
 		t.Run(body, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 				_, _ = io.WriteString(w, body)
 			}))
 			defer server.Close()

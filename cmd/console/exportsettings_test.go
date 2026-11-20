@@ -41,7 +41,7 @@ func settingsAPI(t *testing.T, requests *[]string) *httptest.Server {
 		"/api/v1/accounts/12/quiet-hours":        `{"data":{"enabled":true,"start":"22:00","end":"07:30","time_zone":"Europe/Berlin","session":"session-token-of-no-value"}}`,
 		"/api/v1/accounts/12/contact-reply-time": `{"data":{"enabled":true}}`,
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(withExportSessions(func(w http.ResponseWriter, r *http.Request) {
 		*requests = append(*requests, r.Method+" "+r.URL.Path)
 		if r.Header.Get("Authorization") != "Bearer "+settingsTestKey {
 			http.Error(w, `{"error":{"code":"unauthorized","message":"no"}}`, http.StatusUnauthorized)

@@ -25714,6 +25714,435 @@ paths:
       summary: Close an import session and write its summary
       tags:
       - Messages
+  /api/v1/accounts/{id}/exports:
+    post:
+      description: 'Records the start of an export of the account''s data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account''s mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else''s account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.'
+      operationId: createExportSession
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenExportSessionBody'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-ExportSession'
+          description: Created
+          links:
+            closeExportSession:
+              operationId: closeExportSession
+              parameters:
+                id: '$request.path.id'
+                session: '$response.body#/data/id'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unauthorized, app_password_required or setup_required: a refused
+            session or gateway session'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys, throttled
+            at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+      security:
+      - CookieAuth:
+        - mail:export
+      - BearerAuth:
+        - mail:export
+      - APIKeyAuth:
+        - mail:export
+      - GatewaySessionAuth:
+        - mail:export
+      summary: Open an audited export of the account's data
+      tags:
+      - Accounts
+  /api/v1/accounts/{id}/exports/{session}/close:
+    post:
+      description: 'Records the end of the export as an account.export audit entry: completed or aborted, the rows and bytes written as the exporter reports them, and any folders it was asked to leave out. The summary is returned. Only the account that opened the export may close it, and only once; a session that does not exist, has closed or belongs to another opener is not found. Requires mail:export on the account.'
+      operationId: closeExportSession
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      - example: 00112233445566778899aabbccddeeff
+        in: path
+        name: session
+        required: true
+        schema:
+          pattern: ^[0-9a-f]{32}$
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseExportSessionBody'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-ExportSessionSummary'
+          description: OK
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unauthorized, app_password_required or setup_required: a refused
+            session or gateway session'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'request_too_large: the body is over the API''s size cap'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          description: Unprocessable Entity
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'rate_limited: refused API keys, throttled
+            at login''s rate'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: 'unavailable: the credential or session check could not be made'
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+      security:
+      - CookieAuth:
+        - mail:export
+      - BearerAuth:
+        - mail:export
+      - APIKeyAuth:
+        - mail:export
+      - GatewaySessionAuth:
+        - mail:export
+      summary: Close an export and record how it ended
+      tags:
+      - Accounts
 components:
   securitySchemes:
     CookieAuth:
@@ -25947,6 +26376,48 @@ components:
           "$ref": "#/components/headers/X-Frame-Options"
 
   schemas:
+    CloseExportSessionBody:
+      additionalProperties: false
+      properties:
+        bytes:
+          format: int64
+          minimum: 0
+          type: integer
+        result:
+          enum:
+          - completed
+          - aborted
+          type: string
+        rows:
+          format: int64
+          minimum: 0
+          type: integer
+        skipped_folders:
+          items:
+            type: string
+          maxItems: 1000
+          type: array
+      required:
+      - result
+      - rows
+      - bytes
+      type: object
+    Data-ExportSession:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/ExportSession'
+      required:
+      - data
+      type: object
+    Data-ExportSessionSummary:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/ExportSessionSummary'
+      required:
+      - data
+      type: object
     Data-UnsubscribeOptions:
       additionalProperties: false
       properties:
@@ -25954,6 +26425,121 @@ components:
           $ref: '#/components/schemas/UnsubscribeOptions'
       required:
       - data
+      type: object
+    ExportSession:
+      additionalProperties: false
+      properties:
+        account_id:
+          type: integer
+        data:
+          type: string
+        format:
+          type: string
+        id:
+          type: string
+        started_at:
+          format: date-time
+          type: string
+        timeout_seconds:
+          type: integer
+      required:
+      - id
+      - account_id
+      - data
+      - format
+      - started_at
+      - timeout_seconds
+      type: object
+    ExportSessionSummary:
+      additionalProperties: false
+      properties:
+        account_id:
+          type: integer
+        bytes:
+          format: int64
+          type: integer
+        data:
+          type: string
+        ended_at:
+          format: date-time
+          type: string
+        format:
+          type: string
+        id:
+          type: string
+        result:
+          type: string
+        rows:
+          format: int64
+          type: integer
+        skipped_folders:
+          items:
+            type: string
+          type: array
+        started_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - account_id
+      - data
+      - format
+      - result
+      - rows
+      - bytes
+      - skipped_folders
+      - started_at
+      - ended_at
+      type: object
+    OpenExportSessionBody:
+      additionalProperties: false
+      anyOf:
+      - properties:
+          data:
+            enum:
+            - mail
+          format:
+            enum:
+            - maildir
+      - properties:
+          data:
+            enum:
+            - contacts
+          format:
+            enum:
+            - vcard
+      - properties:
+          data:
+            enum:
+            - calendar
+          format:
+            enum:
+            - icalendar
+      - properties:
+          data:
+            enum:
+            - settings
+          format:
+            enum:
+            - json
+      properties:
+        data:
+          enum:
+          - mail
+          - contacts
+          - calendar
+          - settings
+          type: string
+        format:
+          enum:
+          - maildir
+          - vcard
+          - icalendar
+          - json
+          type: string
+      required:
+      - data
+      - format
       type: object
     UnsubscribeOptions:
       additionalProperties: false

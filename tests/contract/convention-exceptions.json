@@ -69,6 +69,11 @@
       "read": "No route reads one grant: listGrants is the read of the grants a caller may see.",
       "update": "A grant's mode changes only through activateGrant, deactivateGrant and makeGrantEligible, each taking a fresh second factor in its body, so no answer can fill them."
     },
+    "createExportSession": {
+      "read": "No route reads an open export: its start is recorded once, as an account.export audit entry, and its end is what closeExportSession answers and records.",
+      "update": "An export has nothing a client changes while it runs: the data is read through the ordinary read routes, and closing it ends it.",
+      "delete": "An export is ended, not deleted: closeExportSession records how it ended, completed or aborted with the rows and bytes written, and removes the session; the audit entries stay."
+    },
     "createImportSession": {
       "read": "No route reads an open session: its counts are written once, as the summary closeImportSession answers and audits.",
       "update": "A session has nothing a client changes: each importMessage with its id counts into it, and closing it ends it."

@@ -87,7 +87,7 @@ func mayKnowOf(held grants.Held, claims *auth.Claims, mailbox *models.Mailbox) b
 	}
 	scope := grants.Mailbox(mailbox.Address)
 	for _, capability := range []string{models.CapMailRead, models.CapMailWrite, models.CapMailImport, models.CapMailSend,
-		models.CapMailSendAs, models.CapMailSendOnBehalf, models.CapMailboxManage} {
+		models.CapMailSendAs, models.CapMailSendOnBehalf, models.CapMailboxManage, models.CapMailExport} {
 		if held.Allows(capability, scope) && middleware.CredentialAllows(claims, capability, scope) {
 			return true
 		}

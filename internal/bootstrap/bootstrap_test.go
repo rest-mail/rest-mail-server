@@ -142,8 +142,19 @@ func TestEnsureRBAC_IdempotentAndSuperadminHasWildcard(t *testing.T) {
 	var ownerCaps []string
 	gdb.Table("role_capabilities rc").Joins("JOIN capabilities c ON c.id = rc.capability_id").
 		Where("rc.role_id = ?", owner.ID).Order("c.name").Pluck("c.name", &ownerCaps)
-	if want := []string{"mail:import", "mail:read", "mail:receive", "mail:send", "mail:send_as", "mail:send_on_behalf", "mail:write", "mailbox:manage", "mailbox:session"}; !reflect.DeepEqual(ownerCaps, want) {
+	// mail:export (#2116 AC03b): an owner exports what it owns by default.
+	if want := []string{"mail:export", "mail:import", "mail:read", "mail:receive", "mail:send", "mail:send_as", "mail:send_on_behalf", "mail:write", "mailbox:manage", "mailbox:session"}; !reflect.DeepEqual(ownerCaps, want) {
 		t.Errorf("owner capabilities = %v, want %v", ownerCaps, want)
+	}
+	// A grant on someone else's account does not confer export: the
+	// administrative roles do not hold it.
+	for _, role := range []string{"admin", "readonly"} {
+		var held int64
+		gdb.Table("role_capabilities rc").Joins("JOIN capabilities c ON c.id = rc.capability_id").Joins("JOIN roles r ON r.id = rc.role_id").
+			Where("r.name = ? AND c.name = ?", role, models.CapMailExport).Count(&held)
+		if held != 0 {
+			t.Errorf("the %s role holds %s", role, models.CapMailExport)
+		}
 	}
 
 	var wildcard int64

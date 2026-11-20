@@ -84,6 +84,7 @@ func TestExportSettingsRefusesAnotherAccountOnTheRealRouter(t *testing.T) {
 	otherID := s.newAccount(t, other)
 	_, key, err := repositories.NewCredentialRepository(s.db).CreateAPIKey(otherID, otherID, "own", []auth.ScopedPermission{
 		{Capability: models.CapMailRead, Scope: grants.Mailbox(other)},
+		{Capability: models.CapMailExport, Scope: grants.Mailbox(other)},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

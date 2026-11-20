@@ -124,6 +124,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: models.CapMailSendOnBehalf, Description: "Send on behalf of the represented mailbox, identifying the actor in Sender", Resource: "mail", Action: "send_on_behalf"},
 		{Name: models.CapMailReceive, Description: "Accept inbound mail for a mailbox", Resource: "mail", Action: "receive"},
 		{Name: models.CapMailboxManage, Description: "Manage a mailbox's settings and credentials", Resource: "mailbox", Action: "manage"},
+		{Name: models.CapMailExport, Description: "Export a mailbox's mail, contacts, calendar and settings, audited", Resource: "mail", Action: "export"},
 		{Name: models.CapMailboxSession, Description: "Sign in to and use a mailbox's own mail", Resource: "mailbox", Action: "session"},
 		{Name: models.CapAdminSession, Description: "Sign in to and use the administrative API", Resource: "admin", Action: "session"},
 	}

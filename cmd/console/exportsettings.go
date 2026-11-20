@@ -20,8 +20,11 @@ const exportSettingsUsage = `restmail export-settings — export an account's se
 
   restmail export-settings --server https://mail.example.com --account-id 12 --path ./settings.json
 
-RESTMAIL_API_KEY needs mail:read on the account or its domain. Every account holds
-mail:read on its own mailbox. The file holds the account's address and display
+RESTMAIL_API_KEY needs mail:read and mail:export on the account or its domain.
+Every account holds both on its own mailbox, and an owner on the accounts it
+owns; an administrator's grants to read mail do not include mail:export. The
+server records the export's start before anything is read, and its end,
+completed or aborted, with the bytes written. The file holds the account's address and display
 name, its folder names, its Sieve script, its vacation reply, its notification
 quiet hours and its contact reply-time setting, under a "format" of
 ` + settingsFormat + ` and the export time in UTC. Mail is exported by
@@ -131,20 +134,31 @@ func runExportSettings(ctx context.Context, args []string, token string, client 
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
 	if token == "" {
-		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:read on the account")
+		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:read and mail:export on the account")
 	}
 	if err := settingsDestination(*path, *overwrite); err != nil {
 		return o.fail(exitUsage, "bad_destination", err.Error())
 	}
 	noRedirect := *client
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	r := settingsReader{ctx: ctx, client: &noRedirect, base: base, token: token}
-	export, err := r.read(strconv.FormatUint(*account, 10), now().UTC())
+	session, err := openExportSession(ctx, &noRedirect, base, token, *account, "settings", "json")
 	if err != nil {
 		return o.fail(exitFailed, "export_failed", err.Error())
 	}
-	if err := writeSettingsFile(*path, export); err != nil {
-		return o.fail(exitFailed, "export_failed", "write "+*path+": "+err.Error())
+	r := settingsReader{ctx: ctx, client: &noRedirect, base: base, token: token}
+	export, err := r.read(strconv.FormatUint(*account, 10), now().UTC())
+	var written int64
+	if err == nil {
+		if written, err = writeSettingsFile(*path, export); err != nil {
+			err = errors.New("write " + *path + ": " + err.Error())
+		}
+	}
+	rows := int64(0)
+	if err == nil {
+		rows = 1
+	}
+	if err := session.end(err, rows, written, nil); err != nil {
+		return o.fail(exitFailed, "export_failed", err.Error())
 	}
 	if o.json {
 		_ = json.NewEncoder(stdout).Encode(map[string]any{"path": *path, "format": export.Format, "folders": len(export.Folders)})
@@ -273,26 +287,26 @@ func (r settingsReader) get(path string, into any) error {
 
 // writeSettingsFile writes the export beside path and renames it into place,
 // so path is never seen half written.
-func writeSettingsFile(path string, export settingsExport) error {
+func writeSettingsFile(path string, export settingsExport) (int64, error) {
 	body, err := json.MarshalIndent(export, "", "  ")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".restmail-export-*")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	name := tmp.Name()
-	_, writeErr := tmp.Write(append(body, '\n'))
+	n, writeErr := tmp.Write(append(body, '\n'))
 	syncErr := tmp.Sync()
 	closeErr := tmp.Close()
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 		_ = os.Remove(name)
-		return err
+		return 0, err
 	}
 	if err := os.Rename(name, path); err != nil {
 		_ = os.Remove(name)
-		return err
+		return 0, err
 	}
-	return nil
+	return int64(n), nil
 }

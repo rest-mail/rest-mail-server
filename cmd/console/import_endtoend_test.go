@@ -174,6 +174,9 @@ func makeMigrationTemplate(cfg config.Config) error {
 
 // TestMain drops the template database, if a test made one.
 func TestMain(m *testing.M) {
+	if exportChild() {
+		return
+	}
 	code := m.Run()
 	if migrationTemplate.name != "" {
 		cfg := migrationTemplate.cfg

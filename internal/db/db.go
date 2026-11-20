@@ -88,6 +88,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.Alias{},
 		&models.Message{},
 		&models.ImportSession{},
+		&models.ExportSession{},
 		&models.ThreadDue{},
 		&models.ThreadSnooze{},
 		// Mail the user asked the server to send later; replayed through the

@@ -62,6 +62,7 @@ func TestExportSettingsReadsTheRealRouter(t *testing.T) {
 	// The account's own key is a credential it holds; it must not be exported.
 	_, accountKey, err := repositories.NewCredentialRepository(s.db).CreateAPIKey(id, id, "settings", []auth.ScopedPermission{
 		{Capability: models.CapMailRead, Scope: grants.Mailbox(address)},
+		{Capability: models.CapMailExport, Scope: grants.Mailbox(address)},
 	}, nil)
 	if err != nil {
 		t.Fatalf("create the account's key: %v", err)

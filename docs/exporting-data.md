@@ -7,11 +7,13 @@ restmail export-contacts --server https://mail.example.com --account-id 12 --pat
 restmail export-calendar --server https://mail.example.com --account-id 12 --path ./calendar
 ```
 
-Both use `RESTMAIL_API_KEY` and only the public API. The account owner can use a
-key with `mail:read` on that account. An administrator needs the same existing
-capability at a scope covering the account; the commands add no authority or
-administrator bypass. A different account's key, or a key without `mail:read`,
-cannot export the data. HTTPS is required except on localhost. Redirects are
+Both use `RESTMAIL_API_KEY` and only the public API. The key needs `mail:read`
+and `mail:export` on the account. Every account holds both on its own mailbox,
+and the `owner` role holds both on the accounts it owns. A grant to read
+someone else's mail does not include `mail:export`, and the admin role does not
+hold it: an administrator exporting another account needs a role that names it
+(see `docs/MANUAL.md`). A different account's key, or a key without `mail:read`
+or `mail:export`, cannot export the data. HTTPS is required except on localhost. Redirects are
 not followed, and credentials and exported content are never printed.
 
 ## Contacts
@@ -109,13 +111,23 @@ source mail has been permanently removed. Those are separate scope questions.
 ## Completion and limits
 
 `--json` returns a summary containing `path` and either `contacts` or `calendars`
-(the latter counts MIME calendar parts, not distinct event UIDs). Exit status is
+(the latter counts MIME calendar parts, not distinct event UIDs, and comes with
+`skipped_folders`). Exit status is
 0 for completion, 2 for usage/destination errors, and 1 for export failures.
 `export-calendar` also fails on a folder list that says it is incomplete, and on
 a message page that says more follows with no messages or without a cursor it
 has not used in that folder.
 Ctrl-C or SIGTERM cancels requests and cleans up staged output. HTTP requests
-have a 30-minute timeout and each list page is capped at 64 MiB. Memory is bounded
+have a 30-minute timeout and each list page is capped at 64 MiB. A folder's
+message listing carries each message's decoded bodies, so a page of 100 large
+messages can pass that cap: `export-calendar` then asks for the same page again
+with half as many messages, down to one, keeping only the ids of the
+invitations on a page and downloading them after the page is read. A folder
+whose single message is still over the cap cannot be exported; the export fails
+naming that folder and the narrower request that would succeed, the same
+command with `--skip-folder "<folder>"` (repeatable, calendar only). The
+summary of such an export lists the folders it left out, and a `--skip-folder`
+naming no folder of the account is refused. Memory is bounded
 by a single decoded list item/MIME header, not by the number of contacts or
 invitations. Message bodies are spooled to disk, never accumulated in memory.
 Allow disk space for the output plus one message source.
@@ -123,8 +135,15 @@ Allow disk space for the output plus one message source.
 These commands are not point-in-time snapshots. Avoid modifying contacts or
 mail during export: offset/cursor pagination is not a snapshot transaction.
 
-These commands only read existing public routes and do not write an
-export-specific audit entry. Whole-account migration and audit requirements
-are discussed in #1577; this document describes only these two commands. No
-new server route, audit event, import command or API schema is added by this
-change.
+## Audit
+
+Before anything is written, each command opens the export with
+`POST /api/v1/accounts/{id}/exports`, which the server refuses without
+`mail:export` and records as an `account.export` audit entry naming the actor,
+the credential, the account and the data and format (`contacts` as `vcard`,
+`calendar` as `icalendar`). When the export ends, the command closes it with
+`POST /api/v1/accounts/{id}/exports/{session}/close`, recorded as a second
+entry with `result` `completed` or `aborted`, the rows (contacts, or calendar
+parts) and bytes written, and any folders left out. Ctrl-C records the export
+as aborted; an export never closed is closed as aborted by the server a day
+after it started. If the server cannot record the end, the command exits 1.

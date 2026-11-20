@@ -26,6 +26,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/dns"
 	"github.com/rest-mail/rest-mail-server/internal/dnsbl"
 	"github.com/rest-mail/rest-mail-server/internal/domainstate"
+	"github.com/rest-mail/rest-mail-server/internal/exportsession"
 	"github.com/rest-mail/rest-mail-server/internal/gatewaysession"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/greylist"
@@ -327,6 +328,8 @@ func main() {
 	grantSweeper.Start()
 	importSweeper := importsession.NewSweeper(database)
 	importSweeper.Start()
+	exportSweeper := exportsession.NewSweeper(database)
+	exportSweeper.Start()
 
 	var anchorWorker *auditanchor.Worker
 	if cfg.AuditAnchorEmailEnabled {
@@ -486,6 +489,7 @@ func main() {
 	domainWatcher.Shutdown()
 	grantSweeper.Shutdown()
 	importSweeper.Shutdown()
+	exportSweeper.Shutdown()
 	if anchorWorker != nil {
 		anchorWorker.Shutdown()
 	}
