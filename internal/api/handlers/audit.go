@@ -38,8 +38,8 @@ type listAuditRequest struct {
 	Actor     string     `query:"actor"`
 	Action    string     `query:"action"`
 	Outcome   string     `query:"outcome" enums:",success,denied,failed,error" message:"must be success, denied, failed or error"`
-	Since     *time.Time `query:"since" message:"must be an RFC 3339 time"`
-	Until     *time.Time `query:"until" message:"must be an RFC 3339 time"`
+	Since     *time.Time `query:"since" message:"must be an RFC 3339 time" description:"Only entries at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since"`
+	Until     *time.Time `query:"until" message:"must be an RFC 3339 time" description:"Only entries at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until"`
 	BeforeSeq *int64     `query:"before_seq" minimum:"1" message:"must be a positive whole number"`
 	Limit     *int       `query:"limit" minimum:"1" maximum:"200" message:"must be between 1 and 200"`
 }

@@ -5819,6 +5819,25 @@ paths:
     put:
       operationId: subscribeFolder
       tags: [Folders]
+      parameters:
+        # Subscribing holds the name to the folder rule; unsubscribing takes any name.
+        - name: folder
+          in: path
+          required: true
+          description: 'A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; any other name is refused 422 validation_failed.'
+          example: INBOX
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+            pattern: "[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]"
+            allOf:
+              - type: string
+                pattern: "^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$"
+              - type: string
+                pattern: '^[^\x00-\x1f\x7f-\x9f]*$'
+              - type: string
+                pattern: '^([^.]|\.[^.])*(\.)?$'
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
@@ -9826,16 +9845,16 @@ paths:
           description: Filter by sender address
         - name: after
           in: query
+          description: 'Only messages received at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming after'
           schema:
             type: string
             format: date-time
-          description: Messages after this date
         - name: before
           in: query
+          description: 'Only messages received at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming before'
           schema:
             type: string
             format: date-time
-          description: Messages before this date
         - name: has_attachment
           in: query
           schema:
@@ -13950,11 +13969,13 @@ paths:
             type: string
         - name: last_used_before
           in: query
+          description: 'Only keys last used before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00, and keys never used; any other value is refused 422 validation_failed naming last_used_before'
           schema:
             type: string
             format: date-time
         - name: expires_before
           in: query
+          description: 'Only keys that expire before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming expires_before'
           schema:
             type: string
             format: date-time
@@ -18828,11 +18849,13 @@ paths:
             type: string
         - name: since
           in: query
+          description: 'Only deliveries queued at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since'
           schema:
             type: string
             format: date-time
         - name: until
           in: query
+          description: 'Only deliveries queued at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until'
           schema:
             type: string
             format: date-time
@@ -18918,13 +18941,13 @@ paths:
             enum: [success, denied, failed, error]
         - name: since
           in: query
-          description: Entries at or after this time (RFC 3339)
+          description: 'Only entries at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since'
           schema:
             type: string
             format: date-time
         - name: until
           in: query
-          description: Entries at or before this time (RFC 3339)
+          description: 'Only entries at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until'
           schema:
             type: string
             format: date-time
@@ -28016,16 +28039,38 @@ components:
       required: [name]
       properties:
         name:
+          # The folder rule (rmail.FolderNameProblem); the handler makes the refusal.
+          description: 'A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; any other name is refused 422 validation_failed.'
           type: string
           minLength: 1
+          maxLength: 255
+          pattern: "[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]"
+          allOf:
+            - type: string
+              pattern: "^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$"
+            - type: string
+              pattern: '^[^\x00-\x1f\x7f-\x9f]*$'
+            - type: string
+              pattern: '^([^.]|\.[^.])*(\.)?$'
 
     RenameFolderRequest:
       type: object
       required: [name]
       properties:
         name:
+          # The folder rule (rmail.FolderNameProblem); the handler makes the refusal.
+          description: 'A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; any other name is refused 422 validation_failed.'
           type: string
           minLength: 1
+          maxLength: 255
+          pattern: "[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]"
+          allOf:
+            - type: string
+              pattern: "^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$"
+            - type: string
+              pattern: '^[^\x00-\x1f\x7f-\x9f]*$'
+            - type: string
+              pattern: '^([^.]|\.[^.])*(\.)?$'
 
     # ─────────────────────────────────────────────────────────────
     # Message

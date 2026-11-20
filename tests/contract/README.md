@@ -413,6 +413,13 @@ There are three ways to keep a probe:
   12 characters in the examples phase, which the surface gate requires, and
   `TestCreateAccount_ContractPasswordBoundary` and
   `TestMailboxUpdate_ContractPasswordBoundary` hold both sides.
+  The fuzz run also holds `updateMessage`'s `unchanged_since` at the largest
+  mod-sequence the column stores. A conditional write is refused 409
+  message_modified once the message's mod_seq passes the value (RFC 7162 §3.1.3),
+  which depends on the message's history and not on the body, so the generator's
+  1 was refused for a schema-valid body (#2051). With no mod-sequence above it the
+  write is still conditional, made and judged; invalid values still vary, and the
+  named examples prove the 409 and the 400.
 - **The fixture matches the body.** `createAPIKey` and `updateAPIKey` check the
   caller's current password, and the coverage process sends them as
   `contract-probe-admin@restmail.test`, whose two passwords are plainly fake and
@@ -594,9 +601,16 @@ Fuzz draws an `address` that names nothing, and Vertrag holds a valid body's
 rest of delivery is never reached. A hook cannot supply the recipient, for the
 reason above.
 
-`probes.py` pins `address` in the fuzz run to the mailbox `run.sh` makes first
+`probes.py` holds `deliverMessage`'s `address` in the fuzz run's valid requests
+(`fuzz.pin-valid`) at the mailbox `run.sh` makes first
 (`chore test:contract-delivery-recipient`, declared in `fixtureplan/defaults.json`).
-Mail goes to it, not to the fixture admin. Its domain stores an inbound pipeline
+Mail goes to it, not to the fixture admin. It is not a `fuzz.pin`: a pin holds every
+body's `address`, documented examples included, and held `createAccount`'s example at
+this mailbox, which already has an account, so the documented create answered 409
+already_exists and `createAccount`'s probes and links were never sent (#2051).
+`restmailDeliver`'s `recipients` go to the same mailbox in the fuzz run: the run's own
+`updateDomain` probes take `restmail.test` out of service before the RESTMAIL probes
+are sent, and a domain out of service rightly receives nothing. Its domain stores an inbound pipeline
 with no filters, because a generated body has no Date or Message-ID and the
 default pipeline rightly refuses that. A pipeline with filters is proven by the
 `rejected` and `processed` examples, not here.

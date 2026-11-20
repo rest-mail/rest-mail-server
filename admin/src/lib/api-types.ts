@@ -5973,7 +5973,8 @@ export interface components {
             scoped_capabilities: components["schemas"]["Entry"][];
         };
         folderNameBody: {
-            name: string;
+            /** @description A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; any other name is refused 422 validation_failed. */
+            name: string & (string);
         };
         gatewaySessionOpenRequest: {
             /** Format: email */
@@ -16236,7 +16237,9 @@ export interface operations {
                 q?: string;
                 folder?: string;
                 from?: string;
+                /** @description Only messages received at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming after */
                 after?: string;
+                /** @description Only messages received at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming before */
                 before?: string;
                 has_attachment?: "" | "true" | "false";
                 /** @description 1 to 100; 50 otherwise */
@@ -17817,7 +17820,8 @@ export interface operations {
             header?: never;
             path: {
                 id: number;
-                folder: string;
+                /** @description A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; any other name is refused 422 validation_failed. */
+                folder: string & (string);
             };
             cookie?: never;
         };
@@ -20981,7 +20985,9 @@ export interface operations {
             query?: {
                 owner?: string;
                 capability?: string;
+                /** @description Only keys last used before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00, and keys never used; any other value is refused 422 validation_failed naming last_used_before */
                 last_used_before?: string;
+                /** @description Only keys that expire before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming expires_before */
                 expires_before?: string;
                 limit?: number;
                 offset?: number;
@@ -21156,7 +21162,9 @@ export interface operations {
                 actor?: string;
                 action?: string;
                 outcome?: "" | "success" | "denied" | "failed" | "error";
+                /** @description Only entries at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since */
                 since?: string;
+                /** @description Only entries at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until */
                 until?: string;
                 before_seq?: number;
                 limit?: number;
@@ -31823,7 +31831,9 @@ export interface operations {
                 domain?: string;
                 sender?: string;
                 recipient?: string;
+                /** @description Only deliveries queued at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since */
                 since?: string;
+                /** @description Only deliveries queued at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until */
                 until?: string;
             };
             header?: never;

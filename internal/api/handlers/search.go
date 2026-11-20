@@ -29,8 +29,8 @@ type searchRequest struct {
 	Q             string     `query:"q"`
 	Folder        string     `query:"folder"`
 	From          string     `query:"from"`
-	After         *time.Time `query:"after" message:"must be an RFC 3339 date-time"`
-	Before        *time.Time `query:"before" message:"must be an RFC 3339 date-time"`
+	After         *time.Time `query:"after" message:"must be an RFC 3339 date-time" description:"Only messages received at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming after"`
+	Before        *time.Time `query:"before" message:"must be an RFC 3339 date-time" description:"Only messages received at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming before"`
 	HasAttachment string     `query:"has_attachment" enums:",true,false" message:"must be true or false"`
 	Limit         *int       `query:"limit" description:"1 to 100; 50 otherwise"`
 }
