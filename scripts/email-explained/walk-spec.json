@@ -1,0 +1,96 @@
+{
+  "format": 1,
+  "about": "The end-to-end walk of the five customer guides (#2120 AC02, #1588). Each step names the guide heading it follows (`anchor`, checked against the guide), what to do, and what to observe. `kind` says what evidence stands behind the observation: dns (an answer from the installation's resolver), client (a mail client or reference client's own output), receiver (headers or a transcript from the reference receiver, which is not REST Mail), screen (what the admin app or webmail showed), api (an HTTP answer). A step with `expect` passes only when the observation matches it; a step with `failure: true` is a deliberate failure the guide promises to explain.",
+  "installation": {
+    "name": "guidewalk",
+    "kind": "topology",
+    "why": "A private, labelled topology (tasks/topology.yml) with its own network, resolver, reference servers and REST Mail instance, removed by one command. The reference servers are Postfix and Dovecot, so what they report is not REST Mail's word for itself.",
+    "up": ["chore topology:plan TOPOLOGY=guidewalk", "chore topology:up TOPOLOGY=guidewalk"],
+    "down": ["chore topology:down TOPOLOGY=guidewalk"],
+    "variables": {
+      "domain": "The domain the walk adds in the first guide, a name the topology's resolver answers for, such as walk.restmail.test",
+      "host": "The instance's mail host, the value of the domain's MX record",
+      "ip": "The mail host's address",
+      "receiver": "The reference receiver's host name, an independent Postfix and Dovecot in the same topology"
+    },
+    "substitutions": [
+      "The guides say a `.test` name never works on the public internet (RFC 6761). The topology's resolver stands in for public DNS, so every dns observation is of that resolver, and the walk does not show the guides work against the public internet.",
+      "Step 3 of the first guide gets a certificate from Let's Encrypt, which cannot reach a private topology. The walk uses a certificate from the topology's own CA and records that step as substituted.",
+      "Public blocklists and the cloud providers' port 25 blocks cannot be tested from a private network. Steps about them are recorded as substituted, never as passed."
+    ],
+    "alternative": "A real, disposable installation on a domain the owner holds also qualifies, if the owner names it, attests it is disposable, and records its chart and server versions. Then `kind` is `real`, and the substitutions that no longer apply are not claimed."
+  },
+  "guides": [
+    {
+      "slug": "setting-up-your-first-domain",
+      "file": "guides/setting-up-your-first-domain.md",
+      "steps": [
+        { "id": "domain-01", "anchor": "if-you-run-the-server-yourself", "kind": "client", "do": "From the instance's host, run `nc -vz -w 5 {receiver} 25`, then `dig +short -x {ip}` and `dig +short A {host}`.", "observe": "The connection succeeds, and the PTR and A records agree both ways.", "command": "nc -vz -w 5 {receiver} 25", "expect": "succeeded|open" },
+        { "id": "domain-02", "anchor": "step-1-sign-in", "kind": "screen", "do": "Open the admin app and sign in with the first account's full address and the password someone else chose.", "observe": "The page headed `Finish account setup` appears, and after choosing a password and an authenticator the second sign-in works." },
+        { "id": "domain-03", "anchor": "step-2-add-your-domain", "kind": "screen", "do": "Open Domains, press Add Domain, enter {domain}, leave the type on Traditional, press Create Domain.", "observe": "The domain exists and is Inactive." },
+        { "id": "domain-04", "anchor": "step-5-make-the-domain-active", "kind": "screen", "failure": true, "do": "Before adding a certificate, edit the domain, tick `Domain is active` and press Save Changes.", "observe": "The message the guide quotes.", "expect": "no currently valid certificate" },
+        { "id": "domain-05", "anchor": "step-3-add-a-certificate", "kind": "screen", "do": "Upload a certificate and key for {domain} under Settings, Certificates.", "observe": "The upload is accepted. The Certificates screen lists the certificate and its expiry." },
+        { "id": "domain-06", "anchor": "step-4-add-a-dkim-key", "kind": "screen", "do": "Follow the DKIM guide's `Add the DKIM key`, and keep the record it gives.", "observe": "The key is created; see the DKIM guide's steps for what was observed." },
+        { "id": "domain-07", "anchor": "step-5-make-the-domain-active", "kind": "screen", "do": "With the certificate in place, make the domain active.", "observe": "The domain shows Active." },
+        { "id": "domain-08", "anchor": "step-6-create-your-mailboxes", "kind": "screen", "do": "Create postmaster@{domain} first, then a second mailbox with a password, then one by invitation.", "observe": "All three exist. The invitation link expires after 15 minutes." },
+        { "id": "domain-09", "anchor": "step-6-create-your-mailboxes", "kind": "receiver", "failure": true, "do": "From the reference receiver, send a message to nobody@{domain}, an address that does not exist.", "observe": "The refusal the guide quotes.", "expect": "550 5\\.1\\.1" },
+        { "id": "domain-10", "anchor": "step-7-publish-your-dns-records", "kind": "dns", "do": "Run `chore dns:show` for the domain and publish exactly that list in the topology's resolver.", "observe": "Every row of the guide's table is in the list, with the real DKIM value." },
+        { "id": "domain-11", "anchor": "step-8-check-your-records", "kind": "dns", "do": "Run the five `dig` commands of the step against the topology's resolver, then press Refresh under DNS Configuration.", "observe": "Each dig answer is the one the comment beside it says. MX, SPF, DMARC, DKIM and TLS-RPT show Verified, and MTA-STS stays Missing.", "command": "dig +short MX {domain}", "expect": "{host}" },
+        { "id": "domain-12", "anchor": "step-9-send-your-first-message", "kind": "receiver", "do": "Send a message from a REST Mail mailbox to the reference receiver's mailbox, and reply from there.", "observe": "Both messages arrive. Record the time each took, and the reference receiver's headers." }
+      ]
+    },
+    {
+      "slug": "connecting-your-mail-app",
+      "file": "guides/connecting-your-mail-app.md",
+      "steps": [
+        { "id": "app-01", "anchor": "the-settings", "kind": "client", "do": "With `openssl s_client`, connect to {host} on 993 and on 465.", "observe": "Both start TLS from the first byte and present the mail host's certificate.", "command": "openssl s_client -connect {host}:993 -brief </dev/null", "expect": "Protocol version|CONNECTION ESTABLISHED" },
+        { "id": "app-02", "anchor": "the-settings", "kind": "client", "failure": true, "do": "Try to connect to {host} on 587, 143 and 110.", "observe": "Each is refused, as the guide says: nothing listens on them.", "command": "nc -vz -w 5 {host} 587", "expect": "refused|timed out|failed" },
+        { "id": "app-03", "anchor": "setting-up-your-app", "kind": "client", "do": "Set up a real mail client (Thunderbird, or a reference IMAP and SMTP client) by hand with the guide's table, and read, send and receive.", "observe": "Name the client and its version. IMAP login, folder list, and an SMTP send all work." },
+        { "id": "app-04", "anchor": "after-you-connect", "kind": "client", "do": "Read the section, then check each claim it makes about the new account.", "observe": "Each claim holds, or the guide is corrected." },
+        { "id": "app-05", "anchor": "if-you-use-two-factor-authentication", "kind": "api", "do": "For an account with two-factor authentication, run the guide's script to make an app password, then log in to IMAP with it.", "observe": "The script prints a password, and IMAP login with it succeeds." },
+        { "id": "app-06", "anchor": "when-something-goes-wrong", "kind": "client", "failure": true, "do": "Log in to IMAP with a wrong password.", "observe": "The text the guide's table gives.", "expect": "AUTHENTICATIONFAILED|Authentication failed" },
+        { "id": "app-07", "anchor": "when-something-goes-wrong", "kind": "client", "failure": true, "do": "Fail five sign-ins in ten minutes, then use the right password.", "observe": "The lockout text the guide's table gives, and the right password is still refused.", "expect": "Too many authentication failures" },
+        { "id": "app-08", "anchor": "when-something-goes-wrong", "kind": "client", "failure": true, "do": "Send as an address that is not the account's.", "observe": "The text the guide's table gives.", "expect": "not authorized for this account" }
+      ]
+    },
+    {
+      "slug": "troubleshooting-bouncing-mail",
+      "file": "guides/troubleshooting-bouncing-mail.md",
+      "steps": [
+        { "id": "bounce-01", "anchor": "read-the-bounce", "kind": "receiver", "failure": true, "do": "From a REST Mail mailbox, send to a nonexistent address at the reference receiver.", "observe": "A bounce arrives from Mail Delivery System with the subject and the `Error:` line the guide shows.", "expect": "Undelivered Mail Returned to Sender" },
+        { "id": "bounce-02", "anchor": "what-each-bounce-means", "kind": "screen", "do": "Compare the bounce's wording with the guide's table of meanings.", "observe": "The sentence after the address and the Error line match a row, or the guide is corrected." },
+        { "id": "bounce-03", "anchor": "no-bounce-and-no-delivery", "kind": "screen", "do": "Hold a destination so mail to it queues, then follow the section to find the message.", "observe": "Where the message is, and that the steps the guide gives find it." },
+        { "id": "bounce-04", "anchor": "if-your-server-cannot-reach-anyone", "kind": "client", "do": "Follow the relay instructions with the reference receiver as the relay.", "observe": "Mail leaves through the relay, or this step is recorded as substituted with the reason." },
+        { "id": "bounce-05", "anchor": "when-other-people-cannot-reach-you", "kind": "dns", "do": "Run the section's commands, then break the MX record on purpose and send to the domain from the reference receiver.", "observe": "The commands show the break, and the sender's bounce matches a row in the guide's table." }
+      ]
+    },
+    {
+      "slug": "setting-up-dkim-spf-dmarc",
+      "file": "guides/setting-up-dkim-spf-dmarc.md",
+      "steps": [
+        { "id": "auth-01", "anchor": "add-the-dkim-key", "kind": "screen", "do": "Make the key with `openssl genrsa -out dkim.private 2048`, add it under Settings, DKIM Keys, selector `mail`, and print the record with the guide's one-liner.", "observe": "The key is accepted, and the printed record starts `v=DKIM1; k=rsa; p=`." },
+        { "id": "auth-02", "anchor": "add-the-dkim-key", "kind": "screen", "failure": true, "do": "Try to add a 1024-bit key.", "observe": "REST Mail refuses it.", "expect": "2048|too small|refus|least" },
+        { "id": "auth-03", "anchor": "publish-spf", "kind": "dns", "do": "Publish the SPF record and read it back.", "observe": "One record, `v=spf1 mx -all`.", "command": "dig +short TXT {domain}", "expect": "v=spf1" },
+        { "id": "auth-04", "anchor": "publish-dmarc", "kind": "dns", "do": "Publish the DMARC record, and create the postmaster mailbox it reports to.", "observe": "The record reads back with `p=none` and the rua address.", "command": "dig +short TXT _dmarc.{domain}", "expect": "v=DMARC1" },
+        { "id": "auth-05", "anchor": "check-they-work", "kind": "receiver", "do": "Send a message to the reference receiver and read its Authentication-Results.", "observe": "Record the header: spf, dkim and dmarc all pass, with dkim for {domain}.", "expect": "spf=pass[\\s\\S]*dkim=pass[\\s\\S]*dmarc=pass|dkim=pass[\\s\\S]*spf=pass[\\s\\S]*dmarc=pass" },
+        { "id": "auth-06", "anchor": "check-they-work", "kind": "receiver", "failure": true, "do": "Change the published SPF record to a different address, wait for the resolver, and send again.", "observe": "The receiver reports SPF failing, as the guide's table says.", "expect": "spf=(fail|softfail)" },
+        { "id": "auth-07", "anchor": "check-they-work", "kind": "receiver", "failure": true, "do": "Publish a DKIM record with one character changed, and send again.", "observe": "The receiver reports the DKIM failure the guide's table gives.", "expect": "dkim=fail" },
+        { "id": "auth-08", "anchor": "after-a-month-tighten-dmarc", "kind": "screen", "do": "Read a DMARC aggregate report as the guide says, then move the policy to quarantine and then reject.", "observe": "The report was readable by the guide's commands, and each policy change took effect, or the guide is corrected." },
+        { "id": "auth-09", "anchor": "later-mta-sts", "kind": "dns", "do": "Follow the MTA-STS section's records.", "observe": "The records read back, and the DNS Configuration card's MTA-STS row changes from Missing." }
+      ]
+    },
+    {
+      "slug": "why-mail-goes-to-spam",
+      "file": "guides/why-mail-goes-to-spam.md",
+      "steps": [
+        { "id": "spam-01", "anchor": "1-do-your-records-pass", "kind": "receiver", "do": "Use the section's checks on the walk's domain.", "observe": "The checks reach the same verdicts as the receiver's headers." },
+        { "id": "spam-02", "anchor": "2-does-reverse-dns-agree-both-ways", "kind": "dns", "do": "Run the reverse-DNS commands for {ip}.", "observe": "They agree both ways.", "command": "dig +short -x {ip}", "expect": "{host}" },
+        { "id": "spam-03", "anchor": "3-is-your-address-on-a-blocklist", "kind": "dns", "do": "Follow the blocklist section.", "observe": "A private address cannot be listed by public blocklists, so record this step as substituted, with that reason." },
+        { "id": "spam-04", "anchor": "what-rest-mail-does-by-default", "kind": "receiver", "failure": true, "do": "From the reference receiver, send a message from a domain that publishes `p=reject` and fails its checks.", "observe": "The refusal the guide gives.", "expect": "550 5\\.7\\.1" },
+        { "id": "spam-05", "anchor": "what-rest-mail-does-by-default", "kind": "receiver", "failure": true, "do": "Send a message from a domain that publishes `p=quarantine` and fails its checks.", "observe": "It is not in the inbox.", "expect": "quarantine" },
+        { "id": "spam-06", "anchor": "finding-a-message-that-has-been-held", "kind": "screen", "do": "Open the webmail's quarantine, find the message, and Release it, first without and then with two-factor authentication.", "observe": "Without two-factor the guide's message appears, and with it Release puts the message in the inbox." },
+        { "id": "spam-07", "anchor": "if-a-message-is-not-there-either", "kind": "screen", "do": "Follow the section's checks for a message that is not there.", "observe": "Each check can be done as written." }
+      ]
+    }
+  ]
+}

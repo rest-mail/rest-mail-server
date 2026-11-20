@@ -21,7 +21,8 @@
 //   GitHub links pinned to the commit the bundle was built from.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { Marked } from "marked";
@@ -197,6 +198,26 @@ export function readingOrder(readme, files) {
   return [...front, ...linked.filter((f) => f !== "README.md"), ...rest];
 }
 
+/**
+ * A diagram's page as the website serves it: Archify's render of the source, in
+ * the site's look (look.mjs, the same as the static image), with its typefaces
+ * as files of their own. approved.mjs hashes exactly this, so what the bundle
+ * ships and what was approved cannot be two different renderings.
+ */
+export async function renderDiagramPage(archify, type, sourceFile) {
+  const work = await mkdtemp(join(tmpdir(), "email-explained-page-"));
+  try {
+    const html = join(work, "page.html");
+    execFileSync(process.execPath, [archify, "render", type, sourceFile, html], {
+      env: { ...process.env, ARCHIFY_UPDATE_CHECK_DISABLED: "1" },
+      stdio: ["ignore", "ignore", "inherit"],
+    });
+    return extractFonts(withLook(await readFile(html, "utf8")));
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+}
+
 async function markdownFiles(dir, base = dir) {
   const found = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -227,12 +248,7 @@ async function main() {
     if (!source || !TYPES.has(source[2])) continue;
     const [, diagram, type] = source;
     const html = `diagrams/${diagram}.html`;
-    execFileSync(process.execPath, [values.archify, "render", type, join(guide, "diagrams", name), join(out, html)], {
-      env: { ...process.env, ARCHIFY_UPDATE_CHECK_DISABLED: "1" },
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-    // In the site's look (look.mjs), the same as the static image.
-    const { html: page, fonts } = extractFonts(withLook(await readFile(join(out, html), "utf8")));
+    const { html: page, fonts } = await renderDiagramPage(values.archify, type, join(guide, "diagrams", name));
     await writeFile(join(out, html), page);
     await mkdir(join(out, "diagrams", "fonts"), { recursive: true });
     for (const [file, bytes] of fonts) await writeFile(join(out, "diagrams", file), bytes);

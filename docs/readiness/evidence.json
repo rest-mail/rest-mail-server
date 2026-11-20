@@ -1,0 +1,140 @@
+{
+  "format": 1,
+  "about": "The readiness evidence register: what was observed, when, at which commit, with what result, and the receipt that proves it. Bounded by `rules`; scripts/readiness_register.py archive moves what is stale or over the limit to evidence-archive.json with a reason, and never deletes. Not a tracker: open work is in the issues.",
+  "rules": {
+    "max_age_days": 21,
+    "max_current": 30
+  },
+  "as_of": "2026-11-20",
+  "claims": [
+    {
+      "id": "ac01-deployed-diagrams-2026-11-20",
+      "source": "AC01",
+      "claim": "rest-mail.com serves the approved diagrams, readable at 1440px and 390px",
+      "state": "fail",
+      "observed_on": "2026-11-20",
+      "head": "0a8ec1b2ad4cb9f2228e52eff9948d3f36e1f247",
+      "tested": "CHROME=<chrome> node scripts/email-explained/approved.mjs deployed --measure --receipt deployed-diagrams.json",
+      "result": "23 of 27 served pages are the approved ones; spf, rest-mail, open-relay and open-relay-cost are the older pages; 30 failures, smallest titles 8.2-8.6px against the 9.5px floor; a sideways swipe scrolled the diagram 225px and the page 0px.",
+      "limits": "Read-only run from one machine, headless Chrome. Not a physical-phone or owner visual acceptance.",
+      "receipts": [
+        {
+          "kind": "file",
+          "path": "docs/readiness/receipts/2026-11-20-deployed-diagrams.json",
+          "contains": "\"verdict\": \"FAIL\""
+        },
+        {
+          "kind": "file",
+          "path": "docs/email-explained/diagrams/approved.json"
+        }
+      ]
+    },
+    {
+      "id": "ac02-guide-walk",
+      "source": "AC02",
+      "claim": "Each customer guide has been followed end to end on a named disposable installation",
+      "state": "blocked",
+      "observed_on": "2026-11-20",
+      "result": "No walk has run. The steps, the installation name (guidewalk) and the receipt check are shipped; node walk.mjs check says NOT WALKED for an unfilled receipt.",
+      "limits": "Needs an installation and someone to follow the guides once.",
+      "receipts": [
+        {
+          "kind": "file",
+          "path": "scripts/email-explained/walk-spec.json",
+          "contains": "\"name\": \"guidewalk\""
+        }
+      ]
+    },
+    {
+      "id": "ac02-guides-published-2026-11-20",
+      "source": "AC02",
+      "claim": "The five customer guides are published on rest-mail.com",
+      "state": "fail",
+      "observed_on": "2026-11-20",
+      "head": "507137cc9f09d4d785b97da3f422f170fe0a673b",
+      "tested": "node scripts/email-explained/published.mjs",
+      "result": "The newest bundle (1.0.1393) holds all five guides; rest-mail.com answers HTTP 404 for each of them.",
+      "limits": "Asks the registry and the public site only. Why the website is behind is not established here.",
+      "receipts": [
+        {
+          "kind": "file",
+          "path": "docs/readiness/receipts/2026-11-20-guides-published.txt",
+          "contains": "5 not published"
+        }
+      ]
+    },
+    {
+      "id": "ac03-findings-homes-2026-11-20",
+      "source": "AC03",
+      "claim": "Every finding the 2026-11-03 reconciliation retained has a verified tracker home",
+      "state": "pass",
+      "observed_on": "2026-11-20",
+      "head": "0f8be6b24ac2ca7b945e7ed9782e1ce21745d55b",
+      "tested": "python3 -B -m unittest discover -s scripts/tests -p test_findings_homes.py; python3 -B scripts/findings_homes.py check",
+      "result": "14 tests OK; 270 findings, 0 without a verified home; 138 references asked of GitHub, 0 missing.",
+      "limits": "Proves each finding has a home that exists, not that it is still true in current code beyond the files it cites.",
+      "receipts": [
+        {
+          "kind": "file",
+          "path": "docs/findings-homes.json",
+          "contains": "\"verified_at\""
+        }
+      ]
+    },
+    {
+      "id": "mailcheck-baseline-2026-11-04",
+      "source": "AC04",
+      "claim": "A real instantmailcheck run against restmail.test is the baseline later runs may not get worse than",
+      "state": "fail",
+      "observed_on": "2026-11-04",
+      "result": "13 checks are not PASS in the baseline: 4 FAIL (IMAPS Port 993, IMAPS TLS Certificate, Submission Port 587, VRFY/EXPN Commands), 4 WARN, 5 SKIP.",
+      "limits": "One run on a private Docker network, from the images published for commit 01c844bb; not a hosted runner.",
+      "receipts": [
+        {
+          "kind": "file",
+          "path": "scripts/mailcheck-baseline.json",
+          "contains": "IMAPS Port 993"
+        }
+      ]
+    },
+    {
+      "id": "src1635-audit-baseline",
+      "source": "SRC-1635",
+      "claim": "Issue audit of 2026-11-03: scope and limits",
+      "state": "unknown",
+      "observed_on": "2026-11-03",
+      "head": "fd1db07402ac0e896bfaffa9d490296c59d80fcc",
+      "result": "Triage of 99 open issues against merged main at fd1db07402ac. Zero tests run. Twelve issues Cannot tell. Closed window October 4-November 3: 39 of 359 closed issues received a risk-focused source review, 320 did not.",
+      "limits": "Historical. Not an acceptance certificate, and no classification in it permits closing an issue.",
+      "verbatim": "Read-only issue audit requested by the owner on November 3, 2026. Code baseline: detached, freshly fetched [origin/main at fd1db07402ac](https://github.com/rest-mail/rest-mail-server/commit/fd1db07402ac0e896bfaffa9d490296c59d80fcc), rechecked **2026-11-03 15:51:43 UTC**. Only merged main counts as implemented. The refreshed 99-open-issue inventory predates this tracking issue (94 initially, plus #1624/#1627/#1628/#1629/#1630 opened during the audit); 37 open PRs were separately listed and none counted as a merged fix.\n\n**Important: this is triage, not an exhaustive acceptance certificate.** All 99 open issue bodies and all 288 comments were retrieved with pagination; claims/criteria/decisions were compared with main and relevant tests/history. Large inherited discussions were reviewed through criteria/status/decision extracts, not independently verified sentence by sentence. Twelve issues are explicitly Cannot tell, including the large contract umbrellas where complete inherited acceptance was not established. Do not use the other classifications as permission to close an issue without its remaining conditions.\n\nClosed window: **October 4\u2013November 3, 2026**. All 359 closed bodies, 326 comments and closing-event metadata were retrieved/screened; **39 received a risk-focused source review, 320 did not receive a per-criterion source audit**. The comments enumerate both sets and every unticked-checklist flag. Manual closes and partial-PR closures received special attention, but this is not all 195 completed issues certified.\n\n**Verification performed: source, test definitions, merged history and issue/PR metadata read. Zero tests run; no load, whole suite, image build, Docker resource, real email or production operation.** Historical test receipts are attributed evidence, not runs performed by this audit. Separate mobile/website/provider/production acceptance is explicitly unverified. Existing issues (including all 22 claimed:homelab issues) were not edited, closed or reopened; no code or PR was created.",
+      "receipts": [
+        {
+          "kind": "url",
+          "url": "https://github.com/rest-mail/rest-mail-server/issues/1635"
+        }
+      ]
+    },
+    {
+      "id": "src1635-classifications",
+      "source": "SRC-1635",
+      "claim": "Open-issue classifications at the audit: Done 0, Partly done 17, Real open 28, Needs owner 40, Duplicate or mergeable 2, Unwanted or obsolete 0, Cannot tell 12, total 99",
+      "state": "unknown",
+      "observed_on": "2026-11-03",
+      "head": "fd1db07402ac0e896bfaffa9d490296c59d80fcc",
+      "result": "No open issue was assigned Done. Twelve are Cannot tell.",
+      "limits": "Counts as of 2026-11-03. The open issues have moved since.",
+      "receipts": [
+        {
+          "kind": "url",
+          "url": "https://github.com/rest-mail/rest-mail-server/issues/1635"
+        }
+      ]
+    }
+  ],
+  "verified": {
+    "https://github.com/rest-mail/rest-mail-server/issues/1635": {
+      "exists": true,
+      "verified_at": "2026-11-20T07:44:45Z"
+    }
+  }
+}

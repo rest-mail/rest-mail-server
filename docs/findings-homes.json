@@ -1,0 +1,4888 @@
+{
+  "format": 1,
+  "about": "A receipt of the 2026-11-03 migration of findings from markdown files to the issue tracker (#1563, #1658), one row per finding with where it went. Not a tracker: open work is in the issues it names. Rebuilt by scripts/findings_homes.py import; checked by scripts/tests/test_findings_homes.py.",
+  "sources": {
+    "first": "https://github.com/rest-mail/rest-mail-server/issues/1563#issuecomment-6605149054",
+    "second": "https://github.com/rest-mail/rest-mail-server/pull/1658",
+    "minor": "https://github.com/rest-mail/rest-mail-server/issues/1563#issuecomment-6609081847"
+  },
+  "rows": [
+    {
+      "id": "F001",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "Route omitted 206, 304, 412, 416; plain-text 500 described as JSON",
+      "outcome": "fixed by #1219; `attachments.go:232-236`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1219
+        ]
+      }
+    },
+    {
+      "id": "F002",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "Adapter lost a second media type on the same status",
+      "outcome": "fixed by #1219",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1219
+        ]
+      }
+    },
+    {
+      "id": "F003",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "304, 412 and multipart held out of the live run by exclusions",
+      "outcome": "fixed by #1341, #1348 and #1353; `exclude-matching` is empty, and run 41632516272 passes 206 (both types), 304, 412 and 416",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1341,
+          1348,
+          1353
+        ]
+      }
+    },
+    {
+      "id": "F004",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "Four new statuses had no named example pairs",
+      "outcome": "fixed by #1171 and #1236; `getAttachment` has pairs for each",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1171,
+          1236
+        ]
+      }
+    },
+    {
+      "id": "F005",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "Frontend clients drifted from the served description",
+      "outcome": "fixed by #675",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          675
+        ]
+      }
+    },
+    {
+      "id": "F006",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "Binary schema spelling differs from the oracle",
+      "outcome": "dropped because it is an accepted difference, recorded in `oracle-differences.yml`",
+      "class": "dropped",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/oracle-differences.yml"
+      }
+    },
+    {
+      "id": "F007",
+      "batch": "1563/first",
+      "source": "attachment-conditional-findings.md",
+      "finding": "Live storage, cross-account, fault and E2E acceptance not claimed",
+      "outcome": "dropped because #1163 and #1166 already hold it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1163,
+          1166
+        ]
+      }
+    },
+    {
+      "id": "F008",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Browser command ignored JSON errors and truncated at 1 MiB",
+      "outcome": "fixed by #1233",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1233
+        ]
+      }
+    },
+    {
+      "id": "F009",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Safe routes compared only the missing-header variant",
+      "outcome": "fixed by #1200",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1200
+        ]
+      }
+    },
+    {
+      "id": "F010",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Failure output could repeat an untrusted error code",
+      "outcome": "fixed by #1233",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1233
+        ]
+      }
+    },
+    {
+      "id": "F011",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Why reset and recovery rely on SameSite, and what the refused cases prove",
+      "outcome": "moved to README, Browser session gate",
+      "class": "moved",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/README.md",
+        "heading": "Browser session gate"
+      }
+    },
+    {
+      "id": "F012",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Fixtures test the proof checker, not the live API",
+      "outcome": "moved to README, Browser session gate",
+      "class": "moved",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/README.md",
+        "heading": "Browser session gate"
+      }
+    },
+    {
+      "id": "F013",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Contract run does not pass `--session-starts`; owner decisions open",
+      "outcome": "new #1565",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1565
+        ]
+      }
+    },
+    {
+      "id": "F014",
+      "batch": "1563/first",
+      "source": "browser-session-findings.md",
+      "finding": "Full topology, header-schema and installed-cluster work remain",
+      "outcome": "dropped because #1162, #1166 and #1167 already hold it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162,
+          1166,
+          1167
+        ]
+      }
+    },
+    {
+      "id": "F015",
+      "batch": "1563/first",
+      "source": "contact-transaction-findings.md",
+      "finding": "Update and block committed, then answered 500 on reload failure",
+      "outcome": "fixed by #1225",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1225
+        ]
+      }
+    },
+    {
+      "id": "F016",
+      "batch": "1563/first",
+      "source": "contact-transaction-findings.md",
+      "finding": "Contact routes lacked the HTTP context and full predicates",
+      "outcome": "fixed by #1225",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1225
+        ]
+      }
+    },
+    {
+      "id": "F017",
+      "batch": "1563/first",
+      "source": "contact-transaction-findings.md",
+      "finding": "No proof of concurrent mutation on live PostgreSQL row locks",
+      "outcome": "commented on #1163",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1163
+        ]
+      }
+    },
+    {
+      "id": "F018",
+      "batch": "1563/first",
+      "source": "contact-transaction-findings.md",
+      "finding": "Auth middleware, tier and strict-area acceptance remain",
+      "outcome": "dropped because #1163 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1163
+        ]
+      }
+    },
+    {
+      "id": "F019",
+      "batch": "1563/first",
+      "source": "credential-request-context-findings.md",
+      "finding": "Credential routes and protocol sign-in lost the request deadline",
+      "outcome": "fixed by #1223; `credential_context_test.go`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1223
+        ]
+      }
+    },
+    {
+      "id": "F020",
+      "batch": "1563/first",
+      "source": "credential-request-context-findings.md",
+      "finding": "Live constraints, revocation races and browser lifecycles remain",
+      "outcome": "dropped because #1162 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F021",
+      "batch": "1563/first",
+      "source": "domain-policy-request-findings.md",
+      "finding": "Thirteen domain-policy routes used background SQL contexts",
+      "outcome": "fixed by #1226",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1226
+        ]
+      }
+    },
+    {
+      "id": "F022",
+      "batch": "1563/first",
+      "source": "domain-policy-request-findings.md",
+      "finding": "Sender deletes answered 204 after a zero-row delete",
+      "outcome": "fixed by #1226",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1226
+        ]
+      }
+    },
+    {
+      "id": "F023",
+      "batch": "1563/first",
+      "source": "domain-policy-request-findings.md",
+      "finding": "MTA-STS and relay saves re-inserted vanished rows and lost explicit zero and false",
+      "outcome": "fixed by #1226; `mtasts.go:111`, `relay.go:181`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1226
+        ]
+      }
+    },
+    {
+      "id": "F024",
+      "batch": "1563/first",
+      "source": "domain-policy-request-findings.md",
+      "finding": "Read-modify-write, first-create, commit and lifecycle races remain",
+      "outcome": "commented on #1164",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1164
+        ]
+      }
+    },
+    {
+      "id": "F025",
+      "batch": "1563/first",
+      "source": "domain-policy-request-findings.md",
+      "finding": "Authorization middleware and live SMTP acceptance remain",
+      "outcome": "dropped because #1164 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1164
+        ]
+      }
+    },
+    {
+      "id": "F026",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "`sendDraft/sent` 201 answered 400, failing the required gate",
+      "outcome": "fixed by #1232 (#1285 introduced the cause); `sent` has an empty body and run 41632516272 answers 201",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1232,
+          1285
+        ]
+      }
+    },
+    {
+      "id": "F027",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Coverage did not run after that failure",
+      "outcome": "fixed by the same change; coverage 1477/1477 in run 41632516272",
+      "class": "fixed",
+      "home": {
+        "kind": "disposition",
+        "reason": "fixed by the same change; coverage 1477/1477 in run 41632516272"
+      }
+    },
+    {
+      "id": "F028",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Flat role matrix cannot express resource-scoped permissions and 404s",
+      "outcome": "fixed by #1506 and #1399; the remaining own-account cells are in #1162's 2026-11-03 report",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162,
+          1399,
+          1506
+        ]
+      }
+    },
+    {
+      "id": "F029",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Three queue links resolved to nothing",
+      "outcome": "dropped because #1542 fixed coverage and #1162's report tracks the 16 unsent matrix cells; worker on `test/1162-authorization-cells`",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162,
+          1542
+        ]
+      }
+    },
+    {
+      "id": "F030",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Refresh token reused across matrix cells, 401",
+      "outcome": "fixed by #1350; all three cells answer 200",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1350
+        ]
+      }
+    },
+    {
+      "id": "F031",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Pipeline preview 404 after its pipeline was deleted",
+      "outcome": "fixed by #1350; admin answers 200",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1350
+        ]
+      }
+    },
+    {
+      "id": "F032",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "`createAccount` repeats state: 409 in the ownership run",
+      "outcome": "in flight on `test/1166-ownership-create-account`, no PR yet; still the one ownership failure in run 41632516272. Whole-suite fix is #1385",
+      "class": "in flight",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1385
+        ]
+      }
+    },
+    {
+      "id": "F033",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "`createContact` repeats state: 409",
+      "outcome": "fixed by `repeat_fixtures.py` (#601); no failure in run 41632516272's ownership report",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          601
+        ]
+      }
+    },
+    {
+      "id": "F034",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "`createAlias` repeats state: 409",
+      "outcome": "fixed in the domain ownership run (0 failures); the matrix's 13 unsent alias cells are in #1162's report, worker active",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F035",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Mailbox-session replay used illustrative mailbox 1",
+      "outcome": "fixed by #1397; mailbox ownership 28/28 and admin answers 204",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1397
+        ]
+      }
+    },
+    {
+      "id": "F036",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "`linkAccount` app-password setup got 401",
+      "outcome": "dropped because the 401 is gone; today's ordinary 403 is in #1162's report",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F037",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "`recover/email` 429 for three principals: limit spent on one address",
+      "outcome": "commented on #1162 with the cause",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F038",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Draft send 503 caused by probes rewriting restmail.test's DKIM and DMARC",
+      "outcome": "fixed by #1350 (`off_the_admin_domain`); no such log line in run 41632516272, and admin answers 201",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1350
+        ]
+      }
+    },
+    {
+      "id": "F039",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "Should a permanent local DMARC rejection stay a retryable 503?",
+      "outcome": "new #1564",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1564
+        ]
+      }
+    },
+    {
+      "id": "F040",
+      "batch": "1563/first",
+      "source": "generated-gate-findings.md",
+      "finding": "The 40 failure rows from run 40652763740",
+      "outcome": "dropped because each falls under a row above; the matrix now has 5 failures, 0 errors and 0 bypasses",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because each falls under a row above; the matrix now has 5 failures, 0 errors and 0 bypasses"
+      }
+    },
+    {
+      "id": "F041",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "What the runners prove, and how to run them",
+      "outcome": "moved to README, Live requirement proofs",
+      "class": "moved",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/README.md",
+        "heading": "Live requirement proofs"
+      }
+    },
+    {
+      "id": "F042",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "APNs, owner key and fresh fixture requirements",
+      "outcome": "moved to README, Live requirement proofs",
+      "class": "moved",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/README.md",
+        "heading": "Live requirement proofs"
+      }
+    },
+    {
+      "id": "F043",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Live proof lists not collected by the CI proof union",
+      "outcome": "being fixed by open PR #1544, which has the information; no comment needed",
+      "class": "other",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1544
+        ]
+      }
+    },
+    {
+      "id": "F044",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Measured local results: 179/179, 187/187, nine cells, 1336/1336",
+      "outcome": "commented on #1237",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1237
+        ]
+      }
+    },
+    {
+      "id": "F045",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Go tests fail against a seeded live database",
+      "outcome": "moved to README, In-process example proofs; they pass through `tools/testdb-exec`",
+      "class": "moved",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/README.md",
+        "heading": "In-process example proofs"
+      }
+    },
+    {
+      "id": "F046",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Historical CI 1323/1323 is not the larger inventory",
+      "outcome": "commented on #1237",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1237
+        ]
+      }
+    },
+    {
+      "id": "F047",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "`named-values: illustrate` still needed; 36 failures in the exploratory run",
+      "outcome": "commented on #1237",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1237
+        ]
+      }
+    },
+    {
+      "id": "F048",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Custom filter examples needed the run's own filter",
+      "outcome": "fixed by #1530; recorded on #1237",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1237,
+          1530
+        ]
+      }
+    },
+    {
+      "id": "F049",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Other named-value failures need isolating",
+      "outcome": "commented on #1237",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1237
+        ]
+      }
+    },
+    {
+      "id": "F050",
+      "batch": "1563/first",
+      "source": "live-requirements-findings.md",
+      "finding": "Full topology, internal mTLS and fault tier not proven",
+      "outcome": "dropped because #1237, #654 and #1167 already hold it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          654,
+          1167,
+          1237
+        ]
+      }
+    },
+    {
+      "id": "F051",
+      "batch": "1563/first",
+      "source": "public-read-budget-findings.md",
+      "finding": "MTA-STS, recipient and health reads lost the request deadline",
+      "outcome": "fixed by #1222; `public_read_budget_test.go`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1222
+        ]
+      }
+    },
+    {
+      "id": "F052",
+      "batch": "1563/first",
+      "source": "public-read-budget-findings.md",
+      "finding": "Health stays 200 after an auxiliary read fails",
+      "outcome": "dropped because it is existing behaviour and `health.go` shows it",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "health.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F053",
+      "batch": "1563/first",
+      "source": "public-read-budget-findings.md",
+      "finding": "Wider tiers, delivery atomicity and first-recipient policy remain",
+      "outcome": "dropped because #1161 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1161
+        ]
+      }
+    },
+    {
+      "id": "F054",
+      "batch": "1563/first",
+      "source": "queue-request-persistence-findings.md",
+      "finding": "Nine queue routes started SQL with a background context",
+      "outcome": "fixed by #1217",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1217
+        ]
+      }
+    },
+    {
+      "id": "F055",
+      "batch": "1563/first",
+      "source": "queue-request-persistence-findings.md",
+      "finding": "Retry and bounce read outside the transaction; zero rows answered success",
+      "outcome": "fixed by #1217; `queue.go:136`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1217
+        ]
+      }
+    },
+    {
+      "id": "F056",
+      "batch": "1563/first",
+      "source": "queue-request-persistence-findings.md",
+      "finding": "A single bounce accepts an entry in any state",
+      "outcome": "new #1567",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1567
+        ]
+      }
+    },
+    {
+      "id": "F057",
+      "batch": "1563/first",
+      "source": "queue-request-persistence-findings.md",
+      "finding": "No coordination with a worker's SMTP attempt",
+      "outcome": "dropped because #1164 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1164
+        ]
+      }
+    },
+    {
+      "id": "F058",
+      "batch": "1563/first",
+      "source": "secret-transport-findings.md",
+      "finding": "Scanner missed refresh tokens, Basic, cookies and header leaks",
+      "outcome": "fixed by #1218",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1218
+        ]
+      }
+    },
+    {
+      "id": "F059",
+      "batch": "1563/first",
+      "source": "secret-transport-findings.md",
+      "finding": "Push device token treated as a credential",
+      "outcome": "fixed by #1218",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1218
+        ]
+      }
+    },
+    {
+      "id": "F060",
+      "batch": "1563/first",
+      "source": "secret-transport-findings.md",
+      "finding": "Findings printed part of each secret",
+      "outcome": "fixed by #1218",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1218
+        ]
+      }
+    },
+    {
+      "id": "F061",
+      "batch": "1563/first",
+      "source": "secret-transport-findings.md",
+      "finding": "Audit reader followed redirects and accepted partial pages",
+      "outcome": "fixed by #1230",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1230
+        ]
+      }
+    },
+    {
+      "id": "F062",
+      "batch": "1563/first",
+      "source": "secret-transport-findings.md",
+      "finding": "Vertrag's `<redacted>` marker and the short-value limit",
+      "outcome": "dropped because `secret_scan.py` documents both",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "secret_scan.py"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F063",
+      "batch": "1563/first",
+      "source": "secret-transport-findings.md",
+      "finding": "Parent acceptance and owner decisions remain",
+      "outcome": "dropped because #1165 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1165
+        ]
+      }
+    },
+    {
+      "id": "F064",
+      "batch": "1563/first",
+      "source": "toolchain-findings.md",
+      "finding": "Live runner took `vertrag` from PATH; installer ignored the CI digest",
+      "outcome": "fixed by #1220",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1220
+        ]
+      }
+    },
+    {
+      "id": "F065",
+      "batch": "1563/first",
+      "source": "toolchain-findings.md",
+      "finding": "Installer wrote directly over the executable",
+      "outcome": "fixed by #1220",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1220
+        ]
+      }
+    },
+    {
+      "id": "F066",
+      "batch": "1563/first",
+      "source": "toolchain-findings.md",
+      "finding": "Automatic bump blocked on a token and settings",
+      "outcome": "fixed by #1473, closing #1467; #628 is closed",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          628,
+          1467,
+          1473
+        ]
+      }
+    },
+    {
+      "id": "F067",
+      "batch": "1563/first",
+      "source": "toolchain-findings.md",
+      "finding": "Optional-route visibility left open",
+      "outcome": "dropped because #661 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          661
+        ]
+      }
+    },
+    {
+      "id": "F068",
+      "batch": "1563/first",
+      "source": "requirement-example-audit.md",
+      "finding": "The original 68 response mismatches",
+      "outcome": "fixed by #1276; the audit found 0 left",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1276
+        ]
+      }
+    },
+    {
+      "id": "F069",
+      "batch": "1563/first",
+      "source": "requirement-example-audit.md",
+      "finding": "Where each of the 68 is proven (51 and 17)",
+      "outcome": "dropped because the tests hold this, and the record was a point-in-time list",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because the tests hold this, and the record was a point-in-time list"
+      }
+    },
+    {
+      "id": "F070",
+      "batch": "1563/first",
+      "source": "requirement-example-audit.md",
+      "finding": "38 examples unproven locally",
+      "outcome": "fixed; CI's proof gate fails on any unproven example and passed on run 41636647506. Recorded on #1237",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1237
+        ]
+      }
+    },
+    {
+      "id": "F071",
+      "batch": "1563/first",
+      "source": "requirement-example-audit.md",
+      "finding": "Use a fresh proofs path, and how to reproduce",
+      "outcome": "moved to README, In-process example proofs",
+      "class": "moved",
+      "home": {
+        "kind": "file",
+        "path": "tests/contract/README.md",
+        "heading": "In-process example proofs"
+      }
+    },
+    {
+      "id": "F072",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "A. Per-recipient delivery state and API",
+      "outcome": "new #1568; one queue row per recipient already exists",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1568
+        ]
+      }
+    },
+    {
+      "id": "F073",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "B. Suppression list",
+      "outcome": "fixed by #397 (#141); `models/suppression.go`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          141,
+          397
+        ]
+      }
+    },
+    {
+      "id": "F074",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "C. Per-domain DKIM rotation",
+      "outcome": "fixed by #151 and #728",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          151,
+          728
+        ]
+      }
+    },
+    {
+      "id": "F075",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "D. Bounce categories",
+      "outcome": "fixed by #142; the readable reason in the webmail is in new #1568",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          142,
+          1568
+        ]
+      }
+    },
+    {
+      "id": "F076",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "E. Plus addressing",
+      "outcome": "fixed by #208 (#140); `restmail.go:792`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          140,
+          208
+        ]
+      }
+    },
+    {
+      "id": "F077",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "F. Trusted ARC signers",
+      "outcome": "fixed by #147 and #178; `TRUSTED_ARC_SEALERS`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          147,
+          178
+        ]
+      }
+    },
+    {
+      "id": "F078",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "G. Rules screen and builder in the webmail",
+      "outcome": "commented on #1468",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1468
+        ]
+      }
+    },
+    {
+      "id": "F079",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "H. Outbound invitation creation",
+      "outcome": "fixed by `9aebf756` and #307; `ComposeView.tsx`, `outbound_raw.go`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          307
+        ]
+      }
+    },
+    {
+      "id": "F080",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "H. Calendar view and free/busy",
+      "outcome": "new #1569",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1569
+        ]
+      }
+    },
+    {
+      "id": "F081",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "I. Auto-add and suggestions",
+      "outcome": "fixed by `c2b0530f` and #739; `messages.go:1128`, `suggestContacts`",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          739
+        ]
+      }
+    },
+    {
+      "id": "F082",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "I. vCard and CardDAV",
+      "outcome": "new #1570",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1570
+        ]
+      }
+    },
+    {
+      "id": "F083",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "J. Attachment preview",
+      "outcome": "new #1571",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1571
+        ]
+      }
+    },
+    {
+      "id": "F084",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "K. FCM and Web Push",
+      "outcome": "new #1572; APNs was #363",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          363,
+          1572
+        ]
+      }
+    },
+    {
+      "id": "F085",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "L. TOTP, recovery codes and app passwords",
+      "outcome": "fixed by #344 and #634 (two-factor routes)",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          344,
+          634
+        ]
+      }
+    },
+    {
+      "id": "F086",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "L. Passkeys",
+      "outcome": "dropped because #1331 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1331
+        ]
+      }
+    },
+    {
+      "id": "F087",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "M. SMTP sign-in by OAuth",
+      "outcome": "commented on #1331",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1331
+        ]
+      }
+    },
+    {
+      "id": "F088",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "N. MIME built by string concatenation",
+      "outcome": "fixed by #146 for sending",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          146
+        ]
+      }
+    },
+    {
+      "id": "F089",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "N. Calendar reply still builds its Subject by hand",
+      "outcome": "new #1594",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1594
+        ]
+      }
+    },
+    {
+      "id": "F090",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "O. Scheduled send API",
+      "outcome": "fixed by #567; `scheduled_at` on `sendMessage`. The webmail part is in new #1573",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          567,
+          1573
+        ]
+      }
+    },
+    {
+      "id": "F091",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "P. Snooze",
+      "outcome": "fixed by #1485, closing #1418",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1418,
+          1485
+        ]
+      }
+    },
+    {
+      "id": "F092",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Q. Undo send",
+      "outcome": "new #1573, with send later",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1573
+        ]
+      }
+    },
+    {
+      "id": "F093",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "R. Mute a thread",
+      "outcome": "new #1574",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1574
+        ]
+      }
+    },
+    {
+      "id": "F094",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "S. Unsubscribe button",
+      "outcome": "new #1575; #144 covers sending only",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          144,
+          1575
+        ]
+      }
+    },
+    {
+      "id": "F095",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "T. Auto-tagging: list, receipt and notification classes",
+      "outcome": "fixed by #1491 and #1518 (#1419)",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1419,
+          1491,
+          1518
+        ]
+      }
+    },
+    {
+      "id": "F096",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "T. Sender-pattern signals and important contacts",
+      "outcome": "commented on #1552",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1552
+        ]
+      }
+    },
+    {
+      "id": "F097",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "U. Pipeline templates",
+      "outcome": "new #1576",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1576
+        ]
+      }
+    },
+    {
+      "id": "F098",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "V. Shared blocklists",
+      "outcome": "new #1576, same cause as U",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1576
+        ]
+      }
+    },
+    {
+      "id": "F099",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "W. Vacation deduplication and suppression",
+      "outcome": "fixed by #716, #772, #809; `vacation.go` covers lists, no-reply, interval and loops",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          716,
+          772,
+          809
+        ]
+      }
+    },
+    {
+      "id": "F100",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "X. IMAP, mbox and Maildir import",
+      "outcome": "dropped because `cmd/console` has them and #734 tracks the rest",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          734
+        ]
+      }
+    },
+    {
+      "id": "F101",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "X. PST import",
+      "outcome": "commented on #734",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          734
+        ]
+      }
+    },
+    {
+      "id": "F102",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Y. Bulk export",
+      "outcome": "new #1577",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1577
+        ]
+      }
+    },
+    {
+      "id": "F103",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Z. Retention policies",
+      "outcome": "new #1578",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1578
+        ]
+      }
+    },
+    {
+      "id": "F104",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Note: MTA-STS hardcodes mail3.test",
+      "outcome": "fixed; no such name in `internal/api` or `internal/config`",
+      "class": "fixed",
+      "home": {
+        "kind": "disposition",
+        "reason": "fixed; no such name in `internal/api` or `internal/config`"
+      }
+    },
+    {
+      "id": "F105",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Note: is the TLS-RPT endpoint wired up?",
+      "outcome": "fixed; `routes.go:409` (#726)",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          726
+        ]
+      }
+    },
+    {
+      "id": "F106",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Note: quota, aliases and sender rules present",
+      "outcome": "dropped because it reports what exists; alias delivery is #1533",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1533
+        ]
+      }
+    },
+    {
+      "id": "F107",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "Note: is the activity log written?",
+      "outcome": "fixed by #343, which replaced it with the audit log",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          343
+        ]
+      }
+    },
+    {
+      "id": "F108",
+      "batch": "1563/first",
+      "source": "03-FEATURE-GAPS.md",
+      "finding": "What the review would cut (signatures, S/MIME, CalDAV, Mailman)",
+      "outcome": "dropped because it is opinion with no open work; its CalDAV view is quoted in #1569",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1569
+        ]
+      }
+    },
+    {
+      "id": "F109",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.1 Queue age, protocol histograms and pool saturation metrics",
+      "outcome": "new #1579",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1579
+        ]
+      }
+    },
+    {
+      "id": "F110",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.1 Per-domain metric labels",
+      "outcome": "new #1579, as a question; the code has a bounded-label rule",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1579
+        ]
+      }
+    },
+    {
+      "id": "F111",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.1 Pipeline filter timing",
+      "outcome": "fixed by `5a0b9d57`; `restmail_pipeline_filter_duration_seconds`",
+      "class": "fixed",
+      "home": {
+        "kind": "commit",
+        "shas": [
+          "5a0b9d57"
+        ]
+      }
+    },
+    {
+      "id": "F112",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.2 Correlation IDs across services",
+      "outcome": "new #1580",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1580
+        ]
+      }
+    },
+    {
+      "id": "F113",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.2 Production log level",
+      "outcome": "fixed by `69dea918`; the chart defaults to `info`",
+      "class": "fixed",
+      "home": {
+        "kind": "commit",
+        "shas": [
+          "69dea918"
+        ]
+      }
+    },
+    {
+      "id": "F114",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.2 PII in logs",
+      "outcome": "new #1580, as a question",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1580
+        ]
+      }
+    },
+    {
+      "id": "F115",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.3 Distributed tracing",
+      "outcome": "new #1580",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1580
+        ]
+      }
+    },
+    {
+      "id": "F116",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "1.4 Alert coverage",
+      "outcome": "new #1579",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1579
+        ]
+      }
+    },
+    {
+      "id": "F117",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "2.1, 2.4, 2.5, 2.7 Runbooks and their commands",
+      "outcome": "new #1581",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F118",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "2.2 Blocklist runbook",
+      "outcome": "new #1581; suspending the sender is in new #1590",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581,
+          1590
+        ]
+      }
+    },
+    {
+      "id": "F119",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "2.3 Database loss runbook",
+      "outcome": "new #1581",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F120",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "2.6 Pipeline trace view for spam",
+      "outcome": "fixed by #78; `TraceTimeline.tsx` in the admin UI. The runbook is in new #1581",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          78,
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F121",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "3.1 Backup commands",
+      "outcome": "fixed by #145",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          145
+        ]
+      }
+    },
+    {
+      "id": "F122",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "3.1 Scheduled backups and restore drill",
+      "outcome": "new #1582",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1582
+        ]
+      }
+    },
+    {
+      "id": "F123",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "3.2 Recovery time and point objectives",
+      "outcome": "new #1582, as a question",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1582
+        ]
+      }
+    },
+    {
+      "id": "F124",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "3.3 State that REST Mail runs in one region",
+      "outcome": "new #1581",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F125",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "4.1 Load tests",
+      "outcome": "new #1583",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1583
+        ]
+      }
+    },
+    {
+      "id": "F126",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "4.2 Capacity planning",
+      "outcome": "new #1583; the review's figures were guesses to replace by measuring",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1583
+        ]
+      }
+    },
+    {
+      "id": "F127",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "4.3 Scale the queue worker with SKIP LOCKED",
+      "outcome": "fixed by `efc6ce16`; `worker.go:505`. New #1583 proves it under load",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1583
+        ]
+      }
+    },
+    {
+      "id": "F128",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "4.4 Read replicas",
+      "outcome": "dropped because the review itself says not on the roadmap",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because the review itself says not on the roadmap"
+      }
+    },
+    {
+      "id": "F129",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "5.1 What costs what",
+      "outcome": "dropped because it is commentary; attachments moved off the database (`docs/attachment-storage.md`) and retention is new #1578",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1578
+        ]
+      }
+    },
+    {
+      "id": "F130",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "5.2 Free or paid relay",
+      "outcome": "dropped because it is commentary; relays exist (`relay.go`)",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "relay.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F131",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "5.3 Usage counts and billing",
+      "outcome": "new #1585",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1585
+        ]
+      }
+    },
+    {
+      "id": "F132",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "6.1 Domain ownership proof and DNS wizard",
+      "outcome": "new #1584",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1584
+        ]
+      }
+    },
+    {
+      "id": "F133",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "6.2 Limits per plan",
+      "outcome": "new #1585",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1585
+        ]
+      }
+    },
+    {
+      "id": "F134",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "6.3 Status page",
+      "outcome": "new #1587",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1587
+        ]
+      }
+    },
+    {
+      "id": "F135",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "6.4 Customer guides",
+      "outcome": "new #1588",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1588
+        ]
+      }
+    },
+    {
+      "id": "F136",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "7.1 What CI does today",
+      "outcome": "dropped because it describes CI at that date; the workflows are the record",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because it describes CI at that date; the workflows are the record"
+      }
+    },
+    {
+      "id": "F137",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "7.2 E2E in CI",
+      "outcome": "fixed by #90; `e2e.yml` is a required check",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          90
+        ]
+      }
+    },
+    {
+      "id": "F138",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "7.2 `govulncheck` and `npm audit`",
+      "outcome": "fixed by `5a0b9d57`; `scheduled.yml`",
+      "class": "fixed",
+      "home": {
+        "kind": "commit",
+        "shas": [
+          "5a0b9d57"
+        ]
+      }
+    },
+    {
+      "id": "F139",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "7.2 Image scan, SBOM and conformance",
+      "outcome": "new #1589",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1589
+        ]
+      }
+    },
+    {
+      "id": "F140",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "7.3 Staging gate and rollback",
+      "outcome": "commented on #377",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          377
+        ]
+      }
+    },
+    {
+      "id": "F141",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "8. Maturity scores",
+      "outcome": "dropped because it is a self-score, and its gaps are in the rows above",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because it is a self-score, and its gaps are in the rows above"
+      }
+    },
+    {
+      "id": "F142",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "9. Backup and drill",
+      "outcome": "new #1582",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1582
+        ]
+      }
+    },
+    {
+      "id": "F143",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "9. Reputation dashboard",
+      "outcome": "new #1590",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1590
+        ]
+      }
+    },
+    {
+      "id": "F144",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "9. Spamhaus self-check",
+      "outcome": "fixed by #148",
+      "class": "fixed",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          148
+        ]
+      }
+    },
+    {
+      "id": "F145",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "9. Status page",
+      "outcome": "new #1587",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1587
+        ]
+      }
+    },
+    {
+      "id": "F146",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "9. Runbooks",
+      "outcome": "new #1581",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F147",
+      "batch": "1563/first",
+      "source": "06-OPERATIONS-GAPS.md",
+      "finding": "9. Stop one domain's outbound mail",
+      "outcome": "new #1590",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1590
+        ]
+      }
+    },
+    {
+      "id": "F148",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Sender-domain lookup error made a sender look external",
+      "outcome": "dropped because fixed; `delivery_read_fault_test.go:230`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "delivery_read_fault_test.go",
+            "line": 230
+          }
+        ]
+      }
+    },
+    {
+      "id": "F149",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Recipient and plus-address errors became absent recipients",
+      "outcome": "dropped because fixed; `delivery_read_fault_test.go:237`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "delivery_read_fault_test.go",
+            "line": 237
+          }
+        ]
+      }
+    },
+    {
+      "id": "F150",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Failed pipeline lookup chose defaults; corrupt JSON skipped filtering",
+      "outcome": "dropped because fixed; `delivery_read_fault_test.go:273`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "delivery_read_fault_test.go",
+            "line": 273
+          }
+        ]
+      }
+    },
+    {
+      "id": "F151",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Gateway mailbox lookup answered 404 for every error",
+      "outcome": "dropped because fixed; `delivery_read_fault_test.go:166`, `:176`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "delivery_read_fault_test.go",
+            "line": 166
+          }
+        ]
+      }
+    },
+    {
+      "id": "F152",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Delivery queries lost the request context",
+      "outcome": "dropped because fixed; `delivery_read_fault_test.go:186`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "delivery_read_fault_test.go",
+            "line": 186
+          }
+        ]
+      }
+    },
+    {
+      "id": "F153",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Write atomicity for message, quota, quarantine, redirect and TLS report; mixed report and mail recipients",
+      "outcome": "dropped because #1161 already holds it (its 2026-10-27 reports name it)",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1161
+        ]
+      }
+    },
+    {
+      "id": "F154",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "First-recipient pipeline policy; no cross-domain grouping",
+      "outcome": "dropped because #1161 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1161
+        ]
+      }
+    },
+    {
+      "id": "F155",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Production internal mTLS not proven",
+      "outcome": "dropped because #1161 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1161
+        ]
+      }
+    },
+    {
+      "id": "F156",
+      "batch": "1658",
+      "source": "tests/contract/delivery-read-failures.md",
+      "finding": "Named request and response pairs",
+      "outcome": "dropped because #625 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          625
+        ]
+      }
+    },
+    {
+      "id": "F157",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "Draft update ignored write and reload errors",
+      "outcome": "dropped because fixed; `draft_fault_test.go:216`, `draft_update_persistence_test.go:18`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "draft_fault_test.go",
+            "line": 216
+          },
+          {
+            "name": "draft_update_persistence_test.go",
+            "line": 18
+          }
+        ]
+      }
+    },
+    {
+      "id": "F158",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "`in_reply_to` and `references` ignored on update",
+      "outcome": "dropped because fixed; `draft_fault_test.go:331`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "draft_fault_test.go",
+            "line": 331
+          }
+        ]
+      }
+    },
+    {
+      "id": "F159",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "SQL failures shown as 403 or 404",
+      "outcome": "dropped because fixed; `draft_fault_test.go:200`, `:268`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "draft_fault_test.go",
+            "line": 200
+          }
+        ]
+      }
+    },
+    {
+      "id": "F160",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "Draft and scheduled SQL lost the request context",
+      "outcome": "dropped because fixed; `draft_fault_test.go:241`, `:293`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "draft_fault_test.go",
+            "line": 241
+          }
+        ]
+      }
+    },
+    {
+      "id": "F161",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "Send and post-send draft deletion not fully atomic",
+      "outcome": "dropped because #1163 already holds it; `messages.go:1851` rolls the send back if deletion fails",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1163
+        ]
+      }
+    },
+    {
+      "id": "F162",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "Scheduled worker claim, retry and finalization",
+      "outcome": "dropped because #1163 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1163
+        ]
+      }
+    },
+    {
+      "id": "F163",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "End-to-end send, attachment, quota and external rollback; PostgreSQL, race and E2E acceptance",
+      "outcome": "dropped because #1163 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1163
+        ]
+      }
+    },
+    {
+      "id": "F164",
+      "batch": "1658",
+      "source": "tests/contract/draft-failures.md",
+      "finding": "Named pairs; #622, #646, #661 and #672 decisions",
+      "outcome": "dropped because those issues already hold them",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because those issues already hold them"
+      }
+    },
+    {
+      "id": "F165",
+      "batch": "1658",
+      "source": "tests/contract/live-account-failures.md",
+      "finding": "Event stream: lookup errors became 403, and SQL ignored the request",
+      "outcome": "dropped because fixed; `live_account_fault_test.go:151`, `:169`, `:196`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "live_account_fault_test.go",
+            "line": 151
+          }
+        ]
+      }
+    },
+    {
+      "id": "F166",
+      "batch": "1658",
+      "source": "tests/contract/live-account-failures.md",
+      "finding": "Account unlink: errors became 404, and the transaction lost the context",
+      "outcome": "dropped because fixed; `live_account_fault_test.go:248`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "live_account_fault_test.go",
+            "line": 248
+          }
+        ]
+      }
+    },
+    {
+      "id": "F167",
+      "batch": "1658",
+      "source": "tests/contract/live-account-failures.md",
+      "finding": "Device routes: cancellation didn't reach SQL",
+      "outcome": "dropped because fixed; `live_account_fault_test.go:213`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "live_account_fault_test.go",
+            "line": 213
+          }
+        ]
+      }
+    },
+    {
+      "id": "F168",
+      "batch": "1658",
+      "source": "tests/contract/live-account-failures.md",
+      "finding": "PostgreSQL commit constraints; device-cap concurrency; browser and JWT flows; real APNs delivery; revocation during an open stream",
+      "outcome": "dropped because #1162 already holds it (claimed by homelab, so nothing posted)",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F169",
+      "batch": "1658",
+      "source": "tests/contract/live-account-failures.md",
+      "finding": "Named pairs; #672 decisions",
+      "outcome": "dropped because #625 and #672 already hold them",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          625,
+          672
+        ]
+      }
+    },
+    {
+      "id": "F170",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 1: `mail3.test` hardcoded; parameterize first",
+      "outcome": "dropped because fixed; no such name in non-test Go under `internal/`, and the parameterization doc went in #152",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          152
+        ]
+      }
+    },
+    {
+      "id": "F171",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 2: queue has only pending, delivered and failed",
+      "outcome": "dropped because fixed; `models/queue.go:27`, `gateway/queue/retry.go`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "models/queue.go",
+            "line": 27
+          },
+          {
+            "name": "gateway/queue/retry.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F172",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 2: per-recipient state",
+      "outcome": "dropped because fixed for the queue (one row per recipient); showing it to a sender is #1568",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1568
+        ]
+      }
+    },
+    {
+      "id": "F173",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 2: bounce categories; suppression list",
+      "outcome": "dropped because fixed by #142 and #141",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          141,
+          142
+        ]
+      }
+    },
+    {
+      "id": "F174",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 2: DSN back to the sender is shallow",
+      "outcome": "dropped because fixed; `worker.go` `queueRemoteDSN` (#715)",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          715
+        ]
+      }
+    },
+    {
+      "id": "F175",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 3: domain admin tier; role tiers",
+      "outcome": "dropped because fixed by scoped grants (#345); `routes.go:779` shows the pattern",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          345
+        ]
+      }
+    },
+    {
+      "id": "F176",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 3: audit log of admin actions",
+      "outcome": "dropped because fixed by #343",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          343
+        ]
+      }
+    },
+    {
+      "id": "F177",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 3: is the boundary proven on every route?",
+      "outcome": "dropped because #1162 already holds it; #1635 records that #376's full matrix is still report-only",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          376,
+          1162,
+          1635
+        ]
+      }
+    },
+    {
+      "id": "F178",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 4: permanent replies retried like temporary ones",
+      "outcome": "dropped because fixed; `retry.go`, `worker.go:592`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "retry.go"
+          },
+          {
+            "name": "worker.go",
+            "line": 592
+          }
+        ]
+      }
+    },
+    {
+      "id": "F179",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 4: back off when a receiver rate limits; per-provider schedules",
+      "outcome": "new #1645",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1645
+        ]
+      }
+    },
+    {
+      "id": "F180",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 5: no scheduled renewal",
+      "outcome": "dropped because fixed; `cmd/api/main.go:290`, `cmd/instance/acme_periodic.go`. #123 holds the rest",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          123
+        ]
+      }
+    },
+    {
+      "id": "F181",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 5: DNS-01",
+      "outcome": "dropped because #123 records it as deferred under an existing decision",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          123
+        ]
+      }
+    },
+    {
+      "id": "F182",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 5: no key rotation runbook",
+      "outcome": "comment on #1581",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F183",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 6: `X-Pipeline-Verdict` headers visible",
+      "outcome": "dropped because no such header exists; `header_cleanup.go:32` strips internal ones",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "header_cleanup.go",
+            "line": 32
+          }
+        ]
+      }
+    },
+    {
+      "id": "F184",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Crack 6: header order; brittle CAPABILITY test",
+      "outcome": "dropped because it's opinion with no defect; the test is still `tests/e2e/stage5_indistinguishability_test.go`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "tests/e2e/stage5_indistinguishability_test.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F185",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Load-bearing: `cmd/migrate` has no downgrade",
+      "outcome": "row on #1563",
+      "class": "row",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1563
+        ]
+      }
+    },
+    {
+      "id": "F186",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Smell 1: queue worker runs inside the gateway",
+      "outcome": "restart loss dropped because fixed (`worker.go:519`); separate scaling is a comment on #1583",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1583
+        ]
+      }
+    },
+    {
+      "id": "F187",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Smell 2: JS sidecar's `vm.runInNewContext`",
+      "outcome": "dropped because fixed by #160 (QuickJS); the stale `docs/MANUAL.md:622` is a row on #1563",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          160,
+          1563
+        ]
+      }
+    },
+    {
+      "id": "F188",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Smell 3: one SSE connection per browser",
+      "outcome": "per-account cap fixed (`events.go:41`); measuring it is a comment on #1583",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1583
+        ]
+      }
+    },
+    {
+      "id": "F189",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Smell 4: digest has no scheduler",
+      "outcome": "dropped because fixed; `cmd/api/main.go:339`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "cmd/api/main.go",
+            "line": 339
+          }
+        ]
+      }
+    },
+    {
+      "id": "F190",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Missing: tenancy boundary",
+      "outcome": "dropped because it repeats crack 3",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because it repeats crack 3"
+      }
+    },
+    {
+      "id": "F191",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Missing: multi-region",
+      "outcome": "dropped because #1581 already says to state it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F192",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Missing: idempotency keys on send",
+      "outcome": "new #1644",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1644
+        ]
+      }
+    },
+    {
+      "id": "F193",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Missing: audit log",
+      "outcome": "dropped because fixed by #343",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          343
+        ]
+      }
+    },
+    {
+      "id": "F194",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "Missing: backup and restore tooling",
+      "outcome": "dropped because fixed by #145; scheduling and drills are #1582",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          145,
+          1582
+        ]
+      }
+    },
+    {
+      "id": "F195",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "1: DMARC report ingestion",
+      "outcome": "dropped because fixed by #730; `internal/dmarcreceive`",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          730
+        ]
+      }
+    },
+    {
+      "id": "F196",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "1: TLS-RPT ingestion",
+      "outcome": "dropped because fixed; `handlers/tlsrpt.go`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "handlers/tlsrpt.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F197",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "1: Google Postmaster API",
+      "outcome": "comment on #1590",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1590
+        ]
+      }
+    },
+    {
+      "id": "F198",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "1: Spamhaus self-check",
+      "outcome": "dropped because fixed by #148",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          148
+        ]
+      }
+    },
+    {
+      "id": "F199",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "1: Reputation dashboard",
+      "outcome": "dropped because #1590 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1590
+        ]
+      }
+    },
+    {
+      "id": "F200",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "2: Regular blocklist self-check",
+      "outcome": "dropped because fixed by #148; the interval is configurable (`docs/dnsbl-monitor.md`)",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          148
+        ]
+      }
+    },
+    {
+      "id": "F201",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "2: Incidents table",
+      "outcome": "dropped because fixed; `models/dnsbl.go`, `DNSBLListingEvent`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "models/dnsbl.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F202",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "2: Automatic stop when listed",
+      "outcome": "comment on #1590",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1590
+        ]
+      }
+    },
+    {
+      "id": "F203",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "3: Backscatter filter on inbound",
+      "outcome": "new #1646",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1646
+        ]
+      }
+    },
+    {
+      "id": "F204",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "3: Is DMARC at `p=reject`?",
+      "outcome": "comment on #1588; #372 holds it for rest-mail.com",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          372,
+          1588
+        ]
+      }
+    },
+    {
+      "id": "F205",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "3: Is SPF `-all`?",
+      "outcome": "dropped because fixed; `internal/dns/mail_records.go:52`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "internal/dns/mail_records.go",
+            "line": 52
+          }
+        ]
+      }
+    },
+    {
+      "id": "F206",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "4: List-Unsubscribe on send; enforced for bulk",
+      "outcome": "dropped because fixed by #144; `messages.go:666`",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          144
+        ]
+      }
+    },
+    {
+      "id": "F207",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "5: Show SMTP results in the webmail",
+      "outcome": "dropped because #1568 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1568
+        ]
+      }
+    },
+    {
+      "id": "F208",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "6: Outbound relay, per domain",
+      "outcome": "dropped because fixed by #484",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          484
+        ]
+      }
+    },
+    {
+      "id": "F209",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "7: Port auth rules",
+      "outcome": "dropped because fixed; `smtp/session.go:358-380`, `cmd/smtp-gateway/main.go:238`, and #292's decisions",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          292
+        ]
+      }
+    },
+    {
+      "id": "F210",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "8: Real domains as well as `.test`",
+      "outcome": "dropped because fixed; `ENVIRONMENT` defaults to production (`config.go:579`). The guide is a comment on #1588",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1588
+        ]
+      }
+    },
+    {
+      "id": "F211",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "9: Require auth on submission",
+      "outcome": "dropped because fixed; `smtp/session.go:372`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "smtp/session.go",
+            "line": 372
+          }
+        ]
+      }
+    },
+    {
+      "id": "F212",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "9: Test a forged local sender on port 25",
+      "outcome": "row on #1563",
+      "class": "row",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1563
+        ]
+      }
+    },
+    {
+      "id": "F213",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "10: Vacation limits and header checks",
+      "outcome": "dropped because fixed; `vacation.go:324` (#716, #772, #809)",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          716,
+          772,
+          809
+        ]
+      }
+    },
+    {
+      "id": "F214",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "10: Message-ID dedupe",
+      "outcome": "dropped because fixed; `filters/duplicate.go`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "filters/duplicate.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F215",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "10: Count `Received:` headers",
+      "outcome": "new #1647",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1647
+        ]
+      }
+    },
+    {
+      "id": "F216",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "11: `Resent-*` headers",
+      "outcome": "dropped because the review calls it an optional UX choice, with no open work",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because the review calls it an optional UX choice, with no open work"
+      }
+    },
+    {
+      "id": "F217",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "12: Greylisting on by default",
+      "outcome": "new #1648",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1648
+        ]
+      }
+    },
+    {
+      "id": "F218",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "13: ARC trust list",
+      "outcome": "dropped because fixed by #147 and #178",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          147,
+          178
+        ]
+      }
+    },
+    {
+      "id": "F219",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "14: Catch-all and its limits",
+      "outcome": "new #1649; tarpitting already exists (`smtp/tarpit.go`)",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1649
+        ]
+      }
+    },
+    {
+      "id": "F220",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "15: DSN holds headers only; rate limited",
+      "outcome": "dropped because fixed; `worker.go:1437`, `:1222`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "worker.go",
+            "line": 1437
+          }
+        ]
+      }
+    },
+    {
+      "id": "F221",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "15: Silently drop bounces to unauthenticated senders",
+      "outcome": "dropped because #715 (fixed by #776) sends one, limited per recipient; `worker.go:1207`",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          715,
+          776
+        ]
+      }
+    },
+    {
+      "id": "F222",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "16: What tutorials get wrong",
+      "outcome": "comment on #1588; DKIM's 2048-bit floor is fixed (`outbound/dkimkey.go:22`)",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1588
+        ]
+      }
+    },
+    {
+      "id": "F223",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "17: Domain warm-up",
+      "outcome": "new #1650",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1650
+        ]
+      }
+    },
+    {
+      "id": "F224",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "18: Delivery rates per IP version",
+      "outcome": "comment on #1579",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1579
+        ]
+      }
+    },
+    {
+      "id": "F225",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A1: Hash strength and upgrade on sign-in",
+      "outcome": "new #1642",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1642
+        ]
+      }
+    },
+    {
+      "id": "F226",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A2: `aud` and `nbf` claims",
+      "outcome": "row on #1563; `iss` and `exp` fixed (`internal/auth/auth.go:314`)",
+      "class": "row",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1563
+        ]
+      }
+    },
+    {
+      "id": "F227",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A3: Refresh rotation and reuse",
+      "outcome": "dropped because fixed; `handlers/auth.go:590`, `:665`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "handlers/auth.go",
+            "line": 590
+          }
+        ]
+      }
+    },
+    {
+      "id": "F228",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A4: Revocation",
+      "outcome": "ending all sessions fixed (`middleware/auth.go:183`); one session's access token is a row on #1563",
+      "class": "row",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1563
+        ]
+      }
+    },
+    {
+      "id": "F229",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A5: API login limit per IP and username",
+      "outcome": "IP fixed; per-username new #1643. Gateway limits fixed (`smtp/session.go:317`)",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1643
+        ]
+      }
+    },
+    {
+      "id": "F230",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A6: Two-factor",
+      "outcome": "dropped because fixed by #344 and #634",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          344,
+          634
+        ]
+      }
+    },
+    {
+      "id": "F231",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "B1: Domain admin tier",
+      "outcome": "dropped because fixed by #345",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          345
+        ]
+      }
+    },
+    {
+      "id": "F232",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "B2: Authorization on every endpoint",
+      "outcome": "dropped because #1162 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F233",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "B3: Scoped query helper",
+      "outcome": "dropped because `resolveAccountMailbox` is that helper (`handlers/search.go:54`); proof is #1162",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F234",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "B4: Cross-domain leakage in search and listings",
+      "outcome": "search fixed (`handlers/search.go:54`); proof across listings is #1162",
+      "class": "other",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1162
+        ]
+      }
+    },
+    {
+      "id": "F235",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "S1: Default secrets in production",
+      "outcome": "dropped because fixed; `config.go:591-596`, and the length floors at `config.go:1388`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "config.go",
+            "line": 591
+          },
+          {
+            "name": "config.go",
+            "line": 1388
+          }
+        ]
+      }
+    },
+    {
+      "id": "F236",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "S2: Master key rotation runbook",
+      "outcome": "comment on #1581",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1581
+        ]
+      }
+    },
+    {
+      "id": "F237",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "S3: DKIM key encrypted at rest",
+      "outcome": "dropped because fixed; `handlers/dkim.go:100`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "handlers/dkim.go",
+            "line": 100
+          }
+        ]
+      }
+    },
+    {
+      "id": "F238",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "S3: Key wiped from memory",
+      "outcome": "row on #1563",
+      "class": "row",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1563
+        ]
+      }
+    },
+    {
+      "id": "F239",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "S4: Disk encryption as a deploy requirement",
+      "outcome": "new #1652",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1652
+        ]
+      }
+    },
+    {
+      "id": "F240",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I1: Size limit before parsing",
+      "outcome": "dropped because fixed; `MaxBodyBytes` and the SMTP limit (`config.go:20`)",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "config.go",
+            "line": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "F241",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I1: Multipart depth; per-part limits",
+      "outcome": "new #1641",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1641
+        ]
+      }
+    },
+    {
+      "id": "F242",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I1: Header injection",
+      "outcome": "dropped because #1594, #1608 and #1609 already hold it; #1641 notes what wasn't checked",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1594,
+          1608,
+          1609,
+          1641
+        ]
+      }
+    },
+    {
+      "id": "F243",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I2: `vm` sandbox; prototype pollution; filesystem escape",
+      "outcome": "dropped because fixed by #160",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          160
+        ]
+      }
+    },
+    {
+      "id": "F244",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I2: CPU and wall-time caps",
+      "outcome": "dropped because fixed; `javascript.go:100`, `worker.js`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "javascript.go",
+            "line": 100
+          },
+          {
+            "name": "worker.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F245",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I2: Document that the sandbox isn't a boundary",
+      "outcome": "dropped because QuickJS replaced what that warning was about; `worker.js` documents the boundary",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "worker.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F246",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I2: Only platform admins write JS",
+      "outcome": "new #1651",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1651
+        ]
+      }
+    },
+    {
+      "id": "F247",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I3: CR or LF in SMTP commands",
+      "outcome": "dropped because go-smtp reads line by line and hardens against smuggling (`smtp/session.go:42`), and an injected line is only a pipelined command, checked the same way",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "smtp/session.go",
+            "line": 42
+          }
+        ]
+      }
+    },
+    {
+      "id": "F248",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I4: IMAP literal size",
+      "outcome": "dropped because fixed; `third_party/go-imap/pkg/imap/server/append.go:229`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "third_party/go-imap/pkg/imap/server/append.go",
+            "line": 229
+          }
+        ]
+      }
+    },
+    {
+      "id": "F249",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "L1: What's audited",
+      "outcome": "dropped because fixed by #343; `auth.sign_in`, `auth.password_change`, `admin.change`, `mail.send`",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          343
+        ]
+      }
+    },
+    {
+      "id": "F250",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "L2: Tamper-evident log",
+      "outcome": "dropped because fixed; `internal/audit` hash chain and `internal/auditanchor`",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because fixed; `internal/audit` hash chain and `internal/auditanchor`"
+      }
+    },
+    {
+      "id": "F251",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "L3: Secrets in the log",
+      "outcome": "dropped because fixed; `middleware/audit.go` reads only named fields",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "middleware/audit.go"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F252",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "T1: TLS minimum",
+      "outcome": "dropped because fixed; `cmd/smtp-gateway/main.go:117`. Outbound (`worker.go:1778`) has Go's client default of TLS 1.2",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "cmd/smtp-gateway/main.go",
+            "line": 117
+          },
+          {
+            "name": "worker.go",
+            "line": 1778
+          }
+        ]
+      }
+    },
+    {
+      "id": "F253",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "T2: Cipher order",
+      "outcome": "dropped because the review gives no defect, and Go chooses the order",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because the review gives no defect, and Go chooses the order"
+      }
+    },
+    {
+      "id": "F254",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "T3: Outbound MTA-STS enforce fails closed",
+      "outcome": "dropped because fixed; `worker.go:758`, `:829`, `classify.go:155`",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "worker.go",
+            "line": 758
+          },
+          {
+            "name": "classify.go",
+            "line": 155
+          }
+        ]
+      }
+    },
+    {
+      "id": "F255",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "T3: Own policy at `enforce`",
+      "outcome": "comment on #1588; new policies start at `testing` (`mtasts.go:85`), and #372 covers rest-mail.com",
+      "class": "commented",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          372,
+          1588
+        ]
+      }
+    },
+    {
+      "id": "F256",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "T4: Certificate pinning",
+      "outcome": "dropped because the review calls it overkill, and peer pinning stays parked in #292",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          292
+        ]
+      }
+    },
+    {
+      "id": "F257",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "D1: DNS resolver hardening",
+      "outcome": "dropped because fixed for what it risks; `gateway/queue/ssrf.go:25` blocks private addresses. Running a resolver is an operator's choice",
+      "class": "dropped",
+      "home": {
+        "kind": "code",
+        "citations": [
+          {
+            "name": "gateway/queue/ssrf.go",
+            "line": 25
+          }
+        ]
+      }
+    },
+    {
+      "id": "F258",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "D2: DNSSEC",
+      "outcome": "dropped because fixed by #725; `internal/dane`",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          725
+        ]
+      }
+    },
+    {
+      "id": "F259",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "C1: Access and portability",
+      "outcome": "dropped because #1577 already holds it",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1577
+        ]
+      }
+    },
+    {
+      "id": "F260",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "C1: Erasure",
+      "outcome": "new #1652",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1652
+        ]
+      }
+    },
+    {
+      "id": "F261",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "C2: Data residency",
+      "outcome": "new #1652",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1652
+        ]
+      }
+    },
+    {
+      "id": "F262",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "C3: Retention",
+      "outcome": "dropped because #1578 already holds it, including mail held for legal reasons",
+      "class": "dropped",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1578
+        ]
+      }
+    },
+    {
+      "id": "F263",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "C4: Subprocessor list",
+      "outcome": "new #1652",
+      "class": "new",
+      "home": {
+        "kind": "tracker",
+        "numbers": [
+          1652
+        ]
+      }
+    },
+    {
+      "id": "F264",
+      "batch": "1658",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "\"What I'd do first\" (5 items)",
+      "outcome": "dropped because each repeats a row above: B2, B1, L1, I1, A1",
+      "class": "dropped",
+      "home": {
+        "kind": "disposition",
+        "reason": "dropped because each repeats a row above: B2, B1, L1, I1, A1"
+      }
+    },
+    {
+      "id": "F265",
+      "batch": "1563/minor",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A2: Tokens have `iss` and `exp`, but no `aud` or `nbf`. The access and refresh distinction rests on `token_type`. There is one service, so nothing is confused today.",
+      "outcome": "recorded as a comment on #1563 (too small for an issue of its own)",
+      "class": "commented",
+      "home": {
+        "kind": "comment",
+        "issue": 1563,
+        "comment": 6609081847
+      }
+    },
+    {
+      "id": "F266",
+      "batch": "1563/minor",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "A4: Ending every session takes effect at the next request, through the credential epoch. Signing out of one session revokes only its refresh token, so its access token works until it expires, 15 minutes by default. The review suggested a blocklist for administrators' tokens. That's for the owner to decide if it's wanted.",
+      "outcome": "recorded as a comment on #1563 (too small for an issue of its own)",
+      "class": "commented",
+      "home": {
+        "kind": "comment",
+        "issue": 1563,
+        "comment": 6609081847
+      }
+    },
+    {
+      "id": "F267",
+      "batch": "1563/minor",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "S3: DKIM keys are encrypted at rest, and that part is fixed. A key isn't wiped from memory after use. Go gives no reliable way to do that, so this is only worth recording.",
+      "outcome": "recorded as a comment on #1563 (too small for an issue of its own)",
+      "class": "commented",
+      "home": {
+        "kind": "comment",
+        "issue": 1563,
+        "comment": 6609081847
+      }
+    },
+    {
+      "id": "F268",
+      "batch": "1563/minor",
+      "source": "docs/review/2026-04-29-deep-review/01-ARCHITECTURE-ASSESSMENT.md",
+      "finding": "load-bearing: `cmd/migrate` only migrates forwards, so going back a version needs a restore from backup. Nothing says so where an operator would look before upgrading.",
+      "outcome": "recorded as a comment on #1563 (too small for an issue of its own)",
+      "class": "commented",
+      "home": {
+        "kind": "comment",
+        "issue": 1563,
+        "comment": 6609081847
+      }
+    },
+    {
+      "id": "F269",
+      "batch": "1563/minor",
+      "source": "docs/review/2026-04-29-deep-review/04-UGLY-SIDE.md",
+      "finding": "section 9: The RESTMAIL route has a test refusing an unauthenticated message from a hosted domain. A search of the SMTP and E2E tests found none for the same message arriving on port 25. There it goes through `dmarc_check`, which follows the domain's policy, and a new domain starts at `p=none`.",
+      "outcome": "recorded as a comment on #1563 (too small for an issue of its own)",
+      "class": "commented",
+      "home": {
+        "kind": "comment",
+        "issue": 1563,
+        "comment": 6609081847
+      }
+    },
+    {
+      "id": "F270",
+      "batch": "1563/minor",
+      "source": "docs/review/2026-04-29-deep-review/05-SECURITY-AND-COMPLIANCE.md",
+      "finding": "I2: `docs/MANUAL.md:622` still says the JavaScript sidecar uses `vm.runInNewContext`. It has run QuickJS since #160.",
+      "outcome": "recorded as a comment on #1563 (too small for an issue of its own)",
+      "class": "commented",
+      "home": {
+        "kind": "comment",
+        "issue": 1563,
+        "comment": 6609081847
+      }
+    }
+  ],
+  "verified": {
+    "78": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat(admin): observability funnel widget + per-message trace views (PR6)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "90": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "ci: run full e2e suite in CI so PRs are validated automatically",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "123": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "TLS: keep certificates fresh when cert-manager is not used",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "140": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Support plus-addressing (RFC 5233 subaddressing) in recipient resolution",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "141": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Maintain a hard-bounce suppression list to stop re-sending to dead addresses",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "142": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Classify delivery failures and make retry backoff category-aware",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "144": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "List-Unsubscribe: enforce bulk policy consistently inside REST Mail",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "145": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Backup and restore tooling for Postgres and on-disk state",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "146": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Build outbound MIME with stdlib encoders instead of manual string concatenation",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "147": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Add a trusted ARC signer list so ARC can rescue forwarded mail",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "148": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Scheduled DNSBL self-check for sending IPs with alerting",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "151": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Automated per-domain DKIM key rotation",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "152": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "chore(docs): remove plan/report docs now tracked as issues",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "160": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "JS filter sidecar: VM sandbox is escapable and the execution endpoint is unauthenticated",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "178": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "ARC override applied with no trusted-sealer allowlist, enabling a DMARC bypass",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "208": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat(delivery): support RFC 5233 plus-addressing in recipient resolution",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "292": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Mail transport security: decisions so far and parked follow-ups",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "307": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix: render outbound mail with the shared serializer",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "343": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Audit log: hash-chained, append-only, recorded at the edge",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "344": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Credentials table, starting with app passwords for mailboxes",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "345": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Scoped grants, active and eligible, replacing role assignments",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "363": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Push notifications: device registration and an APNs sender (off unless configured)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "372": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "rest-mail.com receives and sends real mail: MX, SPF, DKIM, DMARC, PTR",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "376": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Contract-test the whole REST API with vertrag: every operation, every principal",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "377": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Staging: see a change live before it reaches production (website previews first, then a staging mail server)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "397": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat: a recipient that hard bounces is suppressed for the sending domain",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "484": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat: a domain can send its outbound mail through an SMTP relay (#143)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "567": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat(messages): schedule a send for later",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "601": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): exercise DKIM key validation errors",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "625": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API examples: prove named request/response pairs across the whole API",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "628": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Pick up new go-oapifly and Vertrag releases automatically",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "634": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contract 05/23: The account's own password and two-factor authentication (5 operations)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "654": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contract: prove the contract run catches faults (fault injection)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "661": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API configuration matrix: settle description visibility and prove feature wiring",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "672": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API conventions: settle statuses, errors, lifecycles and wire formats",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "675": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Webmail and admin UI types generated from the served openapi.json",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "715": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Queue: a failed forward is lost; a DSN must go to a non-local sender too (RFC 5321 \u00a76.1)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "716": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Vacation: never reply to a null sender, and reply with MAIL FROM:<> (RFC 3834 \u00a72, RFC 5230 \u00a75.1)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "725": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "DANE: finish resolver deployment and TLSA-safe key renewal",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "726": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "TLS-RPT (RFC 8460): send reports, accept them by email, publish the record",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "728": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "DKIM rotation: decide operator alerts and retired-selector handling",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "730": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "DMARC: finish received-report handling and exact nonexistent-domain checks",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "734": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Migrating in: import accounts with their existing password hashes, and their mail (IMAP, Maildir, mbox)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "739": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat(api): register the account's contacts",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "772": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Vacation replies are never sent on a default install: the vacation filter isn't in the default inbound pipeline",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "776": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(queue): tell a sender outside REST Mail that their mail failed",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "809": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Vacation replies: after the first interval every message from a sender is answered",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1161": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: public discovery, gateways and server-to-server delivery",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1162": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: identity, sessions, account security and permissions",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1163": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: mail, attachments, contacts and personal workflows",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1164": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: domain administration, mail policy, filters and delivery operations",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1165": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: generated schemas, conventions and consistent clients",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1166": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: security invariants, response coverage, limits and fault detection",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1167": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API contracts: shared fixtures, CI tiers, local tooling and installed-cluster acceptance",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1171": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(api): consolidate contract examples and their verification",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1200": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): detect partial browser CSRF bypasses",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1217": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(api): scope queue SQL to requests and lock retry/bounce mutations",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1218": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(contract): cover credential transports and redact secret findings",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1219": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(api): describe conditional downloads and preserve response media types",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1220": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(contract): share verified toolchain preflight between CI and local runs",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1222": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(api): cancel public discovery reads with requests",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1223": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(api): carry request cancellation through credential operations",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1225": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(api): roll back failed contact mutations and honor cancellation",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1226": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(api): cancel domain policy work and reject stale mutations",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1230": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix: fail closed when reading contract audit secrets",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1232": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): run the primary Vertrag gate against the generated API description",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1233": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "fix(contract): reject false-green browser session probes",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1236": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Examples: one per documented response, each with its requires",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1237": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Contract: prove every example where its requires can be set up, and fail on any left unproven",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1276": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(api): prove every example that needs setup in process, and fail on any left unproven",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1285": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "feat(api): sending a draft can supply list_unsubscribe",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1331": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Design: passkey (WebAuthn) sign-in for web and mobile",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1341": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): send every documented status an example proves",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1348": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): prove the last seven unproven statuses and every 400/413 example",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1350": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Make the contract run report real results",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1353": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): prove every attachment response and probe every request body",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1385": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Contract tests: each test creates its own data",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1397": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Keep generated probes off the contract run's own account",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1399": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Leave own-account draft and scheduled cells out of the authorization matrix",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1418": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Snooze a thread until a chosen time",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1419": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Classify mail as newsletter, receipt, notification or person",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1467": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "bump-vertrag.yml cannot push, because the pin lives in a workflow file",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1468": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Design: our own mail rules, with Sieve as one way in and out",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1473": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Fix automated Vertrag bumps by moving the pin out of workflows",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1485": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Add durable thread snoozing to the server and webmail",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1491": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Add header-derived message classes and opt-in list collapse",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1506": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): accept the 404 that hides someone else's object",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1518": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "Let a Sieve rule mark a receipt and classify mail from its stored source",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1530": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): add measured live requirement proofs",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1533": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Aliases are stored and claim their address, but mail never reaches the destination",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1542": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "test(contract): give queue coverage disposable entry targets",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1544": {
+      "exists": true,
+      "type": "pull",
+      "state": "merged",
+      "title": "ci(contract): add the live proofs to the example proof union",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1552": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Mail classes: should anything besides a Sieve rule mark a message as a receipt?",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1563": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Findings moved out of markdown files",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1564": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Should a local DMARC rejection of our own send stay a retryable 503?",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1565": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Browser-session gate: may the contract run mint a reset token and enrol a disposable account in 2FA?",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1567": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Queue: may an administrator bounce an entry that is already delivered?",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1568": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Let a sender see what happened to their message, recipient by recipient",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1569": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Calendar: show an account's events, and answer free/busy",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1570": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Contacts: import and export vCard, and decide on CardDAV",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1571": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Webmail: preview attachments without downloading them",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1572": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Push notifications beyond APNs: Android and the browser",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1573": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Webmail: send later, and undo a send",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1574": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Mute a thread",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1575": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Webmail: an unsubscribe button for list mail",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1576": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Installation-wide pipeline templates and shared sender rules",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1577": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Export an account's mail and data",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1578": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Mail retention: delete old mail by policy",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1579": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Metrics and alerts: the gaps that hide a queue or capacity problem",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1580": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Follow one message across the gateways and the API in the logs",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1581": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Operator runbooks, and the commands they need",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1582": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Scheduled backups, a restore drill and stated recovery targets",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1583": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Load tests and measured capacity",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1584": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Prove ownership of a domain before it goes live",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1585": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Plans and usage: limits per plan, and counting what a domain used",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1587": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Public status page",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1588": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Guides for people using a REST Mail domain",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1589": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "CI: scan images, publish an SBOM and run a mail conformance check",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1590": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "See a sending reputation problem early, and stop one domain's outbound mail",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1594": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "A calendar reply writes the invitation's summary into its Subject header unencoded",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1608": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "IMAP FETCH and POP3 RETR write a stored Message-ID and In-Reply-To into headers unchecked",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1609": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Smaller findings from checking hand-built mail headers",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1635": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Issue audit, 2026-11-03",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1641": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Inbound mail parsing: a missing resource limit (details after release)",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1642": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Passwords stay at bcrypt cost 10, and sign-in never upgrades an old hash",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1643": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "API sign-in is limited per IP only, where the SMTP gateway also counts failures per user",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1644": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Sending through the API has no idempotency key, so a retry can send twice",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1645": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Queue: a receiver's rate limit slows one message, not the rest of the mail for that receiver",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1646": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Inbound: a bounce for a message we never sent is delivered like any other mail",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1647": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Mail loops: nothing refuses a message with too many Received headers",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1648": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Should greylisting stay on by default for a new domain?",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1649": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Catch-all addresses: decide whether a domain may have one",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1650": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Warm up a new domain's sending: decide on a schedule or a guide",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1651": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "May a domain-scoped administrator write JavaScript filters?",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "1652": {
+      "exists": true,
+      "type": "issue",
+      "state": "closed",
+      "title": "Erasure and the compliance documents a customer asks for",
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "commit:5a0b9d57": {
+      "exists": true,
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "commit:69dea918": {
+      "exists": true,
+      "verified_at": "2026-11-20T07:37:15Z"
+    },
+    "comment:6609081847": {
+      "exists": true,
+      "verified_at": "2026-11-20T07:37:15Z"
+    }
+  },
+  "verified_at": "2026-11-20T07:37:15Z"
+}

@@ -23,7 +23,7 @@ rolled forward as cars merge.
 
 | Issue | ACs | P | R | H | D | X | First car |
 |---|---|---|---|---|---|---|---|
-| #2120 | 5 | 1 | 2 | 2 | 0 | 0 | finish it |
+| #2120 | 5 | 3 | 0 | 2 | 0 | 0 | live runs: diagrams, publication, the walk |
 | #2108 | 6 | 2 | 2 | 1 | 1 | 0 | finish it |
 | #2117 | 5 | 1 | 3 | 1 | 0 | 0 | finish it |
 | #2113 | 9 | 2 | 3 | 3 | 1 | 0 | finish it |
@@ -36,11 +36,11 @@ that moves the count. The rest need harnesses and decisions first.
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 deployed diagrams match approved artifacts | H | diagram sources are repo work; "actual deployed" needs one install to render them |
-| AC02 five guides published, links resolve, each followed end to end | R + H | publishing and the link check are repo work; "followed end to end" needs the disposable install |
+| AC01 deployed diagrams match approved artifacts | H | **Repo half proven; live half is one command, and it is red today.** `diagrams/approved.json` records each diagram's source, served page and image hashes; the `AC01:` tests (`scripts/email-explained/approved.test.mjs`, run by `npm test`) and `node approved.mjs verify` (the guide job) fail a drifted diagram by name. What only the live site confirms: `CHROME=<chrome> node approved.mjs deployed --measure --receipt deployed-diagrams.json`. Read-only run on 2026-11-20 against rest-mail.com: 23 of 27 pages are the approved ones; `spf`, `rest-mail`, `open-relay`, `open-relay-cost` are the pre-#1495 pages, and titles measure 8.2-8.6px against the 9.5px floor. The bucket stays H until a run passes. |
+| AC02 five guides published, links resolve, each followed end to end | R + H | **Repo half proven; two live halves stay open, and the first is a finding.** The guides exist, are in the front page, the docs index and the bundle (the `AC02:` tests, `scripts/email-explained/walk.test.mjs`), and the outside links are AC02b. **Published:** the newest bundle (1.0.1393) holds all five, but rest-mail.com answers 404 for each (read-only run of `node published.mjs`, 2026-11-20): the website repository's last bundle commit is 1.0.1150, and its frames still say `v=19995f199586`, which predates the guides. **Followed end to end:** `walk-spec.json` has 41 steps on the disposable topology `guidewalk`, with a deliberate failure in each guide, and `node walk.mjs check` says `NOT WALKED` until an owner's receipt has every step. No walk has run. |
 | AC02b outside-link check fails on the four named cases | **P** | #2117/#2120 car: publish + scheduled, never the PR gate |
-| AC03 every retained finding has a verified tracker home | R | mechanical inventory against the tracker |
-| AC04 historical readiness evidence bounded and current | R | claims list + staleness check |
+| AC03 every retained finding has a verified tracker home | **P** | **Proven by this car, once merged.** `docs/findings-homes.json` keeps all 270 rows the reconciliation recorded (147 on #1563, 6 minor, 117 on #1658), each with a typed home: 203 issue or pull request numbers, 38 code citations, 7 files and headings, 6 comments, 3 commits, and 13 dispositions with the reason verbatim. `scripts/findings_homes.py verify` asked GitHub about all 138 references on 2026-11-20 (0 missing); `check`, run by the `test_ac03_*` tests in `scripts/tests/test_findings_homes.py`, fails naming any finding without a home, an unverified or missing number, a stale code citation, a vanished README heading, or a changed row count, and the test fails on any new markdown file of findings. What it does not prove: that a finding is still true in current code beyond its citations. |
+| AC04 historical readiness evidence bounded and current | **P** | **Proven by this car, once merged.** `docs/readiness/evidence.json` holds the current claims (state pass, fail, blocked or unknown, observed date, commit, result, limits, receipts), bounded to 21 days and 30 claims; `scripts/readiness_register.py archive` moves what is stale or over the count to `evidence-archive.json` with the date and reason, and `check --base REV` fails on any id that vanished. The `test_ac04_*` tests in `scripts/tests/test_readiness_register.py` prove: a claim with no receipt, or a receipt pointing at nothing, fails by name; a stale claim fails until archived; archiving keeps every field and gives a reason; deleting fails. The #1635 audit's limits are kept verbatim as claims. Not wired to a schedule: `check --now` (against today's date) is for the owner or a scheduled job; the pull request gate checks against the register's own `as_of`. |
 
 ## #2108 — rules and Sieve
 

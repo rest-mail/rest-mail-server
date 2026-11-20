@@ -1,0 +1,839 @@
+{
+  "kind": "email-explained-deployed-diagram-receipt",
+  "format": 1,
+  "checked_at": "2026-11-20T07:44:12.684Z",
+  "site": "https://rest-mail.com",
+  "approved_on": "2026-11-20",
+  "approved_manifest_sha256": "c7f0b68e862e199ffa8922584abb4112245eeed654faf3c34868f8dc167404b9",
+  "bundle_revisions": [
+    "19995f199586"
+  ],
+  "diagrams": [
+    {
+      "name": "arc",
+      "approved_sha256": "339897cb0f688a473c8c5a7a74e132143834d8d7d8bee3deca83b4f375aaa9b5",
+      "deployed_sha256": "339897cb0f688a473c8c5a7a74e132143834d8d7d8bee3deca83b4f375aaa9b5",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "black-hole",
+      "approved_sha256": "8c6aaff8b87740b4e3560a15ff3ca3be0b23207ae203c7700d2aea71213d5160",
+      "deployed_sha256": "8c6aaff8b87740b4e3560a15ff3ca3be0b23207ae203c7700d2aea71213d5160",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "bundle",
+      "approved_sha256": "dab5bf5cf4078d8973a104be0badbd8e0373f19a425acd67708806865bda7563",
+      "deployed_sha256": "dab5bf5cf4078d8973a104be0badbd8e0373f19a425acd67708806865bda7563",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "discovery",
+      "approved_sha256": "b733f93466a382c0eba8f399ebfae7c6a310f40729fae13cdc0ac163fbafeccc",
+      "deployed_sha256": "b733f93466a382c0eba8f399ebfae7c6a310f40729fae13cdc0ac163fbafeccc",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "dkim",
+      "approved_sha256": "6f5fe1d3b6e5abf7894059df3c8ed357c66666599d3af8c444cfcdeb120ea76b",
+      "deployed_sha256": "6f5fe1d3b6e5abf7894059df3c8ed357c66666599d3af8c444cfcdeb120ea76b",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "dmarc",
+      "approved_sha256": "c5fa3ae6f82fb24905794c2ae2a8e6b097be3659980695a58d32658c48990ead",
+      "deployed_sha256": "c5fa3ae6f82fb24905794c2ae2a8e6b097be3659980695a58d32658c48990ead",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "dns",
+      "approved_sha256": "014e1fc965ee99ac1095f528da2d088f0b01ecfb16d48460faf085c55f9a08d4",
+      "deployed_sha256": "014e1fc965ee99ac1095f528da2d088f0b01ecfb16d48460faf085c55f9a08d4",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "domain-needs",
+      "approved_sha256": "898f20f800e8530d59771ba7cab1c711136f04b7c7b304f683601a3ececc818c",
+      "deployed_sha256": "898f20f800e8530d59771ba7cab1c711136f04b7c7b304f683601a3ececc818c",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "journey",
+      "approved_sha256": "468a349ba35adce85b912d6ae89fc26f22f76b50de90cc5df1d675a095b5c105",
+      "deployed_sha256": "468a349ba35adce85b912d6ae89fc26f22f76b50de90cc5df1d675a095b5c105",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "message",
+      "approved_sha256": "8a9667eb755a4aebb3fbb87a7ca2b8842604a3791fc959737506648d3280cf72",
+      "deployed_sha256": "8a9667eb755a4aebb3fbb87a7ca2b8842604a3791fc959737506648d3280cf72",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "migration",
+      "approved_sha256": "9847577b7b82d00cf7c9978504deb2022559f8d6a95a478b984f4ac28eb9be3b",
+      "deployed_sha256": "9847577b7b82d00cf7c9978504deb2022559f8d6a95a478b984f4ac28eb9be3b",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "mta-sts",
+      "approved_sha256": "8cb26ec9d0ddf6fb0d70456e6c44987553d3ddce831dbc320e10c6c64714ca79",
+      "deployed_sha256": "8cb26ec9d0ddf6fb0d70456e6c44987553d3ddce831dbc320e10c6c64714ca79",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "open-relay-cost",
+      "approved_sha256": "537ef9e40b9e3942a2bcf1a4639862185da51b4439d242ffca405fbc572d01cf",
+      "deployed_sha256": "b33b306453c30300546be86098ccbc1a64c04b35c0bd116417c23e7fdf7b7977",
+      "match": false,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "open-relay",
+      "approved_sha256": "57d7448b677f3cfc296e47730829055fba6d50a337e198ff8c05622da0b6ef1d",
+      "deployed_sha256": "df84593ecabc7eb8c979d867dd84a642a2c4d349990f0bb673ecc261b1d4c3a6",
+      "match": false,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "queue",
+      "approved_sha256": "13ca61295dbf5f6d00f2c2514c2a5e5c881aaf28c35bda6c5217d01256e9a6b5",
+      "deployed_sha256": "13ca61295dbf5f6d00f2c2514c2a5e5c881aaf28c35bda6c5217d01256e9a6b5",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "reading",
+      "approved_sha256": "d71c8b4416f01bb410d0558c09993d4ee29ad7c273a7bbccb231c0d0c4600fbd",
+      "deployed_sha256": "d71c8b4416f01bb410d0558c09993d4ee29ad7c273a7bbccb231c0d0c4600fbd",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "reputation",
+      "approved_sha256": "23fc484adf3f626f55e57fa99415322fdd0c6a44e263dd65abe6b5f0a632f470",
+      "deployed_sha256": "23fc484adf3f626f55e57fa99415322fdd0c6a44e263dd65abe6b5f0a632f470",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "rest-mail",
+      "approved_sha256": "9fe9a06e0d8c89392b3a0e8e256c1418dfd1b29f504e3b67e2aad5536e8d4f3b",
+      "deployed_sha256": "b3aabfaa82bead60a5cd438d3610e63a6ea9b9c131aec3b1531f3fc50932ebe2",
+      "match": false,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "restmail",
+      "approved_sha256": "5d9e3b08485ffedaee204269628a1a86846159d7eb67907c47f4e5e3e3cc0f75",
+      "deployed_sha256": "5d9e3b08485ffedaee204269628a1a86846159d7eb67907c47f4e5e3e3cc0f75",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "servers",
+      "approved_sha256": "5d9a5c3ff897c04f21c872debc859dadf33c67c86725086c66bdf0f4a00ad33c",
+      "deployed_sha256": "5d9a5c3ff897c04f21c872debc859dadf33c67c86725086c66bdf0f4a00ad33c",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "smtp",
+      "approved_sha256": "56fac3a74b3380346b5799dd8428ee61d466bb85952ec9eb8d49d126b5c7e2f5",
+      "deployed_sha256": "56fac3a74b3380346b5799dd8428ee61d466bb85952ec9eb8d49d126b5c7e2f5",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "spam",
+      "approved_sha256": "3f004d61e5bc96d10e69cd324933834f07a577d595b2f27f8b16b88d892a18a1",
+      "deployed_sha256": "3f004d61e5bc96d10e69cd324933834f07a577d595b2f27f8b16b88d892a18a1",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "spf",
+      "approved_sha256": "966bee68f737d07e8fa873da4eaaa3d604a8654259ba32b18cde0c008bed2138",
+      "deployed_sha256": "d3b7d58cf2dc53c54aa9767b39f47c009a656ac4f5df17e57d388b5ac226a64b",
+      "match": false,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "standards",
+      "approved_sha256": "cf5d17132483a146337929d6828ba5f18e8abf2b5c2b9ca71f5adcd27c8770c1",
+      "deployed_sha256": "cf5d17132483a146337929d6828ba5f18e8abf2b5c2b9ca71f5adcd27c8770c1",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "starttls",
+      "approved_sha256": "5b0280a13ccb6fe0fb85860df3d2d9e1c08b746d65afe0cd272b5e3baae643bc",
+      "deployed_sha256": "5b0280a13ccb6fe0fb85860df3d2d9e1c08b746d65afe0cd272b5e3baae643bc",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "unsubscribe",
+      "approved_sha256": "6ca5759d8ea0ac289bd645d1eedf712c72fe3218ef4c1e81270063c8b128ca02",
+      "deployed_sha256": "6ca5759d8ea0ac289bd645d1eedf712c72fe3218ef4c1e81270063c8b128ca02",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    },
+    {
+      "name": "who-may-send",
+      "approved_sha256": "1be6d37c72173f0f2e1a81a2d0f0acfe52688b8753ab6f8df85c36dabf16181e",
+      "deployed_sha256": "1be6d37c72173f0f2e1a81a2d0f0acfe52688b8753ab6f8df85c36dabf16181e",
+      "match": true,
+      "status": 200,
+      "frame_ancestors_self": true,
+      "look": true,
+      "framed": true
+    }
+  ],
+  "readability": {
+    "status": "measured",
+    "floor_px": 9.5,
+    "widths": {
+      "laptop": 1440,
+      "phone": 390
+    },
+    "measured": {
+      "laptop": {
+        "spf": {
+          "titles": 9,
+          "minTitlePx": 8.178346946022726,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "rest-mail": {
+          "titles": 10,
+          "minTitlePx": 8.35359631147541,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "queue": {
+          "titles": 7,
+          "minTitlePx": 13.230571847507331,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "open-relay": {
+          "titles": 9,
+          "minTitlePx": 8.360346441947565,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "arc": {
+          "titles": 5,
+          "minTitlePx": 9.254340277777779,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "black-hole": {
+          "titles": 12,
+          "minTitlePx": 8.959123461174242,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "bundle": {
+          "titles": 12,
+          "minTitlePx": 8.10458096590909,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "discovery": {
+          "titles": 9,
+          "minTitlePx": 7.485086633663365,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "dkim": {
+          "titles": 4,
+          "minTitlePx": 9.254140378548897,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "dmarc": {
+          "titles": 10,
+          "minTitlePx": 8.058984375,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "dns": {
+          "titles": 11,
+          "minTitlePx": 8.021043442234848,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "domain-needs": {
+          "titles": 21,
+          "minTitlePx": 13.451780781373325,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "journey": {
+          "titles": 8,
+          "minTitlePx": 8.570487442484662,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "message": {
+          "titles": 15,
+          "minTitlePx": 11.92166095890411,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "migration": {
+          "titles": 10,
+          "minTitlePx": 8.755622632575758,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "mta-sts": {
+          "titles": 12,
+          "minTitlePx": 8.23403949386503,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "reading": {
+          "titles": 10,
+          "minTitlePx": 9.100352154356061,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "reputation": {
+          "titles": 10,
+          "minTitlePx": 7.976704545454545,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "restmail": {
+          "titles": 3,
+          "minTitlePx": 13.303125000000001,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "servers": {
+          "titles": 18,
+          "minTitlePx": 13.597156954887216,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "smtp": {
+          "titles": 3,
+          "minTitlePx": 15.20355224609375,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "spam": {
+          "titles": 15,
+          "minTitlePx": 8.178346946022726,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "standards": {
+          "titles": 13,
+          "minTitlePx": 8.211331084280303,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "starttls": {
+          "titles": 3,
+          "minTitlePx": 13.303081923558896,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "unsubscribe": {
+          "titles": 3,
+          "minTitlePx": 15.203547969745223,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        },
+        "who-may-send": {
+          "titles": 11,
+          "minTitlePx": 8.791199100378787,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 792,
+            "clientWidth": 792
+          }
+        }
+      },
+      "phone": {
+        "spf": {
+          "titles": 9,
+          "minTitlePx": 8.188967803030302,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 793,
+            "clientWidth": 342
+          },
+          "swipe": {
+            "frameScrolled": 225,
+            "pageScrolledX": 0
+          }
+        },
+        "rest-mail": {
+          "titles": 10,
+          "minTitlePx": 8.278037909836067,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 785,
+            "clientWidth": 342
+          }
+        },
+        "queue": {
+          "titles": 7,
+          "minTitlePx": 10.068365102639296,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 607,
+            "clientWidth": 342
+          }
+        },
+        "open-relay": {
+          "titles": 9,
+          "minTitlePx": 8.187497073970036,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 776,
+            "clientWidth": 342
+          }
+        },
+        "open-relay-cost": {
+          "titles": 7,
+          "minTitlePx": 8.440755208333334,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 776,
+            "clientWidth": 342
+          }
+        },
+        "arc": {
+          "titles": 5,
+          "minTitlePx": 9.289930555555555,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 795,
+            "clientWidth": 342
+          }
+        },
+        "black-hole": {
+          "titles": 12,
+          "minTitlePx": 8.172031841856061,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 724,
+            "clientWidth": 342
+          }
+        },
+        "bundle": {
+          "titles": 12,
+          "minTitlePx": 8.45022490530303,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 825,
+            "clientWidth": 342
+          }
+        },
+        "discovery": {
+          "titles": 9,
+          "minTitlePx": 8.21063582920792,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 867,
+            "clientWidth": 342
+          }
+        },
+        "dkim": {
+          "titles": 4,
+          "minTitlePx": 9.290196175078865,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 795,
+            "clientWidth": 342
+          }
+        },
+        "dmarc": {
+          "titles": 10,
+          "minTitlePx": 8.537890625,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 838,
+            "clientWidth": 342
+          }
+        },
+        "dns": {
+          "titles": 11,
+          "minTitlePx": 8.197292258522726,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 809,
+            "clientWidth": 342
+          }
+        },
+        "domain-needs": {
+          "titles": 21,
+          "minTitlePx": 10.914401637726915,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 646,
+            "clientWidth": 342
+          }
+        },
+        "journey": {
+          "titles": 8,
+          "minTitlePx": 8.182980253067484,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 757,
+            "clientWidth": 342
+          }
+        },
+        "message": {
+          "titles": 15,
+          "minTitlePx": 10.951412671232877,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 729,
+            "clientWidth": 342
+          }
+        },
+        "migration": {
+          "titles": 10,
+          "minTitlePx": 8.438683712121213,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 764,
+            "clientWidth": 342
+          }
+        },
+        "mta-sts": {
+          "titles": 12,
+          "minTitlePx": 8.446606595092025,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 812,
+            "clientWidth": 342
+          }
+        },
+        "reading": {
+          "titles": 10,
+          "minTitlePx": 8.171457741477273,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 713,
+            "clientWidth": 342
+          }
+        },
+        "reputation": {
+          "titles": 10,
+          "minTitlePx": 8.543693773674242,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 847,
+            "clientWidth": 342
+          }
+        },
+        "restmail": {
+          "titles": 3,
+          "minTitlePx": 9.1953125,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 553,
+            "clientWidth": 342
+          }
+        },
+        "servers": {
+          "titles": 18,
+          "minTitlePx": 10.926941376879698,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 640,
+            "clientWidth": 342
+          }
+        },
+        "smtp": {
+          "titles": 3,
+          "minTitlePx": 9.153518676757812,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 484,
+            "clientWidth": 342
+          }
+        },
+        "spam": {
+          "titles": 15,
+          "minTitlePx": 8.188967803030302,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 793,
+            "clientWidth": 342
+          }
+        },
+        "standards": {
+          "titles": 13,
+          "minTitlePx": 8.540406013257575,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 823,
+            "clientWidth": 342
+          }
+        },
+        "starttls": {
+          "titles": 3,
+          "minTitlePx": 9.1953125,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 553,
+            "clientWidth": 342
+          }
+        },
+        "unsubscribe": {
+          "titles": 3,
+          "minTitlePx": 9.153438495222929,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 484,
+            "clientWidth": 342
+          }
+        },
+        "who-may-send": {
+          "titles": 11,
+          "minTitlePx": 8.177772845643938,
+          "pageOverflowPx": 0,
+          "box": {
+            "scrollWidth": 738,
+            "clientWidth": 342
+          }
+        }
+      }
+    },
+    "failures": [
+      "spf at laptop: smallest title is 8.178px, under the 9.5px floor (#824)",
+      "rest-mail at laptop: smallest title is 8.354px, under the 9.5px floor (#824)",
+      "open-relay at laptop: smallest title is 8.360px, under the 9.5px floor (#824)",
+      "spf at phone: smallest title is 8.189px, under the 9.5px floor (#824)",
+      "rest-mail at phone: smallest title is 8.278px, under the 9.5px floor (#824)",
+      "open-relay at phone: smallest title is 8.187px, under the 9.5px floor (#824)",
+      "open-relay-cost at phone: smallest title is 8.441px, under the 9.5px floor (#824)",
+      "arc at phone: smallest title is 9.290px, under the 9.5px floor (#824)",
+      "black-hole at phone: smallest title is 8.172px, under the 9.5px floor (#824)",
+      "bundle at phone: smallest title is 8.450px, under the 9.5px floor (#824)",
+      "discovery at phone: smallest title is 8.211px, under the 9.5px floor (#824)",
+      "dkim at phone: smallest title is 9.290px, under the 9.5px floor (#824)",
+      "dmarc at phone: smallest title is 8.538px, under the 9.5px floor (#824)",
+      "dns at phone: smallest title is 8.197px, under the 9.5px floor (#824)",
+      "journey at phone: smallest title is 8.183px, under the 9.5px floor (#824)",
+      "migration at phone: smallest title is 8.439px, under the 9.5px floor (#824)",
+      "mta-sts at phone: smallest title is 8.447px, under the 9.5px floor (#824)",
+      "reading at phone: smallest title is 8.171px, under the 9.5px floor (#824)",
+      "reputation at phone: smallest title is 8.544px, under the 9.5px floor (#824)",
+      "restmail at phone: smallest title is 9.195px, under the 9.5px floor (#824)",
+      "smtp at phone: smallest title is 9.154px, under the 9.5px floor (#824)",
+      "spam at phone: smallest title is 8.189px, under the 9.5px floor (#824)",
+      "standards at phone: smallest title is 8.540px, under the 9.5px floor (#824)",
+      "starttls at phone: smallest title is 9.195px, under the 9.5px floor (#824)",
+      "unsubscribe at phone: smallest title is 9.153px, under the 9.5px floor (#824)",
+      "who-may-send at phone: smallest title is 8.178px, under the 9.5px floor (#824)"
+    ]
+  },
+  "failures": [
+    "open-relay-cost: deployed page b33b306453c30300546be86098ccbc1a64c04b35c0bd116417c23e7fdf7b7977 is not the approved 537ef9e40b9e3942a2bcf1a4639862185da51b4439d242ffca405fbc572d01cf",
+    "open-relay: deployed page df84593ecabc7eb8c979d867dd84a642a2c4d349990f0bb673ecc261b1d4c3a6 is not the approved 57d7448b677f3cfc296e47730829055fba6d50a337e198ff8c05622da0b6ef1d",
+    "rest-mail: deployed page b3aabfaa82bead60a5cd438d3610e63a6ea9b9c131aec3b1531f3fc50932ebe2 is not the approved 9fe9a06e0d8c89392b3a0e8e256c1418dfd1b29f504e3b67e2aad5536e8d4f3b",
+    "spf: deployed page d3b7d58cf2dc53c54aa9767b39f47c009a656ac4f5df17e57d388b5ac226a64b is not the approved 966bee68f737d07e8fa873da4eaaa3d604a8654259ba32b18cde0c008bed2138",
+    "spf at laptop: smallest title is 8.178px, under the 9.5px floor (#824)",
+    "rest-mail at laptop: smallest title is 8.354px, under the 9.5px floor (#824)",
+    "open-relay at laptop: smallest title is 8.360px, under the 9.5px floor (#824)",
+    "spf at phone: smallest title is 8.189px, under the 9.5px floor (#824)",
+    "rest-mail at phone: smallest title is 8.278px, under the 9.5px floor (#824)",
+    "open-relay at phone: smallest title is 8.187px, under the 9.5px floor (#824)",
+    "open-relay-cost at phone: smallest title is 8.441px, under the 9.5px floor (#824)",
+    "arc at phone: smallest title is 9.290px, under the 9.5px floor (#824)",
+    "black-hole at phone: smallest title is 8.172px, under the 9.5px floor (#824)",
+    "bundle at phone: smallest title is 8.450px, under the 9.5px floor (#824)",
+    "discovery at phone: smallest title is 8.211px, under the 9.5px floor (#824)",
+    "dkim at phone: smallest title is 9.290px, under the 9.5px floor (#824)",
+    "dmarc at phone: smallest title is 8.538px, under the 9.5px floor (#824)",
+    "dns at phone: smallest title is 8.197px, under the 9.5px floor (#824)",
+    "journey at phone: smallest title is 8.183px, under the 9.5px floor (#824)",
+    "migration at phone: smallest title is 8.439px, under the 9.5px floor (#824)",
+    "mta-sts at phone: smallest title is 8.447px, under the 9.5px floor (#824)",
+    "reading at phone: smallest title is 8.171px, under the 9.5px floor (#824)",
+    "reputation at phone: smallest title is 8.544px, under the 9.5px floor (#824)",
+    "restmail at phone: smallest title is 9.195px, under the 9.5px floor (#824)",
+    "smtp at phone: smallest title is 9.154px, under the 9.5px floor (#824)",
+    "spam at phone: smallest title is 8.189px, under the 9.5px floor (#824)",
+    "standards at phone: smallest title is 8.540px, under the 9.5px floor (#824)",
+    "starttls at phone: smallest title is 9.195px, under the 9.5px floor (#824)",
+    "unsubscribe at phone: smallest title is 9.153px, under the 9.5px floor (#824)",
+    "who-may-send at phone: smallest title is 8.178px, under the 9.5px floor (#824)"
+  ],
+  "verdict": "FAIL"
+}

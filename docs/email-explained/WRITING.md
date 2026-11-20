@@ -158,11 +158,57 @@ example `open-relay.workflow.json`).
   light or dark theme, and is cropped to the drawing. It also records the hash
   of the source it was exported from, the Archify that drew it and the look, so
   CI fails when any of them changes and the image is not exported again.
+- **Approving a diagram.** `diagrams/approved.json` is the record of the diagrams
+  the owner's decisions on #822, #823 and #824 describe: the hash of each source,
+  of the page the website serves for it and of its static image. After you add
+  or change a diagram, look at it, then record it (`ARCHIFY` as above):
+
+  ```sh
+  node approved.mjs approve --archify "$ARCHIFY"
+  ```
+
+  CI runs `node approved.mjs verify --archify "$ARCHIFY"`, which fails naming any
+  diagram whose source, page or image is no longer the approved one.
+- **Is the live site showing them?** Only a running site can say. From
+  `scripts/email-explained/`:
+
+  ```sh
+  CHROME=<chrome or chromium> node approved.mjs deployed --measure --receipt deployed-diagrams.json
+  ```
+
+  It fetches every chapter and diagram document on rest-mail.com (a read-only
+  `GET`; `--site` names another), and fails on any diagram whose served page is
+  not the approved one, any frame that is not a same-origin `?embed=1` iframe,
+  any page without `frame-ancestors 'self'` or Safe's look, a node title under
+  9.5px at 1440px (the widest diagrams) or 390px (all), a page that scrolls
+  sideways, or a sideways swipe that does not scroll the diagram. The receipt
+  records the time, site, bundle revision, every hash compared and every
+  measurement. Without `--measure` it cannot pass.
 - **The interactive version** is what the website shows, built from the same
   source.
 - **A diagram's facts are the chapter's facts.** Every label that states
   something (a setting, a default, a reply code) is sourced in the chapter's
   text.
+
+## Publishing and walking the customer guides
+
+The five guides of Part 5 are for people who are not mail administrators, so two
+things have to be true of them that no link check shows: a customer can find them,
+and someone followed each one end to end on an installation.
+
+- **Are they published?** From `scripts/email-explained/`, `node published.mjs`
+  asks the newest bundle in the registry and rest-mail.com for all five, read-only.
+- **Were they followed?** `node walk.mjs plan` prints the installation to bring up
+  (`guidewalk`, a private topology the walker removes with one command), then every
+  step with the heading it follows and what to observe. `walk.mjs init`, `probe`
+  and `record` fill a receipt as the walk goes, with the time, the tool and guide
+  versions and what was seen. `walk.mjs check` says `WALKED` only when every step has
+  an observation made after the walk began, every guide has a deliberate failure
+  whose text matches what the guide promises, and nothing is left failed. A step that
+  stands in for the real thing is `substituted` with the reason. A run is not a pass
+  because it was started: an open step says `NOT WALKED` and is named.
+- **Out of date steps.** `walk-spec.json` follows the guides' headings, and a test
+  fails when a step names a heading the guide no longer has. Change both together.
 
 ## Tone
 
