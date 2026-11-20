@@ -44,9 +44,13 @@ def starts(name, results=None, cancelled=False, **event):
     return bool(evaluate(condition, values))
 
 
-def after_failed_lint(outputs):
+def after_failed_lint(outputs, runner=""):
+    """The context after a failed Lint, with what its runner gate answered, if anything."""
     values = context()
-    values["needs"] = {"preflight": {"result": "success"}, "lint": {"result": "failure", "outputs": outputs}}
+    values["needs"] = {
+        "preflight": {"result": "success"}, "lint": {"result": "failure", "outputs": outputs},
+        "test-imap-gate": {"result": "success" if runner else "failure", "outputs": {"runner": runner}},
+    }
     return values
 
 
@@ -79,7 +83,16 @@ class FailedLintHidesNoOtherFailure(unittest.TestCase):
             with self.subTest(event=event):
                 self.assertFalse(starts("test-imap", {"lint": "failure"}, **event))
 
+    def test_the_imap_tests_runner_gate_picks_whatever_lint_concluded(self):
+        # The gate has the job's condition, so a failed Lint does not leave it unasked.
+        for result in ("success", "failure", "cancelled"):
+            with self.subTest(lint=result):
+                self.assertTrue(starts("test-imap-gate", {"lint": result}))
+        self.assertFalse(starts("test-imap-gate", {"preflight": "failure"}))
+        self.assertFalse(starts("test-imap-gate", {"lint": "failure"}, cancelled=True))
+
     def test_a_lint_that_stopped_before_answering_runs_every_gate_on_the_fallback(self):
+        # And a runner gate that gave no answer leaves the job on ubuntu-24.04.
         values = after_failed_lint({})
         self.assertEqual(evaluate(field(JOBS["test-imap"], "runs-on", 4), values), FALLBACK)
         for name in IMAP_GATES:
@@ -87,7 +100,7 @@ class FailedLintHidesNoOtherFailure(unittest.TestCase):
                 self.assertTrue(evaluate(field(step(JOBS["test-imap"], name), "if", 8), values))
 
     def test_answers_lint_gave_before_failing_still_decide(self):
-        values = after_failed_lint({"go_imap_changed": "false", "runners": '{"test-imap": "%s"}' % POOL})
+        values = after_failed_lint({"go_imap_changed": "false"}, runner=POOL)
         self.assertEqual(evaluate(field(JOBS["test-imap"], "runs-on", 4), values), POOL)
         for name in IMAP_GATES:
             with self.subTest(step=name):
@@ -96,14 +109,18 @@ class FailedLintHidesNoOtherFailure(unittest.TestCase):
 
 class ParallelGates(unittest.TestCase):
     def test_independent_gates_do_not_wait_for_lint(self):
+        # Each waits for Preflight and its own runner gate, which waits for Preflight only.
         for name in ("constellation", "contract-tooling", "test", "test-api", "test-handlers", "test-contract"):
             with self.subTest(job=name):
-                self.assertEqual(field(JOBS[name], "needs", 4), "preflight")
-        self.assertIn("needs: [preflight, lint]", JOBS["test-imap"])
+                self.assertEqual(field(JOBS[name], "needs", 4), f"[preflight, {name}-gate]")
+                self.assertEqual(field(JOBS[f"{name}-gate"], "needs", 4), "preflight")
+        self.assertIn("needs: [preflight, lint, test-imap-gate]", JOBS["test-imap"])
 
     def test_report_waits_for_every_test_producer(self):
         needs = set(field(JOBS["test-report"], "needs", 4).strip("[]").split(", "))
-        self.assertEqual(needs, {"preflight", "test", "test-api", "test-handlers", "test-contract", "test-imap"})
+        producers = {"preflight", "test", "test-api", "test-handlers", "test-contract", "test-imap"}
+        self.assertEqual(needs, producers | {"test-report-gate"})
+        self.assertEqual(set(field(JOBS["test-report-gate"], "needs", 4).strip("[]").split(", ")), producers)
 
     def test_rest_package_selection_excludes_only_the_two_sharded_packages(self):
         script = shell_of(JOBS["test"], "Run unit tests with race detector")

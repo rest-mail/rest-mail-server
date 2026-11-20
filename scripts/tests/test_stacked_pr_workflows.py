@@ -112,6 +112,8 @@ class StackedPRWorkflows(unittest.TestCase):
     def assert_jobs(self, values, enabled):
         for name in self.full:
             for job_name, job in self.jobs[name].items():
+                # A runner gate starts exactly when the job it gates does.
+                job_name = job_name.removesuffix("-gate")
                 with self.subTest(workflow=name, job=job_name, values=values):
                     self.assertTrue(field(job, "if", 4), "Every PR job needs a rule before runner allocation")
                     # A dispatched run has no CI run for the proof union to join.
@@ -147,13 +149,14 @@ class StackedPRWorkflows(unittest.TestCase):
 
     def test_a_merge_queue_push_does_not_run_ci_again_on_the_commit_it_tested(self):
         queue = context(event="push", actor="github-merge-queue[bot]")
+        # A runner gate starts exactly when the job it gates does.
         for job_name, job in self.jobs["ci.yml"].items():
             with self.subTest(job=job_name):
-                self.assertEqual(bool(evaluate(field(job, "if", 4), queue)), job_name in {"preflight", "seed-caches", "ci"})
+                self.assertEqual(bool(evaluate(field(job, "if", 4), queue)), job_name.removesuffix("-gate") in {"preflight", "seed-caches", "ci"})
         # Only the queue's own push: anyone else's has not been through the queue.
         for job_name, job in self.jobs["ci.yml"].items():
             with self.subTest(job=job_name, actor="a person"):
-                self.assertEqual(bool(evaluate(field(job, "if", 4), context(event="push"))), job_name != "contract-diff")
+                self.assertEqual(bool(evaluate(field(job, "if", 4), context(event="push"))), job_name.removesuffix("-gate") != "contract-diff")
 
     def test_only_the_queues_own_push_skips_and_every_gate_still_reports(self):
         for values in (context(event="merge_group", actor="github-merge-queue[bot]"), context(actor="github-merge-queue[bot]")):
