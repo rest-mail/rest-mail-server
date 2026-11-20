@@ -198,6 +198,7 @@ func describeWithScope(registry *endpoint.Registry, version string, examples fs.
 	g.Register(withResponseLinks(registry.Endpoints())...)
 	g.Generate()["jsonSchemaDialect"] = "http://json-schema.org/draft-07/schema#"
 	withItemFormats(g.Generate())
+	withPathConstraints(g.Generate())
 	withRequestConstraints(g.Generate())
 	return g
 }

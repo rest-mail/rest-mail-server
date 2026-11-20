@@ -1,10 +1,12 @@
 package api
 
 import (
+	"reflect"
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 // itemFormats are the formats of list items in a request body, by operation and list property.
@@ -106,7 +108,6 @@ func withPathConstraints(doc map[string]interface{}) {
 }
 
 func withRequestConstraints(doc map[string]interface{}) {
-	withPathConstraints(doc)
 	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
 	components, _ := doc["components"].(map[string]interface{})
 	schemas, _ := components["schemas"].(map[string]map[string]interface{})
@@ -128,6 +129,9 @@ func withRequestConstraints(doc map[string]interface{}) {
 				items["minimum"] = 0
 				items["maximum"] = uint64(^uint(0))
 			case "updateMessage":
+				unchangedSince := properties["unchanged_since"].(map[string]interface{})
+				unchangedSince["maximum"] = int64(handlers.MaxModSequence)
+				unchangedSince["description"] = unchangedSinceDescription()
 				keywords := properties["keywords"].(map[string]interface{})
 				items := keywords["items"].(map[string]interface{})
 				items["minLength"] = 1
@@ -164,6 +168,12 @@ func withRequestConstraints(doc map[string]interface{}) {
 					map[string]interface{}{"type": from["type"], "enum": empty},
 					map[string]interface{}{"type": "string", "format": "idn-email"},
 				}
+			case "closeExportSession":
+				// A skipped folder name is 1 to 255 bytes, as the folder listing gives it.
+				skipped := properties["skipped_folders"].(map[string]interface{})
+				items := skipped["items"].(map[string]interface{})
+				items["minLength"] = 1
+				items["maxLength"] = 255
 			case "createFolder", "renameFolder":
 				// Both bodies are folderNameBody, so this states the rule once for the two.
 				properties["name"] = folderNameSchema(folderNameDescription)
@@ -172,4 +182,12 @@ func withRequestConstraints(doc map[string]interface{}) {
 			}
 		}
 	}
+}
+
+// unchangedSinceDescription is what UpdateMessageBody's unchanged_since tag says of it: the
+// generator writes no field's description. TestUnchangedSinceDescribesTheBigintMaximum holds
+// openapi.yaml to the same words.
+func unchangedSinceDescription() string {
+	field, _ := reflect.TypeOf(apitypes.UpdateMessageBody{}).FieldByName("UnchangedSince")
+	return field.Tag.Get("description") + "."
 }

@@ -25739,7 +25739,7 @@ paths:
       - Messages
   /api/v1/accounts/{id}/exports:
     post:
-      description: 'Records the start of an export of the account''s data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account''s mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else''s account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.'
+      description: 'Records the start of an export of the account''s data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. There is no other pairing: mail is not exported as vcard, nor contacts as maildir, and any other pairing fails the body schema, so it is refused 422 validation_failed before the handler runs. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account''s mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else''s account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.'
       operationId: createExportSession
       parameters:
       - example: 1
@@ -25953,7 +25953,7 @@ paths:
       - Accounts
   /api/v1/accounts/{id}/exports/{session}/close:
     post:
-      description: 'Records the end of the export as an account.export audit entry: completed or aborted, the rows and bytes written as the exporter reports them, and any folders it was asked to leave out. The summary is returned. Only the account that opened the export may close it, and only once; a session that does not exist, has closed or belongs to another opener is not found. Requires mail:export on the account.'
+      description: 'Records the end of the export as an account.export audit entry: completed or aborted, the rows and bytes written as the exporter reports them, and any folders it was asked to leave out. Each skipped folder is a name of 1 to 255 bytes, as the account''s folder listing gives it; an empty or longer name is refused 422 validation_failed naming skipped_folders, and the export stays open. The summary is returned. Only the account that opened the export may close it, and only once; a session that does not exist, has closed or belongs to another opener is not found. Requires mail:export on the account.'
       operationId: closeExportSession
       parameters:
       - example: 1
@@ -26417,6 +26417,8 @@ components:
           type: integer
         skipped_folders:
           items:
+            maxLength: 255
+            minLength: 1
             type: string
           maxItems: 1000
           type: array
@@ -28444,7 +28446,9 @@ components:
         unchanged_since:
           type: [integer, "null"]
           minimum: 1
-          description: A positive mod-sequence. Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. Zero and negative values are 400 invalid_mod_sequence.
+          maximum: 9223372036854775807
+          description: >-
+            A positive mod-sequence, at most 9223372036854775807: mod_seq is a 63-bit integer (RFC 7162 §3.1). Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. Zero and negative values are 400 invalid_mod_sequence; a value above 9223372036854775807 is 422 validation_failed.
 
     SendMessageRequest:
       type: object

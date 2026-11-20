@@ -283,6 +283,10 @@ func TestUpdateMessageUnchangedSinceCoverageWithVertrag(t *testing.T) {
 	if report.Summary.Total < 10 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("coverage did not execute without skips: %s", data)
 	}
+	// The maximum is mod_seq's bigint maximum (#2051). Vertrag 0.46.0's probe one past it
+	// wraps to -9223372036854775808, a value below the minimum, so the value 2^63 itself is
+	// proven by TestFuzzFindingUnchangedSinceAboveTheBigintMaximum instead.
+	const maxBoundary = `"unchanged_since" at maximum (9223372036854775807)`
 	for _, boundary := range []string{
 		`"unchanged_since" at minimum (1)`,
 		`"unchanged_since" at one below minimum (0)`,
@@ -300,5 +304,17 @@ func TestUpdateMessageUnchangedSinceCoverageWithVertrag(t *testing.T) {
 			t.Fatalf("boundary %s was sent %d times, want exactly once", boundary, found)
 		}
 	}
-	t.Logf("updateMessage examples and coverage: %d/%d passed, no skips", report.Summary.Passing, report.Summary.Total)
+	// The maximum is the one boundary the pinned tool cannot express: Vertrag's "maximum"
+	// probe wraps 2^63 to a negative value and its one-past probe with it (vertrag#141), so
+	// the boundary never reaches the server. That is a dependency on a release, not a hole
+	// in the server: the overflow itself is proven by
+	// TestFuzzFindingUnchangedSinceAboveTheBigintMaximum, and this asserts the boundary is
+	// ABSENT so the exception cannot outlive the fix. When the pin moves past vertrag#141
+	// this fails, and the boundary belongs in the list above.
+	for _, result := range report.Results {
+		if strings.HasPrefix(result.Name, "coverage:") && strings.HasSuffix(result.Name, maxBoundary) {
+			t.Fatalf("%s is now expressible by the pinned Vertrag: require it instead of the exception (#2051)", maxBoundary)
+		}
+	}
+	t.Logf("updateMessage examples and coverage: %d/%d passed, no skips; the maximum boundary waits on vertrag#141", report.Summary.Passing, report.Summary.Total)
 }
