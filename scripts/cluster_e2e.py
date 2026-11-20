@@ -88,7 +88,12 @@ Each step tests REST Mail's wiring, not the components' own behaviour:
                 does not name and logged the failure, nothing went over SMTP to it.
 
 Every step prints one receipt line: the commit, the images the pods run, the
-step and its result. Receipts also go to <report-dir>/receipts.txt.
+digest of each image as the kubelet reports it (the container status's
+imageID), the step and its result, the run it belongs to and when it finished.
+Receipts also go to <report-dir>/receipts.txt, appended, so a run is told
+from earlier ones by its run= token. scripts/release_gate.py reads them: it
+refuses a promotion unless the newest run passed every step, on the release's
+commit, recently, with exactly the release's image digests.
 
 The bootstrap admin's password is spent by the first run (the admin must choose
 its own), so a second run against the same install fails at admin-sign-in: run
@@ -279,14 +284,55 @@ def git_head() -> str:
         return "unknown"
 
 
-def receipt(commit: str, images: str, step: str, result: str, detail: str = "") -> str:
-    """One receipt line. Values never contain spaces, so the line splits on them."""
+def receipt(commit: str, images: str, step: str, result: str, detail: str = "",
+            digests: str = "unknown", run: str = "-", at: str = "-") -> str:
+    """One receipt line. Values never contain spaces, so the line splits on them.
+
+    detail comes last: it is free text, cleaned to one token, and the only
+    field that can be long.
+    """
     def clean(value: str) -> str:
         return re.sub(r"\s+", "_", value.strip()) or "-"
-    line = f"cluster-e2e receipt commit={clean(commit)} images={clean(images)} step={clean(step)} result={clean(result)}"
+    line = (f"cluster-e2e receipt commit={clean(commit)} images={clean(images)} digests={clean(digests)} "
+            f"step={clean(step)} result={clean(result)} run={clean(run)} at={clean(at)}")
     if detail:
         line += f" detail={clean(detail)}"
     return line
+
+
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def image_name(ref: str) -> str:
+    """The component an image reference names: its repository's last segment."""
+    return ref.strip().split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
+
+
+def digest_summary(statuses: list[tuple[str, str]]) -> str:
+    """The pods' images as one token: name@sha256:<hex> per (image, imageID), sorted, unique.
+
+    The digest is the one the kubelet reports in the container status's
+    imageID, the image the container actually runs. A container whose imageID
+    carries no sha256 digest is name@unknown, so a reader never takes a
+    missing digest for a match. Two pods running one name at two digests give
+    two entries; scripts/release_gate.py refuses that.
+    """
+    entries = set()
+    for image, image_id in statuses:
+        if not image.strip():
+            continue
+        found = DIGEST.search(image_id or "")
+        entries.add(f"{image_name(image)}@{found.group(0) if found else 'unknown'}")
+    return ",".join(sorted(entries)) or "unknown"
+
+
+def new_run_id() -> str:
+    """One id per invocation, so receipts.txt, which is appended to, tells runs apart."""
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(4)
+
+
+def utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def image_summary(images: list[str]) -> str:
@@ -331,6 +377,19 @@ class Cluster:
 
     def images(self) -> list[str]:
         return self.run("get", "pods", "-o", "jsonpath={.items[*].spec.containers[*].image}").split()
+
+    def image_ids(self) -> list[tuple[str, str]]:
+        """(image, imageID) for every container and init container the pods ran."""
+        row = '{.image}{"\\t"}{.imageID}{"\\n"}'
+        out = self.run("get", "pods", "-o",
+                       "jsonpath={range .items[*].status.containerStatuses[*]}" + row + "{end}"
+                       "{range .items[*].status.initContainerStatuses[*]}" + row + "{end}")
+        pairs = []
+        for line in out.splitlines():
+            image, _, image_id = line.partition("\t")
+            if image.strip():
+                pairs.append((image.strip(), image_id.strip()))
+        return pairs
 
     def admin_address(self) -> str:
         return self.run("get", f"deployment/{self.release}-api", "-o",
@@ -1288,6 +1347,12 @@ def main(argv: list[str] | None = None) -> int:
     except StepFailed as error:
         print(f"::error::{error}", file=sys.stderr)
         images = "unknown"
+    try:
+        digests = digest_summary(cluster.image_ids())
+    except StepFailed as error:
+        print(f"::error::{error}", file=sys.stderr)
+        digests = "unknown"
+    run = new_run_id()
     selected = args.only or list(STEPS)
     failed = False
     with open(report_dir / "receipts.txt", "a") as receipts:
@@ -1296,16 +1361,16 @@ def main(argv: list[str] | None = None) -> int:
                 if step not in selected:
                     continue
                 if failed:
-                    line = receipt(args.commit, images, step, "skipped", "an earlier step failed")
+                    result, detail = "skipped", "an earlier step failed"
                 else:
                     try:
-                        detail = getattr(stage, step.replace("-", "_"))()
-                        line = receipt(args.commit, images, step, "pass", detail)
+                        result, detail = "pass", getattr(stage, step.replace("-", "_"))()
                     except (StepFailed, OSError, smtplib.SMTPException, imaplib.IMAP4.error, poplib.error_proto,
                             KeyError, ImportError) as error:
                         failed = True
-                        line = receipt(args.commit, images, step, "fail", str(error))
+                        result, detail = "fail", str(error)
                         print(f"::error::{step}: {error}", file=sys.stderr)
+                line = receipt(args.commit, images, step, result, detail, digests=digests, run=run, at=utc_now())
                 print(line, flush=True)
                 receipts.write(line + "\n")
         finally:
