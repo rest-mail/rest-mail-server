@@ -190,6 +190,26 @@ example `open-relay.workflow.json`).
   something (a setting, a default, a reply code) is sourced in the chapter's
   text.
 
+## Publishing and walking the customer guides
+
+The five guides of Part 5 are for people who are not mail administrators, so two
+things have to be true of them that no link check shows: a customer can find them,
+and someone followed each one end to end on an installation.
+
+- **Are they published?** From `scripts/email-explained/`, `node published.mjs`
+  asks the newest bundle in the registry and rest-mail.com for all five, read-only.
+- **Were they followed?** `node walk.mjs plan` prints the installation to bring up
+  (`guidewalk`, a private topology the walker removes with one command), then every
+  step with the heading it follows and what to observe. `walk.mjs init`, `probe`
+  and `record` fill a receipt as the walk goes, with the time, the tool and guide
+  versions and what was seen. `walk.mjs check` says `WALKED` only when every step has
+  an observation made after the walk began, every guide has a deliberate failure
+  whose text matches what the guide promises, and nothing is left failed. A step that
+  stands in for the real thing is `substituted` with the reason. A run is not a pass
+  because it was started: an open step says `NOT WALKED` and is named.
+- **Out of date steps.** `walk-spec.json` follows the guides' headings, and a test
+  fails when a step names a heading the guide no longer has. Change both together.
+
 ## Tone
 
 - **Respectful, always.** Other projects are compared, never attacked. Postfix,
