@@ -1747,6 +1747,11 @@ jobs:
       - name: Check the guide
         run: node check.mjs --archify "$ARCHIFY"
 
+      # Every diagram is the one approved (diagrams/approved.json): its source,
+      # the page the website serves for it, and its static image (#2120 AC01).
+      - name: Check the diagrams are the approved ones
+        run: node approved.mjs verify --archify "$ARCHIFY"
+
       - name: Build the bundle the website renders
         run: node bundle.mjs --archify "$ARCHIFY" --out "$RUNNER_TEMP/email-explained"
 

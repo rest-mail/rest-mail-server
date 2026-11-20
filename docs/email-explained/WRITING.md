@@ -158,6 +158,32 @@ example `open-relay.workflow.json`).
   light or dark theme, and is cropped to the drawing. It also records the hash
   of the source it was exported from, the Archify that drew it and the look, so
   CI fails when any of them changes and the image is not exported again.
+- **Approving a diagram.** `diagrams/approved.json` is the record of the diagrams
+  the owner's decisions on #822, #823 and #824 describe: the hash of each source,
+  of the page the website serves for it and of its static image. After you add
+  or change a diagram, look at it, then record it (`ARCHIFY` as above):
+
+  ```sh
+  node approved.mjs approve --archify "$ARCHIFY"
+  ```
+
+  CI runs `node approved.mjs verify --archify "$ARCHIFY"`, which fails naming any
+  diagram whose source, page or image is no longer the approved one.
+- **Is the live site showing them?** Only a running site can say. From
+  `scripts/email-explained/`:
+
+  ```sh
+  CHROME=<chrome or chromium> node approved.mjs deployed --measure --receipt deployed-diagrams.json
+  ```
+
+  It fetches every chapter and diagram document on rest-mail.com (a read-only
+  `GET`; `--site` names another), and fails on any diagram whose served page is
+  not the approved one, any frame that is not a same-origin `?embed=1` iframe,
+  any page without `frame-ancestors 'self'` or Safe's look, a node title under
+  9.5px at 1440px (the widest diagrams) or 390px (all), a page that scrolls
+  sideways, or a sideways swipe that does not scroll the diagram. The receipt
+  records the time, site, bundle revision, every hash compared and every
+  measurement. Without `--measure` it cannot pass.
 - **The interactive version** is what the website shows, built from the same
   source.
 - **A diagram's facts are the chapter's facts.** Every label that states

@@ -1,0 +1,202 @@
+{
+  "format": 1,
+  "approved_on": "2026-11-20",
+  "archify": "3.2.0 208acba8d412335185b2056fedf54b3405df43fb",
+  "look_sha256": "2bf1255e6e2f6538664e439cee3a906d6a62723d1727ef2456d51fc2d715d615",
+  "basis": [
+    "#822 (2026-10-25, owner): diagrams are same-origin iframes of Archify's own page with ?embed=1",
+    "#823 (2026-10-25, owner): one look, Safe's paper, ink and cobalt, in the page and the static image",
+    "#824 (2026-10-25, owner): the widest diagrams are redrawn narrower and phones scroll them sideways"
+  ],
+  "diagrams": {
+    "arc": {
+      "source": "arc.sequence.json",
+      "source_sha256": "242d5c4c5ccdf7e2f1602f48b5684810773d902e55f85fa45a700052061e4810",
+      "page_sha256": "339897cb0f688a473c8c5a7a74e132143834d8d7d8bee3deca83b4f375aaa9b5",
+      "image_sha256": "3175a3dd57d1e5312d5b251953dc377aed5fb25a86468c5332f2687d73db7730",
+      "canvas_width": 888
+    },
+    "black-hole": {
+      "source": "black-hole.workflow.json",
+      "source_sha256": "865de3850eeebc6b8300354ffa0696ffcb0b2dce05cfa7f2f58baca82db99cf2",
+      "page_sha256": "8c6aaff8b87740b4e3560a15ff3ca3be0b23207ae203c7700d2aea71213d5160",
+      "image_sha256": "fbc50cfd33feb520f9a0cabae491886f9c462e6685150a5b945d41bc505f30a6",
+      "canvas_width": 838
+    },
+    "bundle": {
+      "source": "bundle.workflow.json",
+      "source_sha256": "cfc3f15f98506b6313aedf24617e0bda8779e3de008f582ccd362d325c5ef861",
+      "page_sha256": "dab5bf5cf4078d8973a104be0badbd8e0373f19a425acd67708806865bda7563",
+      "image_sha256": "cbd0e4282781f1fb706ea76e2c3902c8ef6cdebc51e28a09e69c517094c3e9d5",
+      "canvas_width": 955
+    },
+    "discovery": {
+      "source": "discovery.workflow.json",
+      "source_sha256": "601915895a1a944a87093cd87d37ec31f38d4837c910685008c073f77c7911e8",
+      "page_sha256": "b733f93466a382c0eba8f399ebfae7c6a310f40729fae13cdc0ac163fbafeccc",
+      "image_sha256": "840e90672bd384ad2d2e09507ae7f06f66ac98251f7ac6d079c7ace43bf2c822",
+      "canvas_width": 1003
+    },
+    "dkim": {
+      "source": "dkim.sequence.json",
+      "source_sha256": "5b777d3e6131faafa78a3feceacd52b3223ac9227144e04b8eab1df68b3691d7",
+      "page_sha256": "6f5fe1d3b6e5abf7894059df3c8ed357c66666599d3af8c444cfcdeb120ea76b",
+      "image_sha256": "a43ca929299dcffc3068785494f0cd4f83321d79387a4478217e8d5b3562e34a",
+      "canvas_width": 888
+    },
+    "dmarc": {
+      "source": "dmarc.workflow.json",
+      "source_sha256": "170e2460ebf617c5f7b5d61389581cdc321fff697b69e7fa0be2391bc990bdb3",
+      "page_sha256": "c5fa3ae6f82fb24905794c2ae2a8e6b097be3659980695a58d32658c48990ead",
+      "image_sha256": "78020c90c73f24af920bf60095798f49341727f07dca3d0c69114e65d15b15c1",
+      "canvas_width": 970
+    },
+    "dns": {
+      "source": "dns.workflow.json",
+      "source_sha256": "3f0dce91e3af9ad0f12937acf97f42d2b9e160e710b70f124e729870a8449532",
+      "page_sha256": "014e1fc965ee99ac1095f528da2d088f0b01ecfb16d48460faf085c55f9a08d4",
+      "image_sha256": "7ee6ba6b1c32a92897738413f291d39da460a6783786d3e9966933fc84f420d0",
+      "canvas_width": 936
+    },
+    "domain-needs": {
+      "source": "domain-needs.tree.json",
+      "source_sha256": "af5cc1b478c8188388cc833be8fa575d15310619f66e9b02101dc366af8e59f8",
+      "page_sha256": "898f20f800e8530d59771ba7cab1c711136f04b7c7b304f683601a3ececc818c",
+      "image_sha256": "7c3e9af2ceb57c2add2e4529746ccfd2124098a3d033f9f96f468c2ab72bec7c",
+      "canvas_width": 722
+    },
+    "journey": {
+      "source": "journey.workflow.json",
+      "source_sha256": "1934b927f842c15482fb0387c86ed181669a36c7bf0d80ebc4d5dd890b3bc8b8",
+      "page_sha256": "468a349ba35adce85b912d6ae89fc26f22f76b50de90cc5df1d675a095b5c105",
+      "image_sha256": "92c95027299b4768d37bfe7368d6027d77b8411e7d378189992e66d0096e5431",
+      "canvas_width": 876
+    },
+    "message": {
+      "source": "message.tree.json",
+      "source_sha256": "bb4a3f940d99ca0bf14ef477127c684f707c14e2f193b565c778873d1e903c62",
+      "page_sha256": "8a9667eb755a4aebb3fbb87a7ca2b8842604a3791fc959737506648d3280cf72",
+      "image_sha256": "9915616042fb9022fc7f9c14a761d102b0d35e96ec5a2fc0fd054638070912da",
+      "canvas_width": 817
+    },
+    "migration": {
+      "source": "migration.workflow.json",
+      "source_sha256": "a6d5eecb235e3801c85986bca94fdca132ce29823dca90bd0eb75191bb54ea0f",
+      "page_sha256": "9847577b7b82d00cf7c9978504deb2022559f8d6a95a478b984f4ac28eb9be3b",
+      "image_sha256": "f99adb16c0cb9088705dd774e2277ea31513a43b638685e19233526fc34b4e42",
+      "canvas_width": 884
+    },
+    "mta-sts": {
+      "source": "mta-sts.workflow.json",
+      "source_sha256": "c91983d750e66092d5735f232db21d40c7371f4becae2a83f4f9515c44352361",
+      "page_sha256": "8cb26ec9d0ddf6fb0d70456e6c44987553d3ddce831dbc320e10c6c64714ca79",
+      "image_sha256": "0a74695e65e0b9460970f5662f3bd72f7660de18f5da07b4d6cef71c77c3ff07",
+      "canvas_width": 940
+    },
+    "open-relay-cost": {
+      "source": "open-relay-cost.workflow.json",
+      "source_sha256": "532e456e9cfeef3e0fab4e1bd011a2391420e0169cee26b454642c17e6c28d41",
+      "page_sha256": "537ef9e40b9e3942a2bcf1a4639862185da51b4439d242ffca405fbc572d01cf",
+      "image_sha256": "4f37ef014de27df63f93e879d9d9f7c71d55ec148a1cae21b3e1dd1e6d5cbf30",
+      "canvas_width": 866
+    },
+    "open-relay": {
+      "source": "open-relay.workflow.json",
+      "source_sha256": "36b357f10ef84167f82db75721b664893e2a9e2b65b756a16e0f29e82ace6814",
+      "page_sha256": "57d7448b677f3cfc296e47730829055fba6d50a337e198ff8c05622da0b6ef1d",
+      "image_sha256": "3ec863be34678b9b4bc42b2d6658a8090a9b45d4480f348f8074830cec4e198a",
+      "canvas_width": 890
+    },
+    "queue": {
+      "source": "queue.lifecycle.json",
+      "source_sha256": "14866fd8f6a414d84beb06cc938639042ca7707a3c40c883d34d9a1aaed46786",
+      "page_sha256": "13ca61295dbf5f6d00f2c2514c2a5e5c881aaf28c35bda6c5217d01256e9a6b5",
+      "image_sha256": "d6ba24d33244f1d3158141eb1638d11ffd099e68b68b6c8eddb9db860ca6b234",
+      "canvas_width": 669
+    },
+    "reading": {
+      "source": "reading.workflow.json",
+      "source_sha256": "00683a6d9f95c04bd85a456a1caf8b1e15c263cbf8a1bfe841b7b5e7586b9a92",
+      "page_sha256": "d71c8b4416f01bb410d0558c09993d4ee29ad7c273a7bbccb231c0d0c4600fbd",
+      "image_sha256": "748733456666d894c976f1ab9be14f3561c2c12f039a8a2186f027c1ac970003",
+      "canvas_width": 825
+    },
+    "reputation": {
+      "source": "reputation.workflow.json",
+      "source_sha256": "a128a6a18d58b23588410cb794fb53a1ec471d4573bb81fd9157f36e4a0fb712",
+      "page_sha256": "23fc484adf3f626f55e57fa99415322fdd0c6a44e263dd65abe6b5f0a632f470",
+      "image_sha256": "1c75e08ee907f01fecacfc66d2975e0bc5498388754d0c37cda5e1b4d1152f2e",
+      "canvas_width": 980
+    },
+    "rest-mail": {
+      "source": "rest-mail.architecture.json",
+      "source_sha256": "9441bbbb6c77df1450ba54c9f48e632fcb54d2c5bb90766be60ce8a5c1a4774e",
+      "page_sha256": "9fe9a06e0d8c89392b3a0e8e256c1418dfd1b29f504e3b67e2aad5536e8d4f3b",
+      "image_sha256": "131848b4c6dc4adae94bd37578e50e64b4464de1c37555386bfb30a1be440054",
+      "canvas_width": 858
+    },
+    "restmail": {
+      "source": "restmail.sequence.json",
+      "source_sha256": "a89e1ad636e888349c192bcbe9cf5e1d38070496d1a43031c266ba2d0f73c6ad",
+      "page_sha256": "5d9e3b08485ffedaee204269628a1a86846159d7eb67907c47f4e5e3e3cc0f75",
+      "image_sha256": "9316c3e683cb945d72d5f84f8a3043074f5fa65490d86da1e0c85f5653532a2c",
+      "canvas_width": 608
+    },
+    "servers": {
+      "source": "servers.tree.json",
+      "source_sha256": "6790b1d28d1ae65bfe0f7eb6e882d38102b7a1b6ab24d98b28ccb52c433bb25b",
+      "page_sha256": "5d9a5c3ff897c04f21c872debc859dadf33c67c86725086c66bdf0f4a00ad33c",
+      "image_sha256": "1b5c3f1e3983ab874899f0211f00a47f2025deddaad35b03cd0af3ab4ecc5fea",
+      "canvas_width": 713
+    },
+    "smtp": {
+      "source": "smtp.sequence.json",
+      "source_sha256": "0f099a0ea640fa49e43f69001934b3642f1c6ef028ecd7cd2200d6e92ec23260",
+      "page_sha256": "56fac3a74b3380346b5799dd8428ee61d466bb85952ec9eb8d49d126b5c7e2f5",
+      "image_sha256": "8b7d1ff1cc6cfc23292882e0f9a05e2d14c839ac4b6c3621d3f56261977c3862",
+      "canvas_width": 529
+    },
+    "spam": {
+      "source": "spam.workflow.json",
+      "source_sha256": "4aee4328347c050baef774fdbb1862987b2cab892cd901fb00cd703c8f99767f",
+      "page_sha256": "3f004d61e5bc96d10e69cd324933834f07a577d595b2f27f8b16b88d892a18a1",
+      "image_sha256": "0430e44bc96be333595f6f3201dd6b273590483c3aedc951f834003032855bfe",
+      "canvas_width": 918
+    },
+    "spf": {
+      "source": "spf.workflow.json",
+      "source_sha256": "9519f2bd7de0bb327c14f47889dc4faf95c60685f941888aaf35f5dff4e748db",
+      "page_sha256": "966bee68f737d07e8fa873da4eaaa3d604a8654259ba32b18cde0c008bed2138",
+      "image_sha256": "720ce2379339e0c77120b0e152d4cb9e346ef59667955c76ff7f6d373bc8dafe",
+      "canvas_width": 874
+    },
+    "standards": {
+      "source": "standards.workflow.json",
+      "source_sha256": "a7bb7117f5c0cb440303bb10ef4f30d945bd39961cd25b7516cb46313ffa8ded",
+      "page_sha256": "cf5d17132483a146337929d6828ba5f18e8abf2b5c2b9ca71f5adcd27c8770c1",
+      "image_sha256": "08308e949739df45211caf268c782ab4df9b0e94492b9eab8a733a70a03b4465",
+      "canvas_width": 952
+    },
+    "starttls": {
+      "source": "starttls.sequence.json",
+      "source_sha256": "535140fb7f594a65595048ea6cfd206836b8eaa62fe59f66a6ddf4ccac393c14",
+      "page_sha256": "5b0280a13ccb6fe0fb85860df3d2d9e1c08b746d65afe0cd272b5e3baae643bc",
+      "image_sha256": "b8c234c74c8e2bf5dd464499616bc26916dfe75d7ff3c3c34e144797f75574a7",
+      "canvas_width": 608
+    },
+    "unsubscribe": {
+      "source": "unsubscribe.sequence.json",
+      "source_sha256": "14e2d89342a7df40814f1832c699363994f036c26ae753ba8905f618f3d041a1",
+      "page_sha256": "6ca5759d8ea0ac289bd645d1eedf712c72fe3218ef4c1e81270063c8b128ca02",
+      "image_sha256": "70fdea9bc09590a58182d8f02b8b019c2fbef164f501c850bc81c5d452b898e3",
+      "canvas_width": 529
+    },
+    "who-may-send": {
+      "source": "who-may-send.workflow.json",
+      "source_sha256": "a9a2a514f4507d8999ec73fb1eac1340506e30527204d25784049a50a002856c",
+      "page_sha256": "1be6d37c72173f0f2e1a81a2d0f0acfe52688b8753ab6f8df85c36dabf16181e",
+      "image_sha256": "efa7d8e2a8f86a423393f722daf6da6f26922d56f07b7a0ac64eb21483b549c7",
+      "canvas_width": 854
+    }
+  }
+}

@@ -36,7 +36,7 @@ that moves the count. The rest need harnesses and decisions first.
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 deployed diagrams match approved artifacts | H | diagram sources are repo work; "actual deployed" needs one install to render them |
+| AC01 deployed diagrams match approved artifacts | H | **Repo half proven; live half is one command, and it is red today.** `diagrams/approved.json` records each diagram's source, served page and image hashes; the `AC01:` tests (`scripts/email-explained/approved.test.mjs`, run by `npm test`) and `node approved.mjs verify` (the guide job) fail a drifted diagram by name. What only the live site confirms: `CHROME=<chrome> node approved.mjs deployed --measure --receipt deployed-diagrams.json`. Read-only run on 2026-11-20 against rest-mail.com: 23 of 27 pages are the approved ones; `spf`, `rest-mail`, `open-relay`, `open-relay-cost` are the pre-#1495 pages, and titles measure 8.2-8.6px against the 9.5px floor. The bucket stays H until a run passes. |
 | AC02 five guides published, links resolve, each followed end to end | R + H | publishing and the link check are repo work; "followed end to end" needs the disposable install |
 | AC02b outside-link check fails on the four named cases | **P** | #2117/#2120 car: publish + scheduled, never the PR gate |
 | AC03 every retained finding has a verified tracker home | R | mechanical inventory against the tracker |
