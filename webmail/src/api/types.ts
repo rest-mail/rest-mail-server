@@ -4680,6 +4680,26 @@ export interface components {
             data: "mail" | "contacts" | "calendar" | "settings";
             /** @enum {string} */
             format: "maildir" | "vcard" | "icalendar" | "json";
+        } | {
+            /** @enum {unknown} */
+            data?: "mail";
+            /** @enum {unknown} */
+            format?: "maildir";
+        } | {
+            /** @enum {unknown} */
+            data?: "contacts";
+            /** @enum {unknown} */
+            format?: "vcard";
+        } | {
+            /** @enum {unknown} */
+            data?: "calendar";
+            /** @enum {unknown} */
+            format?: "icalendar";
+        } | {
+            /** @enum {unknown} */
+            data?: "settings";
+            /** @enum {unknown} */
+            format?: "json";
         };
         OpenImportSessionBody: {
             client_name?: string;

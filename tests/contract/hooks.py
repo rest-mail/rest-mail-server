@@ -6515,25 +6515,37 @@ def on_the_admins_export_account(transaction):
 
 @hooks.before("createExportSession")
 def open_an_export_on_the_admins_account(transaction):
-    # The documented open (201) opens an export of the run's own account; the
-    # after hook closes it as aborted, so no session is left for the sweeper.
+    # Each documented open (201), one for each kind of data in its own format,
+    # opens an export of the run's own account; the after hook closes it as
+    # aborted, so no session is left for the sweeper.
     if " > 201 > " in transaction.get("name", ""):
         on_the_admins_export_account(transaction)
 
 
 @hooks.after("createExportSession")
 def close_the_opened_export(transaction):
+    # An export opened with the fixture admin's session is the fixture admin's
+    # to close, so its close must answer that export: the same data and format,
+    # ended as aborted. One opened by another principal is not the fixture
+    # admin's, and its close is not found.
     data = hooks.get_json(transaction, "real").get("data") or {}
     session, account = data.get("id"), data.get("account_id")
     if not isinstance(session, str) or type(account) is not int or account < 1:
         return
-    fixture_call(
+    own = with_the_fixture_admins_session(transaction)
+    closed = fixture_call(
         transaction,
         "POST",
         f"/api/v1/accounts/{account:d}/exports/{session}/close",
         {"result": "aborted", "rows": 0, "bytes": 0},
         expect=(404,),
     )
+    if not own:
+        return
+    answered = {key: (closed or {}).get(key) for key in ("id", "data", "format", "result")}
+    wanted = {"id": session, "data": data.get("data"), "format": data.get("format"), "result": "aborted"}
+    if answered != wanted:
+        transaction["fail"] = f"closing the export it opened answered {answered}, not {wanted}"
 
 
 @hooks.before("closeExportSession")

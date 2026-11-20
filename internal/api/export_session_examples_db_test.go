@@ -28,8 +28,9 @@ var exportSessionRoutes = map[string]string{
 // PostgreSQL as the account itself. A fault is a real one in the pair's own
 // scratch database: the export_sessions table gone for store_failure, the
 // mailboxes table out of reach for unavailable. The answers whose ids and times
-// the server makes (opened, closed) are compared with those taken from the
-// example.
+// the server makes (each opened, closed) are compared with those taken from the
+// example, and each export opened is closed again, answering its own data and
+// format.
 func TestExportSessionExamples(t *testing.T) {
 	useRealGrants(t)
 	pairs, err := examplepairs.Read()
@@ -108,7 +109,7 @@ func TestExportSessionExamples(t *testing.T) {
 				if !strings.HasPrefix(rr.Header().Get("Content-Type"), pair.Response.MediaType) {
 					t.Fatalf("media type %q, want %q", rr.Header().Get("Content-Type"), pair.Response.MediaType)
 				}
-				if name != "opened" && name != "closed" {
+				if name != "closed" && !strings.HasPrefix(name, "opened") {
 					assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
 					return
 				}
@@ -134,7 +135,28 @@ func TestExportSessionExamples(t *testing.T) {
 				if !reflect.DeepEqual(got.Data, want.Data) {
 					t.Fatalf("got %s, want %s", rr.Body, pair.Response.Body)
 				}
+				if op == "createExportSession" {
+					closed := f.do(http.MethodPost, "/api/v1/accounts/"+id+"/exports/"+opened(t, rr)+"/close", f.session,
+						`{"result":"aborted","rows":0,"bytes":0}`)
+					var summary struct{ Data map[string]any }
+					decodeInto(t, closed, &summary)
+					if closed.Code != http.StatusOK || summary.Data["data"] != want.Data["data"] ||
+						summary.Data["format"] != want.Data["format"] || summary.Data["result"] != "aborted" {
+						t.Fatalf("close: %d %s", closed.Code, closed.Body)
+					}
+				}
 			})
 		}
 	}
+}
+
+// opened is the id of the export rr opened.
+func opened(t *testing.T, rr *httptest.ResponseRecorder) string {
+	t.Helper()
+	var answer struct{ Data struct{ ID string } }
+	decodeInto(t, rr, &answer)
+	if answer.Data.ID == "" {
+		t.Fatalf("no export id: %s", rr.Body)
+	}
+	return answer.Data.ID
 }

@@ -26493,6 +26493,35 @@ components:
       type: object
     OpenExportSessionBody:
       additionalProperties: false
+      anyOf:
+      - properties:
+          data:
+            enum:
+            - mail
+          format:
+            enum:
+            - maildir
+      - properties:
+          data:
+            enum:
+            - contacts
+          format:
+            enum:
+            - vcard
+      - properties:
+          data:
+            enum:
+            - calendar
+          format:
+            enum:
+            - icalendar
+      - properties:
+          data:
+            enum:
+            - settings
+          format:
+            enum:
+            - json
       properties:
         data:
           enum:

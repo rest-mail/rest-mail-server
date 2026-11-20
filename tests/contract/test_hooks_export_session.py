@@ -138,19 +138,73 @@ class ExportSessionFixture(unittest.TestCase):
                 self.assertEqual(t["fullPath"], path)
         self.assertEqual(self.requests, [])
 
-    def test_the_documented_open_is_on_the_runs_account_and_is_closed_after(self):
-        t = self.transaction(OPEN + "201 > application/json", "/api/v1/accounts/12/exports", self.module.ADMIN)
-        self.module.open_an_export_on_the_admins_account(t)
-        self.assertEqual(t["fullPath"], "/api/v1/accounts/4/exports")
-        t["real"]["body"] = json.dumps({"data": {"id": "cd" * 16, "account_id": 4}})
-        self.module.close_the_opened_export(t)
+    def closing(self, summary):
+        """urlopen answering a close with summary, recording the request."""
+
+        def answer(request, timeout):
+            self.requests.append(request)
+            return Reply(json.dumps({"data": summary}).encode())
+
+        return patch.object(self.module.urllib.request, "urlopen", answer)
+
+    def test_each_documented_open_is_on_the_runs_account_and_is_closed_after(self):
+        for data, format in (("mail", "maildir"), ("contacts", "vcard"), ("calendar", "icalendar"), ("settings", "json")):
+            with self.subTest(data=data):
+                self.requests.clear()
+                t = self.transaction(OPEN + "201 > application/json", "/api/v1/accounts/12/exports", self.module.ADMIN)
+                self.module.open_an_export_on_the_admins_account(t)
+                self.assertEqual(t["fullPath"], "/api/v1/accounts/4/exports")
+                t["real"]["body"] = json.dumps(
+                    {"data": {"id": "cd" * 16, "account_id": 4, "data": data, "format": format}}
+                )
+                summary = {"id": "cd" * 16, "account_id": 4, "data": data, "format": format, "result": "aborted"}
+                with self.closing(summary):
+                    self.module.close_the_opened_export(t)
+                self.assertNotIn("fail", t)
+                self.assertEqual(len(self.requests), 1)
+                self.assertEqual(self.requests[0].get_method(), "POST")
+                self.assertEqual(
+                    self.requests[0].full_url,
+                    "http://server.test:8080/api/v1/accounts/4/exports/" + "cd" * 16 + "/close",
+                )
+                self.assertEqual(json.loads(self.requests[0].data), {"result": "aborted", "rows": 0, "bytes": 0})
+
+    def test_a_close_that_does_not_answer_the_opened_export_fails_the_open(self):
+        opened = {"id": "cd" * 16, "account_id": 4, "data": "contacts", "format": "vcard"}
+        for summary in (
+            dict(opened, data="mail", format="maildir", result="aborted"),
+            dict(opened, result="completed"),
+            dict(opened, id="ef" * 16, result="aborted"),
+            {},
+        ):
+            with self.subTest(summary=summary):
+                t = self.transaction(OPEN + "201 > application/json", "/api/v1/accounts/4/exports", self.module.ADMIN)
+                t["real"]["body"] = json.dumps({"data": opened})
+                with self.closing(summary):
+                    self.module.close_the_opened_export(t)
+                self.assertIn("closing the export it opened answered", t["fail"])
+
+    def test_a_close_not_found_fails_an_open_the_fixture_admin_made(self):
+        def not_found(request, timeout):
+            raise self.module.urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, io.BytesIO(b"{}"))
+
+        t = self.transaction(OPEN + "201 > application/json", "/api/v1/accounts/4/exports", self.module.ADMIN)
+        t["real"]["body"] = json.dumps({"data": {"id": "cd" * 16, "account_id": 4, "data": "settings", "format": "json"}})
+        with patch.object(self.module.urllib.request, "urlopen", not_found):
+            self.module.close_the_opened_export(t)
+        self.assertIn("closing the export it opened answered", t["fail"])
+
+    def test_an_open_by_another_principal_is_closed_without_judging_the_close(self):
+        def not_found(request, timeout):
+            self.requests.append(request)
+            raise self.module.urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, io.BytesIO(b"{}"))
+
+        t = self.transaction(OPEN + "201 > application/json", "/api/v1/accounts/7/exports", "ordinary@restmail.test")
+        t["real"]["body"] = json.dumps({"data": {"id": "cd" * 16, "account_id": 7, "data": "mail", "format": "maildir"}})
+        with patch.object(self.module.urllib.request, "urlopen", not_found):
+            self.module.close_the_opened_export(t)
+        self.assertNotIn("fail", t)
         self.assertEqual(len(self.requests), 1)
-        self.assertEqual(self.requests[0].get_method(), "POST")
-        self.assertEqual(
-            self.requests[0].full_url,
-            "http://server.test:8080/api/v1/accounts/4/exports/" + "cd" * 16 + "/close",
-        )
-        self.assertEqual(json.loads(self.requests[0].data), {"result": "aborted", "rows": 0, "bytes": 0})
 
     def test_a_refused_open_closes_nothing(self):
         t = self.transaction(OPEN + "422 > application/json", "/api/v1/accounts/0/exports", self.module.ADMIN)

@@ -1,6 +1,10 @@
 package apitypes
 
-import "time"
+import (
+	"time"
+
+	oapifly "github.com/antimatter-studios/go-oapifly"
+)
 
 // OpenExportSessionBody names what an export writes and how (#2116 AC03b).
 // Each data has one format: mail as maildir, contacts as vcard, calendar as
@@ -8,6 +12,22 @@ import "time"
 type OpenExportSessionBody struct {
 	Data   string `json:"data" enums:"mail,contacts,calendar,settings" message:"must be \"mail\", \"contacts\", \"calendar\" or \"settings\"" missing:"required: mail, contacts, calendar or settings" description:"What the export writes"`
 	Format string `json:"format" enums:"maildir,vcard,icalendar,json" message:"must be \"maildir\", \"vcard\", \"icalendar\" or \"json\"" missing:"required: maildir, vcard, icalendar or json" description:"How the export writes it: mail as maildir, contacts as vcard, calendar as icalendar, settings as json"`
+}
+
+// AnyOf states the one format each data is exported in, so the description
+// says which pairs are accepted and the binder refuses every other pair at
+// format: no body the schema permits is refused for its pairing.
+func (OpenExportSessionBody) AnyOf() oapifly.AnyOfRule {
+	pair := func(data, format string) oapifly.Alternative {
+		return oapifly.Alternative{Fields: map[string]string{"data": `enums:"` + data + `"`, "format": `enums:"` + format + `"`}}
+	}
+	return oapifly.AnyOfRule{
+		Alternatives: []oapifly.Alternative{
+			pair("mail", "maildir"), pair("contacts", "vcard"), pair("calendar", "icalendar"), pair("settings", "json"),
+		},
+		Field:   "format",
+		Message: "must be maildir for mail, vcard for contacts, icalendar for calendar or json for settings",
+	}
 }
 
 // ExportSession is an open export: close it with closeExportSession.

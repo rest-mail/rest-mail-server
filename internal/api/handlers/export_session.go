@@ -70,9 +70,6 @@ func (h *ExportSessionHandler) open(r *http.Request, in openExportSessionRequest
 	if claims == nil {
 		return apitypes.ExportSession{}, errNotSignedIn
 	}
-	if exportsession.Formats[in.Body.Data] != in.Body.Format {
-		return apitypes.ExportSession{}, endpoint.Invalid(map[string]string{"format": "must be " + exportsession.Formats[in.Body.Data] + " for " + in.Body.Data})
-	}
 	db := h.db.WithContext(r.Context())
 	if _, err := resolveAccountMailbox(db, uint(in.ID), claims, models.CapMailExport); err != nil {
 		return apitypes.ExportSession{}, exportRefusal(err)

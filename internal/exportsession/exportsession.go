@@ -45,9 +45,6 @@ const SweepInterval = 5 * time.Minute
 // another account or opener.
 var ErrNotFound = errors.New("export session not found")
 
-// Formats is the one format each kind of data is exported in.
-var Formats = map[string]string{"mail": "maildir", "contacts": "vcard", "calendar": "icalendar", "settings": "json"}
-
 // Summary is what a closed export wrote.
 type Summary = apitypes.ExportSessionSummary
 
