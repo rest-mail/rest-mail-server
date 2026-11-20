@@ -283,9 +283,13 @@ func TestUpdateMessageUnchangedSinceCoverageWithVertrag(t *testing.T) {
 	if report.Summary.Total < 10 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("coverage did not execute without skips: %s", data)
 	}
+	// The maximum is mod_seq's bigint maximum (#2051). Vertrag 0.46.0's probe one past it
+	// wraps to -9223372036854775808, a value below the minimum, so the value 2^63 itself is
+	// proven by TestFuzzFindingUnchangedSinceAboveTheBigintMaximum instead.
 	for _, boundary := range []string{
 		`"unchanged_since" at minimum (1)`,
 		`"unchanged_since" at one below minimum (0)`,
+		`"unchanged_since" at maximum (9223372036854775807)`,
 	} {
 		found := 0
 		for _, result := range report.Results {

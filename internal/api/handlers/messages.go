@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -213,7 +214,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessageRecipients)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
-		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 400 invalid_mod_sequence. Read the message again for its current mod_seq.",
+		Description: "With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 400 invalid_mod_sequence, and one above 9223372036854775807, the largest a mod_seq can be, is 422 validation_failed. Read the message again for its current mod_seq.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes,
 		RefuseBinding: refuseMessageModSequence}, h.updateMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/{id}",
@@ -377,6 +378,15 @@ func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, e
 	return messageOf(rows[0]), nil
 }
 
+// MaxModSequence is the largest mod-sequence there can be: mod_seq is a PostgreSQL bigint.
+// It is also RFC 7162 §3.1's limit, a 63-bit unsigned integer.
+const MaxModSequence = math.MaxInt64
+
+// errModSequenceTooLarge refuses an unchanged_since above MaxModSequence as the validation
+// failure naming the field. No mod_seq can pass it, and the comparison with the bigint
+// column cannot be made with it: it answered 500 internal_error (#2051).
+var errModSequenceTooLarge = endpoint.Invalid(map[string]string{"unchanged_since": "must be at most " + strconv.FormatInt(MaxModSequence, 10)})
+
 func refuseMessageModSequence(r *http.Request, err error) error {
 	var refusal *endpoint.Error
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusUnprocessableEntity || refusal.Fields["unchanged_since"] == "" {
@@ -391,6 +401,11 @@ func refuseMessageModSequence(r *http.Request, err error) error {
 			if strings.HasPrefix(number.String(), "-") || value < 1 {
 				return endpoint.Refuse(http.StatusBadRequest, "invalid_mod_sequence", "unchanged_since must be at least 1")
 			}
+			// Past uint64 the field cannot be decoded at all: the same refusal as a value
+			// that decodes but is past the bigint.
+			if value > MaxModSequence {
+				return errModSequenceTooLarge
+			}
 		}
 	}
 	return err
@@ -398,6 +413,11 @@ func refuseMessageModSequence(r *http.Request, err error) error {
 
 // updateMessage updates message flags or moves to a folder.
 func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest) (Message, error) {
+	// Refused with the binding refusals, before the message is looked up, and before the
+	// comparison with the bigint mod_seq it would overflow.
+	if in.Body.UnchangedSince != nil && *in.Body.UnchangedSince > MaxModSequence {
+		return Message{}, errModSequenceTooLarge
+	}
 	h = h.forRequest(r)
 	msg, err := h.ownedMessage(r, in.ID, models.CapMailWrite)
 	if err != nil {

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"reflect"
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 // itemFormats are the formats of list items in a request body, by operation and list property.
@@ -134,6 +136,12 @@ func withRequestConstraints(doc map[string]interface{}) {
 				items["maxLength"] = 255
 				items["pattern"] = `^[\x21\x23\x24\x26\x27\x2b-\x5b\x5e-\x7a\x7c-\x7e]+$`
 				keywords["description"] = "RFC 3501 ASCII keywords, without system flags; at most 100 distinct keywords, compared case-insensitively. Repeated keywords are accepted and deduplicated."
+				// The bigint's maximum, as an exact integer: a maximum tag goes through a
+				// float64 and would read 2^63, which the column cannot hold (#2051). The
+				// generator writes no field's description, so the tag's is written here.
+				unchangedSince := properties["unchanged_since"].(map[string]interface{})
+				unchangedSince["maximum"] = int64(handlers.MaxModSequence)
+				unchangedSince["description"] = unchangedSinceDescription()
 				folder := properties["folder"].(map[string]interface{})
 				folder["description"] = "Valid UTF-8 folder name of at most 255 bytes; null leaves it unchanged. The byte limit also applies to multibyte names."
 				for _, refinement := range folder["allOf"].([]interface{}) {
@@ -172,4 +180,12 @@ func withRequestConstraints(doc map[string]interface{}) {
 			}
 		}
 	}
+}
+
+// unchangedSinceDescription is what UpdateMessageBody's unchanged_since tag says of it: the
+// generator writes no field's description. TestUnchangedSinceDescribesTheBigintMaximum holds
+// openapi.yaml to the same words.
+func unchangedSinceDescription() string {
+	field, _ := reflect.TypeOf(apitypes.UpdateMessageBody{}).FieldByName("UnchangedSince")
+	return field.Tag.Get("description") + "."
 }
