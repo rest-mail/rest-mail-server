@@ -530,7 +530,12 @@ class Workflows(unittest.TestCase):
 
     def test_the_union_gates_the_required_check_and_reads_the_live_results(self):
         union = self.e2e["e2e-proofs"]
-        self.assertEqual(set(union["needs"]), {"preflight", "changes", "e2e-run", "e2e-contract-pairs", "e2e-live"})
+        # The union still waits for every producer of a proof, and now also for its own
+        # runner gate (#2113): the gate decides where it runs, not whether it runs.
+        self.assertEqual(
+            set(union["needs"]),
+            {"preflight", "changes", "e2e-run", "e2e-contract-pairs", "e2e-live", "e2e-proofs-gate"},
+        )
         self.assertEqual(union["permissions"]["actions"], "read")
         download = next(s for s in union["steps"] if s.get("with", {}).get("name") == "live-example-proofs")
         # No artifact counts for nothing; the judgement below says so.
