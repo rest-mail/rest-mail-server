@@ -9826,16 +9826,16 @@ paths:
           description: Filter by sender address
         - name: after
           in: query
+          description: 'Only messages received at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming after'
           schema:
             type: string
             format: date-time
-          description: Messages after this date
         - name: before
           in: query
+          description: 'Only messages received at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming before'
           schema:
             type: string
             format: date-time
-          description: Messages before this date
         - name: has_attachment
           in: query
           schema:
@@ -13950,11 +13950,13 @@ paths:
             type: string
         - name: last_used_before
           in: query
+          description: 'Only keys last used before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00, and keys never used; any other value is refused 422 validation_failed naming last_used_before'
           schema:
             type: string
             format: date-time
         - name: expires_before
           in: query
+          description: 'Only keys that expire before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming expires_before'
           schema:
             type: string
             format: date-time
@@ -18828,11 +18830,13 @@ paths:
             type: string
         - name: since
           in: query
+          description: 'Only deliveries queued at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since'
           schema:
             type: string
             format: date-time
         - name: until
           in: query
+          description: 'Only deliveries queued at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until'
           schema:
             type: string
             format: date-time
@@ -18918,13 +18922,13 @@ paths:
             enum: [success, denied, failed, error]
         - name: since
           in: query
-          description: Entries at or after this time (RFC 3339)
+          description: 'Only entries at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since'
           schema:
             type: string
             format: date-time
         - name: until
           in: query
-          description: Entries at or before this time (RFC 3339)
+          description: 'Only entries at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until'
           schema:
             type: string
             format: date-time

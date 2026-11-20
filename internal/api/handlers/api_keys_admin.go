@@ -27,9 +27,9 @@ type listAdminAPIKeysRequest struct {
 	// Capability keeps keys holding this permission, at any scope.
 	Capability *string `query:"capability"`
 	// LastUsedBefore keeps keys last used before this time, and never-used ones.
-	LastUsedBefore *time.Time `query:"last_used_before" message:"must be an RFC 3339 time"`
+	LastUsedBefore *time.Time `query:"last_used_before" message:"must be an RFC 3339 time" description:"Only keys last used before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00, and keys never used; any other value is refused 422 validation_failed naming last_used_before"`
 	// ExpiresBefore keeps keys that expire before this time.
-	ExpiresBefore *time.Time `query:"expires_before" message:"must be an RFC 3339 time"`
+	ExpiresBefore *time.Time `query:"expires_before" message:"must be an RFC 3339 time" description:"Only keys that expire before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming expires_before"`
 	Limit         *int       `query:"limit" minimum:"1" maximum:"200" message:"must be between 1 and 200"`
 	Offset        *int       `query:"offset" minimum:"0" message:"must not be negative"`
 }

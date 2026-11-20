@@ -29,8 +29,8 @@ type deliveryLogRequest struct {
 	Domain    string     `query:"domain"`
 	Sender    string     `query:"sender"`
 	Recipient string     `query:"recipient"`
-	Since     *time.Time `query:"since" message:"must be an RFC 3339 time"`
-	Until     *time.Time `query:"until" message:"must be an RFC 3339 time"`
+	Since     *time.Time `query:"since" message:"must be an RFC 3339 time" description:"Only deliveries queued at or after this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming since"`
+	Until     *time.Time `query:"until" message:"must be an RFC 3339 time" description:"Only deliveries queued at or before this RFC 3339 date-time, such as 2026-11-07T10:00:00+01:00; any other value is refused 422 validation_failed naming until"`
 }
 
 func (h *LogHandler) deliveryLog(_ *http.Request, in deliveryLogRequest) (endpoint.List[DeliveryLogEntry], error) {
