@@ -19,19 +19,22 @@ MIKEFARAH = "yq (https://github.com/mikefarah/yq/) version v{}"
 
 
 class RenderTestYqVersionTests(unittest.TestCase):
-    def run_with_yq(self, version_line):
-        """Run the script with a fake yq, and a fake helm that records its calls."""
+    def run_with_yq(self, version_line, promtool=True, path=None):
+        """Run the script with a fake yq, a fake promtool unless told not to, and a
+        fake helm that records its calls. path replaces the PATH searched after them."""
         with tempfile.TemporaryDirectory() as tools:
             tools = Path(tools)
             calls = tools / "helm-calls"
             self.write_tool(tools / "yq", f'echo "{version_line}"\n')
+            if promtool:
+                self.write_tool(tools / "promtool", "exit 0\n")
             self.write_tool(tools / "helm", f'echo called >> "{calls}"\nexit 1\n')
             result = subprocess.run(
                 ["bash", str(SCRIPT)],
                 capture_output=True,
                 text=True,
                 timeout=600,
-                env={**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"},
+                env={**os.environ, "PATH": f"{tools}{os.pathsep}{path if path is not None else os.environ['PATH']}"},
             )
             return result, calls.exists()
 
@@ -65,6 +68,18 @@ class RenderTestYqVersionTests(unittest.TestCase):
     def test_another_tool_called_yq_is_still_refused(self):
         self.assert_refused("yq 3.4.3", "yq 3.4.3")
         self.assert_refused(MIKEFARAH.format("3.4.1"), "v3.4.1")
+
+
+    def test_no_promtool_is_refused_before_any_render(self):
+        # The alert tests need promtool. The script used to skip them when it
+        # was missing and pass, which is how CI ran none of them (#2117).
+        # The search path is cut to the system's, so a promtool installed on
+        # the machine running this test is not found.
+        result, reached_helm = self.run_with_yq(MIKEFARAH.format("4.46.1"), promtool=False, path="/usr/bin:/bin")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("needs promtool", result.stderr)
+        self.assertIn("scripts/ci/install-promtool", result.stderr)
+        self.assertFalse(reached_helm, "the chart was tested without its alert tests")
 
 
 if __name__ == "__main__":

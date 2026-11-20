@@ -300,7 +300,7 @@ class GatedJobsBringTheirTools(unittest.TestCase):
         return True
 
     def test_tools_are_installed_before_their_first_use(self):
-        counts = dict.fromkeys(("gh", "python", "cgo", "pnpm", "yq"), 0)
+        counts = dict.fromkeys(("gh", "python", "cgo", "pnpm", "yq", "promtool"), 0)
         for name, job_id, job in self.gated_jobs():
             steps = job["steps"]
             with self.subTest(workflow=name, job=job_id):
@@ -334,6 +334,12 @@ class GatedJobsBringTheirTools(unittest.TestCase):
                     lambda step: "scripts/ci/install-yq" in step.get("run", ""),
                     lambda step: "render-test.sh" in step.get("run", "") or "dane-resolver-test.sh" in step.get("run", ""),
                     "the chart's tests need yq",
+                )
+                counts["promtool"] += self.assert_before(
+                    steps,
+                    lambda step: "scripts/ci/install-promtool" in step.get("run", ""),
+                    lambda step: "render-test.sh" in step.get("run", ""),
+                    "the chart's alert tests need promtool",
                 )
         for tool, count in counts.items():
             with self.subTest(tool=tool):

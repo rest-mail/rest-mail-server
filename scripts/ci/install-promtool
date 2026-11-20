@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Installs promtool, Prometheus's rule checker, so CI can prove each alert in
+# helm/restmail/files/alerting-rules.yml fires and recovers (#1579, #2117):
+# helm/restmail/tests/render-test.sh runs `promtool test rules` and fails when
+# promtool is missing. The release archive is pinned by version and checksum,
+# from the release's own sha256sums.txt.
+#
+#   scripts/ci/install-promtool DIRECTORY
+set -euo pipefail
+
+VERSION=3.5.0
+BASE_URL=https://github.com/prometheus/prometheus/releases/download
+directory=${1:?usage: install-promtool DIRECTORY}
+
+case "$(uname -s)/$(uname -m)" in
+  Linux/x86_64)
+    platform=linux-amd64
+    expected=e811827af26d822afb09a4f28314f61b618b12cff5369835a67f674d8b46f39a ;;
+  Linux/aarch64 | Linux/arm64)
+    platform=linux-arm64
+    expected=173389cc42bf09c4e6e54cb53fa07a5a835d7c261e14775d2183181d6e385d1c ;;
+  Darwin/x86_64)
+    platform=darwin-amd64
+    expected=5856d0c306e7d852d9a79788b20acb630501b3fab120b69f5317d6b0732dea57 ;;
+  Darwin/arm64)
+    platform=darwin-arm64
+    expected=c17bc2c992f0b5515eebe2b4ccd626214f8e309a0fe6ec40ed13c42ec13d05fb ;;
+  *)
+    echo "promtool: no pinned release for $(uname -s)/$(uname -m)" >&2
+    exit 1 ;;
+esac
+
+expected=${INSTALL_PROMTOOL_SHA256:-$expected}
+name="prometheus-$VERSION.$platform"
+url="${INSTALL_PROMTOOL_BASE_URL:-$BASE_URL}/v$VERSION/$name.tar.gz"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+archive="$work/$name.tar.gz"
+
+if ! command -v curl >/dev/null 2>&1 || ! curl --fail --silent --show-error --location \
+  --connect-timeout 30 --max-time 300 \
+  --retry 6 --retry-all-errors --retry-delay 2 \
+  --output "$archive" "$url"; then
+  python3 "$(dirname "$0")/github_release.py" "$url" "$archive"
+fi
+
+actual=$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$archive")
+if [ "$actual" != "$expected" ]; then
+  echo "promtool $VERSION: checksum $actual, expected $expected" >&2
+  exit 1
+fi
+
+tar -xzf "$archive" -C "$work" "$name/promtool"
+binary="$work/$name/promtool"
+chmod +x "$binary"
+"$binary" --version
+mkdir -p "$directory"
+cp "$binary" "$directory/promtool"
+if [ -n "${GITHUB_PATH:-}" ]; then
+  (cd "$directory" && pwd) >> "$GITHUB_PATH"
+fi

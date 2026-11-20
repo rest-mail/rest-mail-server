@@ -12,6 +12,8 @@
 # on GitHub's runners), which reads the rendered manifests as YAML where grep
 # cannot. Older releases fail a correct chart: 4.45.4 adds to an empty stream, and
 # 4.44.3 gives no rows at all, so both fail with messages that blame the chart.
+# It also needs promtool (scripts/ci/install-promtool installs the pinned release),
+# which runs the alert tests.
 #
 # shellcheck disable=SC2016 # the $names in single quotes are yq's, not the shell's
 set -euo pipefail
@@ -45,6 +47,11 @@ case "$yq_found" in
   *mikefarah*" v4."*) yq_minor="${yq_found##* v4.}"; yq_minor="${yq_minor%%.*}" ;;
 esac
 [ "$yq_minor" -ge 46 ] || fail "needs yq 4.46.1 or newer from https://github.com/mikefarah/yq (found: $yq_found)"
+# promtool proves each alert fires and recovers (the *-alerts-test.yml files
+# below); matching an expression as text proves neither (#1579, #2117). Without
+# it this script used to skip those tests and pass, so CI never ran them.
+command -v promtool >/dev/null 2>&1 \
+  || fail "needs promtool to test the alerts: scripts/ci/install-promtool <dir> installs the pinned release"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -66,15 +73,14 @@ assert_contains "DKIM overdue alert" "$tmp/metrics-on.yaml" 'alert: DKIMKeyOverd
 assert_contains "DKIM publication alert" "$tmp/metrics-on.yaml" 'alert: DKIMPublicationStuck'
 assert_contains "PVC disk alert" "$tmp/metrics-on.yaml" 'alert: PVCSpaceCritical'
 assert_contains "queue alert" "$tmp/metrics-on.yaml" 'alert: QueueOldestMessageOld'
+assert_contains "queue saturation alert" "$tmp/metrics-on.yaml" 'alert: QueueWorkersSaturated'
 assert_contains "file certificate expiry alert" "$tmp/metrics-on.yaml" 'alert: TLSCertificateFileExpiringSoon'
 assert_absent "compose-only disk alert" "$tmp/metrics-on.yaml" 'alert: DiskSpaceCritical'
 python3 -B "$CHART_DIR/tests/alerting-rules-test.py" "$tmp/metrics-on.yaml"
-if command -v promtool >/dev/null 2>&1; then
-  yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/alert-rules.yml"
-  cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$CHART_DIR/tests/tls-cert-alerts-test.yml" "$tmp/"
-  promtool check rules "$tmp/alert-rules.yml"
-  promtool test rules "$tmp/dkim-alerts-test.yml" "$tmp/tls-cert-alerts-test.yml"
-fi
+yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/alert-rules.yml"
+cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$CHART_DIR/tests/tls-cert-alerts-test.yml" "$CHART_DIR/tests/queue-alerts-test.yml" "$tmp/"
+promtool check rules "$tmp/alert-rules.yml"
+promtool test rules "$tmp/dkim-alerts-test.yml" "$tmp/tls-cert-alerts-test.yml" "$tmp/queue-alerts-test.yml"
 
 echo "== render development overlay =="
 helm template restmail "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD" > "$tmp/dev.yaml"

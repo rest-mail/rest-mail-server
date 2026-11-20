@@ -236,8 +236,12 @@ jobs:
     needs: dependency-review
     name: Email, explained outside links
     # Every outside link in docs/email-explained, and every anchor in one, still
-    # answers. A broken one opens an issue listing them (or updates the one that
-    # is open), and the issue closes itself once they all answer again.
+    # answers. A site that refuses to be checked (HTTP 401, 403, 429) passes only
+    # through a dated, reasoned exception in
+    # scripts/email-explained/outside-link-exceptions.json that has not expired
+    # (#2120). A broken link, an unlisted refusal or a bad exception opens an
+    # issue listing them (or updates the one that is open), and the issue
+    # closes itself once the check passes again.
     runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')['guide-links'] || 'ubuntu-24.04' }}
     env:
       GH_TOKEN: ${{ github.token }}
@@ -265,15 +269,25 @@ jobs:
           set -o pipefail
           node check.mjs --external | tee "$RUNNER_TEMP/links.txt"
 
+      # The checker's own tests, with the two that ask real sites switched on:
+      # a page that is there passes and one that is not fails. Run even when
+      # the check above failed. Offline they fail rather than skip.
+      - name: Test the checker against real sites
+        if: ${{ !cancelled() }}
+        working-directory: scripts/email-explained
+        env:
+          EMAIL_EXPLAINED_LIVE_LINKS: "1"
+        run: node --test check.test.mjs
+
       - name: Open or update the issue
         if: failure() && steps.links.outcome == 'failure'
         run: |
           set -euo pipefail
           {
-            echo "The daily check of [Email, explained]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/docs/email-explained/README.md) found outside links that no longer answer, or anchors no longer on their page. Fix or replace each one; this issue closes itself once they all answer."
+            echo "The daily check of [Email, explained]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/docs/email-explained/README.md) found outside links that no longer answer, anchors no longer on their page, sites refusing to be checked with no exception, or exceptions with no reason or past their date. Fix or replace each link; a site that turns away robots needs a dated, reasoned entry in [outside-link-exceptions.json]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/scripts/email-explained/outside-link-exceptions.json). This issue closes itself once the check passes."
             echo
             echo '```'
-            grep -E '^(broken|refused)' "$RUNNER_TEMP/links.txt" || true
+            grep -E '^(broken|refused|exception)' "$RUNNER_TEMP/links.txt" || true
             echo '```'
             echo
             echo "From [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
@@ -291,5 +305,5 @@ jobs:
           set -euo pipefail
           number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label documentation --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
           if [ -n "$number" ]; then
-            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Every outside link answers again ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Every outside link answers again, or is refused under an exception that holds ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
           fi

@@ -1358,6 +1358,10 @@ jobs:
       - name: Set up yq
         run: bash scripts/ci/install-yq "$RUNNER_TEMP/bin"
 
+      # render-test.sh runs promtool's alert tests, and fails without it.
+      - name: Set up promtool
+        run: bash scripts/ci/install-promtool "$RUNNER_TEMP/bin"
+
       - name: Lint and render (render-test.sh)
         run: helm/restmail/tests/render-test.sh
 
