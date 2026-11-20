@@ -157,7 +157,7 @@ class PreflightWorkflows(unittest.TestCase):
                     with self.subTest(gate="E2E", status=status, changes=changes):
                         result = run_shell(
                             e2e_script, directory, PREFLIGHT_RESULT=status, CHANGES_RESULT=changes,
-                            RUN_E2E="false", E2E_RESULT="skipped", PAIRS_RESULT="skipped",
+                            RUN_E2E="false", RUN_DELTA="false", E2E_RESULT="skipped", DELTA_RESULT="skipped", PAIRS_RESULT="skipped",
                             PROOFS_RESULT="skipped", EVENT_NAME="pull_request",
                         )
                         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
