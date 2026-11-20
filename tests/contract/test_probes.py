@@ -94,9 +94,42 @@ class ProbeConfig(unittest.TestCase):
 
     def test_fuzz_holds_address_at_the_recipient_the_fixtures_make(self):
         plan = json.loads((ROOT / "tests/contract/fixtureplan/defaults.json").read_text())
+        fuzz = self.fuzz_config()["fuzz"]
         self.assertEqual(
-            self.fuzz_config()["fuzz"]["pin"]["address"], plan["delivery_recipient"]["address"]
+            fuzz["pin-valid"]["deliverMessage"], {"address": plan["delivery_recipient"]["address"]}
         )
+
+    def test_fuzz_leaves_every_other_address_alone(self):
+        # #2051, finding 9b7fd3ab5ec46f4b: a fuzz.pin holds every body's address, examples
+        # included, and held createAccount's at the fixture recipient, which already has an
+        # account, so the documented create answered 409 already_exists.
+        fuzz = self.fuzz_config()["fuzz"]
+        self.assertNotIn("address", fuzz["pin"])
+        for operation, fields in fuzz["pin-valid"].items():
+            if operation != "deliverMessage":
+                self.assertNotIn("address", fields, operation)
+
+    def test_fuzz_delivers_restmail_probes_to_the_recipient_the_fixtures_make(self):
+        # #2051, finding 5972296353a77f68: the run's own updateDomain probes take
+        # restmail.test out of service, so eve@restmail.test receives nothing by the time
+        # the RESTMAIL probes are sent. The coverage run keeps eve.
+        plan = json.loads(probes.FIXTURE_PLAN.read_text())
+        self.assertEqual(
+            self.fuzz_config()["fuzz"]["pin"]["recipients"], [plan["delivery_recipient"]["address"]]
+        )
+        self.assertEqual(self.config["fuzz"]["pin"]["recipients"], probes.RECIPIENTS)
+        self.assertNotEqual(plan["delivery_recipient"]["address"].split("@")[1], plan["domain"])
+
+    def test_fuzz_holds_unchanged_since_where_no_mod_sequence_passes_it(self):
+        # #2051, finding e3900209d733750b: a generated 1 is stale for a message changed
+        # since it was stored, and the 409 message_modified that follows is right.
+        fuzz = self.fuzz_config()["fuzz"]
+        self.assertEqual(fuzz["pin-valid"]["updateMessage"], {"unchanged_since": 2**63 - 1})
+        # Valid requests only: a fuzz.pin would hold the invalid ones too, and the probes
+        # that 0 and a string are refused would never be sent.
+        self.assertNotIn("unchanged_since", fuzz["pin"])
+        self.assertNotIn("updateMessage", self.config["fuzz"]["pin-valid"])
+        self.assertNotIn("deliverMessage", self.config["fuzz"]["pin-valid"])
 
     def test_fuzz_holds_domain_at_the_domain_the_run_hosts(self):
         plan = json.loads(probes.FIXTURE_PLAN.read_text())
@@ -142,11 +175,11 @@ class ProbeConfig(unittest.TestCase):
         self.assertNotIn("address", self.config["fuzz"]["pin"])
 
     def test_a_narrowed_fuzz_run_can_drop_each_pin_it_does_not_reach(self):
-        coverage_pins = COVERAGE_PINS
-        config = self.fuzz_config(unpinned=coverage_pins)
-        self.assertEqual(config["fuzz"]["pin"].keys(), {"address"})
-        config = self.fuzz_config(unpinned=["address"])
-        self.assertEqual(config["fuzz"]["pin"].keys(), set(coverage_pins))
+        others = [name for name in COVERAGE_PINS if name != "recipients"]
+        config = self.fuzz_config(unpinned=others)
+        self.assertEqual(config["fuzz"]["pin"].keys(), {"recipients"})
+        config = self.fuzz_config(unpinned=["recipients"])
+        self.assertEqual(config["fuzz"]["pin"].keys(), set(others))
 
     def test_the_fuzz_phase_makes_the_recipient_before_it_pins_it(self):
         script = (ROOT / "tests/contract/run.sh").read_text()

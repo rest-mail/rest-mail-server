@@ -8,9 +8,10 @@ and omits the 4xx transactions whose probes gate.py already ignores. All probes
 from successful transactions remain enabled. The first run enforces the full
 surface gate.
 
-A fuzz run (a report named fuzz.xml) also holds a delivery's address at the
-recipient the fixtures make, and discovery's domain at the hosted fixture in a
-fuzz-only description. A coverage run does not.
+A fuzz run (a report named fuzz.xml) also holds deliverMessage's address and
+restmailDeliver's recipients at the recipient the fixtures make, updateMessage's
+unchanged_since where no mod-sequence passes it, and discovery's domain at the
+hosted fixture in a fuzz-only description. A coverage run does not.
 
 A run narrowed to operations without a pinned field has nothing for that pin to
 hold, and Vertrag refuses a pin that matches nothing. Such a run names the fields
@@ -87,10 +88,30 @@ FILTER_NAME = "header_validate"
 PROBE_CERTIFICATE_NAME = "contract-probe-certificate"
 # A schema cannot say a mailbox must exist either. Fuzz draws an address that
 # names nothing and reads the 404 as a disagreement, so the rest of
-# delivery is never reached. The fuzz run holds address at the recipient the
-# fixtures make (fixtures --delivery-recipient). The coverage run does not: it has
-# no valid delivery probe to hold, and a pin would stop its address probes.
+# delivery is never reached. The fuzz run holds deliverMessage's address at the
+# recipient the fixtures make (fixtures --delivery-recipient), in its valid
+# requests only (fuzz.pin-valid). A fuzz.pin would hold every body's address: it
+# held createAccount's documented example at that recipient, which already has an
+# account, so the example answered 409 already_exists and createAccount's valid
+# probes and links were never sent (#2051, finding 9b7fd3ab5ec46f4b). The coverage
+# run does not hold it: it has no valid delivery probe to hold, and a pin would
+# stop its address probes.
+#
+# restmailDeliver's recipients go to the same mailbox in the fuzz run. The run's
+# own updateDomain probes take restmail.test out of service before the RESTMAIL
+# probes are sent, and a domain out of service receives nothing, so a delivery to
+# eve@restmail.test was rightly 422 undeliverable (#2051, finding 5972296353a77f68).
+# The fixture recipient's domain has an id no generated probe draws.
 FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
+# updateMessage's unchanged_since makes the change conditional on the message's
+# mod_seq being at most this value, and a stale one is refused 409 message_modified
+# (RFC 7162 section 3.1.3), which a schema cannot say: it depends on how often the
+# message has changed. The generator's 1 is stale for any message changed since it
+# was stored (#2051, finding e3900209d733750b). The fuzz run's valid requests hold
+# the largest mod-sequence the column stores, which no message passes, so the
+# conditional write is still made and judged; its invalid requests still vary, and
+# the named examples prove the 409 and the 400.
+UNCHANGED_SINCE = 2**63 - 1
 
 
 def probe_certificate(common_name=None):
@@ -110,8 +131,18 @@ def probe_certificate(common_name=None):
 
 
 def fuzz_pins():
+    """What a fuzz run holds in every request, beyond the coverage run's pins."""
     plan = json.loads(FIXTURE_PLAN.read_text())
-    return {"address": plan["delivery_recipient"]["address"]}
+    return {"recipients": [plan["delivery_recipient"]["address"]]}
+
+
+def fuzz_valid_pins():
+    """What a fuzz run holds in one operation's valid requests only."""
+    plan = json.loads(FIXTURE_PLAN.read_text())
+    return {
+        "deliverMessage": {"address": plan["delivery_recipient"]["address"]},
+        "updateMessage": {"unchanged_since": UNCHANGED_SINCE},
+    }
 
 
 def hold_discovery_domain(config, out_path):
@@ -172,6 +203,7 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
         }
         if Path(report_path).stem == "fuzz":
             pins.update(fuzz_pins())
+            config["fuzz"]["pin-valid"].update(fuzz_valid_pins())
             hold_discovery_domain(config, out_path)
         for name in unpinned:
             del pins[name]
