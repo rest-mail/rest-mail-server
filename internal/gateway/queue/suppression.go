@@ -82,8 +82,6 @@ func (w *Worker) suppression(ctx context.Context, item models.OutboundQueue, now
 // bounceSuppressed bounces a message to a suppressed recipient without trying
 // it, and tells the sender why and until when.
 func (w *Worker) bounceSuppressed(ctx context.Context, item models.OutboundQueue, s models.Suppression) {
-	// The claim counted an attempt; none was made.
-	item.Attempts--
 	item.FailureCategory = s.FailureCategory
 	enhanced := "5.1.1"
 	if s.FailureCategory == models.FailureBadDomain {
@@ -92,13 +90,18 @@ func (w *Worker) bounceSuppressed(ctx context.Context, item models.OutboundQueue
 	reason := fmt.Sprintf("not sent: an earlier message to this address bounced as undeliverable, "+
 		"so mail from %s to it is suppressed until %s",
 		strings.ToLower(sendsAs(item)), s.ExpiresAt.UTC().Format("2 January 2006 15:04 MST"))
-	w.db.Model(&item).Updates(map[string]interface{}{
+	// The claim counted an attempt; none was made. Like any failed attempt's
+	// outcome, this is written only while the claim still holds the row.
+	if !w.recordAttemptOutcome(ctx, item, map[string]interface{}{
 		"status":           "bounced",
-		"attempts":         item.Attempts,
+		"attempts":         item.Attempts - 1,
 		"last_error":       reason,
 		"last_error_code":  0,
 		"failure_category": s.FailureCategory,
-	})
+	}) {
+		return
+	}
+	item.Attempts--
 	slog.WarnContext(ctx, "queue: recipient suppressed, bouncing without trying", "id", item.ID,
 		"recipient", item.Recipient, "until", s.ExpiresAt)
 	w.generateBounce(ctx, item, &SMTPError{Enhanced: enhanced, Message: reason})

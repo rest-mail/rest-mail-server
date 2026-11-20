@@ -899,14 +899,17 @@ func (w *Worker) recordFailure(ctx context.Context, item models.OutboundQueue, d
 		if next, ok := retryAt(item, category, now); ok {
 			failed["status"] = "deferred"
 			failed["next_attempt"] = next
-			w.db.Model(&item).Updates(failed)
-			setOutcome(ctx, "deferred")
+			if w.recordAttemptOutcome(ctx, item, failed) {
+				setOutcome(ctx, "deferred")
+			}
 			return
 		}
 	}
 
 	failed["status"] = "bounced"
-	w.db.Model(&item).Updates(failed)
+	if !w.recordAttemptOutcome(ctx, item, failed) {
+		return
+	}
 	setOutcome(ctx, "bounced")
 	if category.Suppresses() {
 		w.suppress(ctx, item, category, deliveryErr.Error(), now)
@@ -925,6 +928,40 @@ func (w *Worker) recordFailure(ctx context.Context, item models.OutboundQueue, d
 		bounceErr = &SMTPError{Code: 0, Message: deliveryErr.Error()}
 	}
 	w.generateBounce(ctx, item, bounceErr)
+}
+
+// recordAttemptOutcome writes a failed attempt's outcome to its row, and reports
+// whether it did. Only the attempt that still holds the row may: the claim's
+// attempt number fences it, as it fences the heartbeat (refreshClaim). The row
+// stops being this attempt's when another worker reclaims it after the heartbeat
+// went stale, when an administrator bounces or deletes it while it is in flight,
+// or when an earlier attempt that outlived its claim delivers it. Whoever moved
+// the row on owns its outcome then, so this attempt writes nothing over it, and
+// the caller sends no notice and records no suppression for it: before #2105 a
+// stale failure turned a delivered row back into a deferred one, which sent the
+// message again, and told the sender that a delivered message had failed.
+//
+// A successful delivery is not fenced (process): the receiver has the message
+// whoever holds the row, and recording it stops any later retry.
+//
+// A failed write is logged and reports false too. The row stays delivering, so
+// it is reclaimed and tried again once its heartbeat is stale, rather than
+// notifying the sender of an outcome the queue does not show.
+func (w *Worker) recordAttemptOutcome(ctx context.Context, item models.OutboundQueue, values map[string]interface{}) bool {
+	result := w.db.Model(&models.OutboundQueue{}).
+		Where("id = ? AND status = ? AND attempts = ?", item.ID, "delivering", item.Attempts).
+		Updates(values)
+	if result.Error != nil {
+		slog.ErrorContext(ctx, "queue: failed to record the attempt's outcome", "id", item.ID, "attempt", item.Attempts, "error", result.Error)
+		return false
+	}
+	if result.RowsAffected == 0 {
+		slog.WarnContext(ctx, "queue: this attempt no longer holds its row, its outcome is not recorded",
+			"id", item.ID, "attempt", item.Attempts, "outcome", values["status"])
+		setOutcome(ctx, "superseded")
+		return false
+	}
+	return true
 }
 
 // mxResolver is what delivery asks the DNS; *net.Resolver answers it.
