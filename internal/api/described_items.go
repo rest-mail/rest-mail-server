@@ -1,14 +1,10 @@
 package api
 
 import (
-	"reflect"
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
-	"github.com/rest-mail/rest-mail-server/internal/exportsession"
-	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // itemFormats are the formats of list items in a request body, by operation and list property.
@@ -53,64 +49,7 @@ func withItemFormats(doc map[string]interface{}) {
 	}
 }
 
-// folderNamePatterns are rmail.FolderNameProblem as patterns, the ones updateMessage's folder
-// tags state: something besides spaces, no space at either end, no control character, no "..".
-// The first is the property's own pattern, the rest its allOf refinements.
-var folderNamePatterns = []string{
-	"[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]",
-	"^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$",
-	"^[^\\x00-\\x1f\\x7f-\\x9f]*$",
-	"^([^.]|\\.[^.])*(\\.)?$",
-}
-
-// folderNameSchema is a folder name as rmail.FolderNameProblem takes it. It goes into the
-// document only: the handlers that take one bind a plain string and make the refusal
-// themselves, so neither the refusal nor its place in the order of refusals changes.
-func folderNameSchema(description string) map[string]interface{} {
-	refinements := make([]interface{}, 0, len(folderNamePatterns)-1)
-	for _, pattern := range folderNamePatterns[1:] {
-		refinements = append(refinements, map[string]interface{}{"type": "string", "pattern": pattern})
-	}
-	schema := map[string]interface{}{
-		"type": "string", "minLength": 1, "maxLength": 255,
-		"pattern": folderNamePatterns[0], "allOf": refinements,
-	}
-	if description != "" {
-		schema["description"] = description
-	}
-	return schema
-}
-
-// folderNameDescription is what a folder name's schema says of it in words.
-const folderNameDescription = "A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending " +
-	`with a space, with no control character and no ".."; any other name is refused 422 validation_failed.`
-
-// withPathConstraints states what the handlers refuse in a path parameter. subscribeFolder holds
-// its name to the folder rule; unsubscribeFolder takes any name, so the parameter they share
-// is replaced on subscribeFolder alone rather than changed where both read it.
-func withPathConstraints(doc map[string]interface{}) {
-	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
-	for _, methods := range paths {
-		for method, operation := range methods {
-			if operation.OperationID != "subscribeFolder" {
-				continue
-			}
-			// A copy, in case the generator built the operations' lists from one array.
-			parameters := append([]oapifly.Parameter(nil), operation.Parameters...)
-			for index := range parameters {
-				if parameters[index].In == "path" && parameters[index].Name == "folder" {
-					parameters[index].Schema = folderNameSchema("")
-					parameters[index].Description = folderNameDescription
-				}
-			}
-			operation.Parameters = parameters
-			methods[method] = operation
-		}
-	}
-}
-
 func withRequestConstraints(doc map[string]interface{}) {
-	withPathConstraints(doc)
 	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
 	components, _ := doc["components"].(map[string]interface{})
 	schemas, _ := components["schemas"].(map[string]map[string]interface{})
@@ -138,12 +77,6 @@ func withRequestConstraints(doc map[string]interface{}) {
 				items["maxLength"] = 255
 				items["pattern"] = `^[\x21\x23\x24\x26\x27\x2b-\x5b\x5e-\x7a\x7c-\x7e]+$`
 				keywords["description"] = "RFC 3501 ASCII keywords, without system flags; at most 100 distinct keywords, compared case-insensitively. Repeated keywords are accepted and deduplicated."
-				// The bigint's maximum, as an exact integer: a maximum tag goes through a
-				// float64 and would read 2^63, which the column cannot hold (#2051). The
-				// generator writes no field's description, so the tag's is written here.
-				unchangedSince := properties["unchanged_since"].(map[string]interface{})
-				unchangedSince["maximum"] = int64(handlers.MaxModSequence)
-				unchangedSince["description"] = unchangedSinceDescription()
 				folder := properties["folder"].(map[string]interface{})
 				folder["description"] = "Valid UTF-8 folder name of at most 255 bytes; null leaves it unchanged. The byte limit also applies to multibyte names."
 				for _, refinement := range folder["allOf"].([]interface{}) {
@@ -174,43 +107,9 @@ func withRequestConstraints(doc map[string]interface{}) {
 					map[string]interface{}{"type": from["type"], "enum": empty},
 					map[string]interface{}{"type": "string", "format": "idn-email"},
 				}
-			case "createFolder", "renameFolder":
-				// Both bodies are folderNameBody, so this states the rule once for the two.
-				properties["name"] = folderNameSchema(folderNameDescription)
-			case "createExportSession":
-				// Each kind of data has the one format exportsession.Formats gives it, and the
-				// handler refuses any other pairing; the two enums alone permitted all sixteen
-				// (#2051). Binding reads the enums; the pairing is the handler's own refusal.
-				pairings := make([]interface{}, 0, len(exportDataKinds))
-				for _, data := range exportDataKinds {
-					pairings = append(pairings, map[string]interface{}{"properties": map[string]interface{}{
-						"data":   map[string]interface{}{"type": "string", "enum": []interface{}{data}},
-						"format": map[string]interface{}{"type": "string", "enum": []interface{}{exportsession.Formats[data]}},
-					}})
-				}
-				// The pairings exclude one another, so exactly one holds: oneOf, which a
-				// generated client also reads as the body and one pairing, not either.
-				schema["oneOf"] = pairings
-			case "closeExportSession":
-				// Each name goes into the audit log as the handler takes it: 1 to 255 bytes.
-				// maxLength counts characters, so the byte limit is said in words as well.
-				items := properties["skipped_folders"].(map[string]interface{})["items"].(map[string]interface{})
-				items["minLength"] = 1
-				items["maxLength"] = rmail.MaxFolderNameLen
 			case "setVacation":
 				properties["enabled"].(map[string]interface{})["type"] = "boolean"
 			}
 		}
 	}
 }
-
-// unchangedSinceDescription is what UpdateMessageBody's unchanged_since tag says of it: the
-// generator writes no field's description. TestUnchangedSinceDescribesTheBigintMaximum holds
-// openapi.yaml to the same words.
-func unchangedSinceDescription() string {
-	field, _ := reflect.TypeOf(apitypes.UpdateMessageBody{}).FieldByName("UnchangedSince")
-	return field.Tag.Get("description") + "."
-}
-
-// exportDataKinds are the kinds of data an export writes, in the order the data enum lists them.
-var exportDataKinds = []string{"mail", "contacts", "calendar", "settings"}
