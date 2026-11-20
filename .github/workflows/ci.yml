@@ -578,11 +578,26 @@ jobs:
           POSTGRES_PASSWORD: restmail
         ports:
           - 5432:5432
+        # A runner with an empty container store pulls postgres before it can start,
+        # and that pull can outlast the default five retries. The start period makes a
+        # cold pull slow rather than fatal; a warm one is unaffected. Reduced or removed
+        # once runners keep a shared image store. Comments must stay outside the folded
+        # scalar below: everything inside it is passed to docker as options.
+        # --oom-score-adj is not a tuning knob here: the runner's podman sidecar
+        # lives in a user namespace, so it cannot lower a process's oom_score_adj
+        # (that needs CAP_SYS_RESOURCE in the initial user namespace, which a
+        # namespaced container can never hold). Asking for 1000, the maximum,
+        # makes the value the docker API stamps on each exec a raise rather than
+        # a lower, which is always permitted — without it every `docker exec`
+        # fails with "crun: write to /proc/self/oom_score_adj: Permission denied"
+        # and the service health check can never pass.
         options: >-
           --health-cmd "pg_isready -U restmail"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+          --health-start-period 60s
+          --oom-score-adj 1000
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -726,11 +741,26 @@ jobs:
           POSTGRES_PASSWORD: restmail
         ports:
           - 5432:5432
+        # A runner with an empty container store pulls postgres before it can start,
+        # and that pull can outlast the default five retries. The start period makes a
+        # cold pull slow rather than fatal; a warm one is unaffected. Reduced or removed
+        # once runners keep a shared image store. Comments must stay outside the folded
+        # scalar below: everything inside it is passed to docker as options.
+        # --oom-score-adj is not a tuning knob here: the runner's podman sidecar
+        # lives in a user namespace, so it cannot lower a process's oom_score_adj
+        # (that needs CAP_SYS_RESOURCE in the initial user namespace, which a
+        # namespaced container can never hold). Asking for 1000, the maximum,
+        # makes the value the docker API stamps on each exec a raise rather than
+        # a lower, which is always permitted — without it every `docker exec`
+        # fails with "crun: write to /proc/self/oom_score_adj: Permission denied"
+        # and the service health check can never pass.
         options: >-
           --health-cmd "pg_isready -U restmail"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+          --health-start-period 60s
+          --oom-score-adj 1000
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -894,11 +924,26 @@ jobs:
           POSTGRES_PASSWORD: restmail
         ports:
           - 5432:5432
+        # A runner with an empty container store pulls postgres before it can start,
+        # and that pull can outlast the default five retries. The start period makes a
+        # cold pull slow rather than fatal; a warm one is unaffected. Reduced or removed
+        # once runners keep a shared image store. Comments must stay outside the folded
+        # scalar below: everything inside it is passed to docker as options.
+        # --oom-score-adj is not a tuning knob here: the runner's podman sidecar
+        # lives in a user namespace, so it cannot lower a process's oom_score_adj
+        # (that needs CAP_SYS_RESOURCE in the initial user namespace, which a
+        # namespaced container can never hold). Asking for 1000, the maximum,
+        # makes the value the docker API stamps on each exec a raise rather than
+        # a lower, which is always permitted — without it every `docker exec`
+        # fails with "crun: write to /proc/self/oom_score_adj: Permission denied"
+        # and the service health check can never pass.
         options: >-
           --health-cmd "pg_isready -U restmail"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+          --health-start-period 60s
+          --oom-score-adj 1000
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1028,11 +1073,26 @@ jobs:
           POSTGRES_PASSWORD: restmail
         ports:
           - 5432:5432
+        # A runner with an empty container store pulls postgres before it can start,
+        # and that pull can outlast the default five retries. The start period makes a
+        # cold pull slow rather than fatal; a warm one is unaffected. Reduced or removed
+        # once runners keep a shared image store. Comments must stay outside the folded
+        # scalar below: everything inside it is passed to docker as options.
+        # --oom-score-adj is not a tuning knob here: the runner's podman sidecar
+        # lives in a user namespace, so it cannot lower a process's oom_score_adj
+        # (that needs CAP_SYS_RESOURCE in the initial user namespace, which a
+        # namespaced container can never hold). Asking for 1000, the maximum,
+        # makes the value the docker API stamps on each exec a raise rather than
+        # a lower, which is always permitted — without it every `docker exec`
+        # fails with "crun: write to /proc/self/oom_score_adj: Permission denied"
+        # and the service health check can never pass.
         options: >-
           --health-cmd "pg_isready -U restmail"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+          --health-start-period 60s
+          --oom-score-adj 1000
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
