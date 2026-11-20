@@ -93,7 +93,8 @@ class CoverageGateRuns(unittest.TestCase):
     def test_the_decision_reaches_the_test_job_for_every_event(self):
         lint = job(CI, "lint")
         self.assertIn("go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}\n", lint)
-        self.assertIn("needs: [preflight, lint]\n", self.test)
+        # Lint, and the runner gate that picks this job's runner once Lint is done.
+        self.assertIn("needs: [preflight, lint, test-imap-gate]\n", self.test)
         decide = step(lint, "Decide whether the vendored IMAP module's gates run")
         for base in ("github.event.pull_request.base.sha", "github.event.merge_group.base_sha", "github.event.before"):
             self.assertIn(base, decide)
