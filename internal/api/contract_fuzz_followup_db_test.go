@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/rest-mail/rest-mail-server"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -148,4 +151,157 @@ func updateMessageProperty(t *testing.T, doc map[string]interface{}, name string
 		t.Fatalf("updateMessage's body has no %s", name)
 	}
 	return property
+}
+
+// The export car's two bodies each permitted, by their schemas, a request the handler refuses
+// (#2051). Neither handler was wrong:
+//
+//   - Each kind of data is written in one format (exportsession.Formats): mail as maildir,
+//     contacts as vcard, calendar as icalendar, settings as json. No exporter writes mail as
+//     vCard, a contact card format. The schema now pairs them, so {"data":"mail","format":"vcard"}
+//     is not schema-valid.
+//   - A skipped folder is a name the exporter copied from the account's folder listing, kept in
+//     the audit log for good: 1 to 255 bytes. The schema now says so of each item, so [""] is not
+//     schema-valid. It does not take on the full folder rule: a name the listing returns is
+//     recorded as it is, rather than refusing the export's end and losing its audit entry.
+//
+// Each test holds the schema and the registered route on PostgreSQL to the same verdict, body by
+// body: schema-valid is answered 201 or 200, and anything else 422 naming the field.
+
+func TestFuzzFindingExportFormatIsTheOneItsDataCarries(t *testing.T) {
+	compiler := fuzzFindingCompiler()
+	if err := compiler.AddResource("https://rest-mail.test/fuzz-findings.json", fuzzFindingDocument(t)); err != nil {
+		t.Fatal(err)
+	}
+	schema := fuzzFindingSchema(t, compiler, fuzzFindingPointer("/api/v1/accounts/{id}/exports", "post")+"/requestBody/content/application~1json/schema")
+	useRealGrants(t)
+	f := newCredentialFixture(t)
+	path := "/api/v1/accounts/" + strconv.FormatUint(uint64(f.mailboxID), 10) + "/exports"
+
+	pairs := map[string]string{"mail": "maildir", "contacts": "vcard", "calendar": "icalendar", "settings": "json"}
+	for _, data := range []string{"mail", "contacts", "calendar", "settings"} {
+		for _, format := range []string{"maildir", "vcard", "icalendar", "json"} {
+			body := `{"data":"` + data + `","format":"` + format + `"}`
+			t.Run(data+"/"+format, func(t *testing.T) {
+				want := pairs[data] == format
+				value, err := jsonschema.UnmarshalJSON(strings.NewReader(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := schema.Validate(value); (err == nil) != want {
+					t.Errorf("the schema permits %s: %t, want %t (%v)", body, err == nil, want, err)
+				}
+				response := f.do(http.MethodPost, path, f.session, body)
+				if want {
+					if response.Code != http.StatusCreated {
+						t.Fatalf("%s: %d %s, want 201", body, response.Code, response.Body)
+					}
+					return
+				}
+				if response.Code != http.StatusUnprocessableEntity || validationField(t, response.Body.Bytes(), "format") != "must be "+pairs[data]+" for "+data {
+					t.Fatalf("%s: %d %s, want 422 naming format", body, response.Code, response.Body)
+				}
+			})
+		}
+	}
+
+	t.Run("described", func(t *testing.T) {
+		operation := fuzzFindingOperation(t, "/api/v1/accounts/{id}/exports", "post")
+		if description, _ := operation["description"].(string); !strings.Contains(description, "There is no other pairing: mail is not exported as vcard") {
+			t.Errorf("createExportSession does not say in words that mail is not exported as vcard: %s", description)
+		}
+	})
+}
+
+func TestFuzzFindingExportSkippedFolderIsANameOfOneTo255Bytes(t *testing.T) {
+	compiler := fuzzFindingCompiler()
+	if err := compiler.AddResource("https://rest-mail.test/fuzz-findings.json", fuzzFindingDocument(t)); err != nil {
+		t.Fatal(err)
+	}
+	schema := fuzzFindingSchema(t, compiler, fuzzFindingPointer("/api/v1/accounts/{id}/exports/{session}/close", "post")+"/requestBody/content/application~1json/schema")
+	useRealGrants(t)
+	f := newCredentialFixture(t)
+	exports := "/api/v1/accounts/" + strconv.FormatUint(uint64(f.mailboxID), 10) + "/exports"
+
+	for _, test := range []struct {
+		name, folder string
+		want         bool
+	}{
+		{"empty", "", false},
+		{"space", " ", true},
+		{"one", "a", true},
+		{"nested", "Archive/2024", true},
+		{"255_bytes", strings.Repeat("x", 255), true},
+		{"256_bytes", strings.Repeat("x", 256), false},
+		{"254_bytes_multibyte", strings.Repeat("é", 127), true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			folders, err := json.Marshal([]string{"INBOX", test.folder})
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := `{"result":"completed","rows":1,"bytes":1,"skipped_folders":` + string(folders) + `}`
+			value, err := jsonschema.UnmarshalJSON(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := schema.Validate(value); (err == nil) != test.want {
+				t.Errorf("the schema permits skipped folder %q: %t, want %t (%v)", test.folder, err == nil, test.want, err)
+			}
+			opened := f.do(http.MethodPost, exports, f.session, `{"data":"mail","format":"maildir"}`)
+			if opened.Code != http.StatusCreated {
+				t.Fatalf("open: %d %s", opened.Code, opened.Body)
+			}
+			var session struct{ Data struct{ ID string } }
+			decodeInto(t, opened, &session)
+			response := f.do(http.MethodPost, exports+"/"+session.Data.ID+"/close", f.session, body)
+			if test.want {
+				var closed struct {
+					Data struct {
+						SkippedFolders []string `json:"skipped_folders"`
+					}
+				}
+				decodeInto(t, response, &closed)
+				if response.Code != http.StatusOK || !reflect.DeepEqual(closed.Data.SkippedFolders, []string{"INBOX", test.folder}) {
+					t.Fatalf("skipped folder %q: %d %s, want 200 recording it", test.folder, response.Code, response.Body)
+				}
+				return
+			}
+			if response.Code != http.StatusUnprocessableEntity || validationField(t, response.Body.Bytes(), "skipped_folders") == "" {
+				t.Fatalf("skipped folder %q: %d %s, want 422 naming skipped_folders", test.folder, response.Code, response.Body)
+			}
+			// The refused close left the export open: it closes once the body is right.
+			retry := f.do(http.MethodPost, exports+"/"+session.Data.ID+"/close", f.session, `{"result":"completed","rows":1,"bytes":1,"skipped_folders":["INBOX"]}`)
+			if retry.Code != http.StatusOK {
+				t.Fatalf("closing after the refusal: %d %s, want 200", retry.Code, retry.Body)
+			}
+		})
+	}
+
+	t.Run("described", func(t *testing.T) {
+		operation := fuzzFindingOperation(t, "/api/v1/accounts/{id}/exports/{session}/close", "post")
+		if description, _ := operation["description"].(string); !strings.Contains(description, "Each skipped folder is a name of 1 to 255 bytes") {
+			t.Errorf("closeExportSession does not say in words what a skipped folder may be: %s", description)
+		}
+	})
+}
+
+func validationField(t *testing.T, body []byte, field string) string {
+	t.Helper()
+	var refusal struct {
+		Error struct {
+			Code    string
+			Details struct{ Fields map[string]string }
+		}
+	}
+	if err := json.Unmarshal(body, &refusal); err != nil || refusal.Error.Code != "validation_failed" {
+		return ""
+	}
+	return refusal.Error.Details.Fields[field]
+}
+
+func fuzzFindingOperation(t *testing.T, path, method string) map[string]interface{} {
+	t.Helper()
+	doc := fuzzFindingDocument(t)
+	return doc["paths"].(map[string]interface{})[path].(map[string]interface{})[method].(map[string]interface{})
 }

@@ -7,6 +7,8 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/exportsession"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // itemFormats are the formats of list items in a request body, by operation and list property.
@@ -175,6 +177,26 @@ func withRequestConstraints(doc map[string]interface{}) {
 			case "createFolder", "renameFolder":
 				// Both bodies are folderNameBody, so this states the rule once for the two.
 				properties["name"] = folderNameSchema(folderNameDescription)
+			case "createExportSession":
+				// Each kind of data has the one format exportsession.Formats gives it, and the
+				// handler refuses any other pairing; the two enums alone permitted all sixteen
+				// (#2051). Binding reads the enums; the pairing is the handler's own refusal.
+				pairings := make([]interface{}, 0, len(exportDataKinds))
+				for _, data := range exportDataKinds {
+					pairings = append(pairings, map[string]interface{}{"properties": map[string]interface{}{
+						"data":   map[string]interface{}{"type": "string", "enum": []interface{}{data}},
+						"format": map[string]interface{}{"type": "string", "enum": []interface{}{exportsession.Formats[data]}},
+					}})
+				}
+				// The pairings exclude one another, so exactly one holds: oneOf, which a
+				// generated client also reads as the body and one pairing, not either.
+				schema["oneOf"] = pairings
+			case "closeExportSession":
+				// Each name goes into the audit log as the handler takes it: 1 to 255 bytes.
+				// maxLength counts characters, so the byte limit is said in words as well.
+				items := properties["skipped_folders"].(map[string]interface{})["items"].(map[string]interface{})
+				items["minLength"] = 1
+				items["maxLength"] = rmail.MaxFolderNameLen
 			case "setVacation":
 				properties["enabled"].(map[string]interface{})["type"] = "boolean"
 			}
@@ -189,3 +211,6 @@ func unchangedSinceDescription() string {
 	field, _ := reflect.TypeOf(apitypes.UpdateMessageBody{}).FieldByName("UnchangedSince")
 	return field.Tag.Get("description") + "."
 }
+
+// exportDataKinds are the kinds of data an export writes, in the order the data enum lists them.
+var exportDataKinds = []string{"mail", "contacts", "calendar", "settings"}
