@@ -109,6 +109,14 @@ jobs:
       - name: Fetch Archify, at the commit package.json pins
         run: echo "ARCHIFY=$(node fetch-archify.mjs "$RUNNER_TEMP/archify")" >> "$GITHUB_ENV"
 
+      # Outside links are checked when the guide is published, as well as daily
+      # (scheduled.yml), and not on a pull request: other sites change on their
+      # own schedule, and a pull request should not fail for that. A refusal
+      # (401, 403, 429) passes only through an exception that holds (#2120).
+      - name: Check every outside link
+        if: github.event_name != 'pull_request'
+        run: node check.mjs --external
+
       - name: Work out the version
         run: |
           set -euo pipefail

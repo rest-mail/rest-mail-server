@@ -487,12 +487,14 @@ Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../moni
 
 | Group | Alerts | Compose | Chart |
 | --- | --- | --- | --- |
-| `restmail-alerts` | queue backlog, age, errors and stalled workers; certificate expiry and missing certificates; auth failures; HTTP errors and latency; database connection errors and pool saturation; pipeline filter errors; SMTP/IMAP connections stopped; DNSBL listing, provider and staleness | yes | yes |
+| `restmail-alerts` | queue backlog, age, errors, saturated and stalled workers; certificate expiry and missing certificates; auth failures; HTTP errors and latency; database connection errors and pool saturation; pipeline filter errors; SMTP/IMAP connections stopped; DNSBL listing, provider and staleness | yes | yes |
 | `restmail-disk-node` | `DiskSpaceLow`, `DiskSpaceCritical` (node-exporter) | yes | no |
 | `restmail-disk-pvc` | `PVCSpaceLow`, `PVCSpaceCritical` (kubelet volume stats) | no series | yes |
 | `restmail-dkim` | `DKIMKeyOverdue`, `DKIMPublicationStuck` | yes | yes |
 
 The chart's render test checks its rendered groups equal the file's, rule for rule.
+
+**Queue saturation, held destinations and backlog.** The SMTP gateway splits the outbound mail due now by what stands between it and a worker. `restmail_queue_waiting_for_worker` counts what a worker could send now (its destination has a place free under `QUEUE_MAX_PER_DESTINATION`), and `restmail_queue_waiting_for_worker_oldest_seconds` is how long the longest-waiting of it has been due. `restmail_queue_held_by_destination` counts mail held back because its destination already has `QUEUE_MAX_PER_DESTINATION` messages in flight. `QueueWorkersSaturated` fires when mail a worker could send has waited more than 5 minutes for one, so held mail never fires it. `QueueBacklogHigh` reads `restmail_queue_size` less the held mail, so a destination held back by the limit does not read as a backlog. `restmail_queue_due` still counts held mail and is not an alert's backlog measure. The runbook [Mail is queuing but not delivering](runbooks/mail-queuing-not-delivering.md#saturated-held-back-or-a-backlog) says how to tell the three apart and what to do about each.
 
 **Delivery by IP version.** `restmail_outbound_smtp_attempts_total` counts attempts to deliver directly to an MX, labelled `ip_version` (`4` or `6`) and `result`: `delivered`, `deferred` (the MX answered 4xx), `rejected` (5xx) or `failed` (the connection broke, or the reply was not a verdict). The label is the version of the connection that was used, so compare the two to see whether receivers treat one more harshly; Grafana's *Direct SMTP Attempts by IP Version* panel plots them. One message tried at two MX hosts is two attempts. Not counted: a connection that never opened (it has no version), a message REST Mail itself declined to send over the connection, relay and RESTMAIL HTTPS deliveries. No alert reads it.
 

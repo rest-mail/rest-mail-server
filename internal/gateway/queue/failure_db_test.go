@@ -28,7 +28,9 @@ func openFailureTestDB(t *testing.T) *gorm.DB {
 		testdb.Unreachable(t, "failure-handling DB test skipped: no database reachable (%v)", err)
 	}
 	testdb.ReuseConnections(t, gdb)
-	if err := gdb.AutoMigrate(&models.OutboundQueue{}); err != nil {
+	// The claim and the queue gauges read domains too: a row whose sending domain
+	// has its outbound mail stopped is never claimed (models.OutboundQueueHeldSQL).
+	if err := gdb.AutoMigrate(&models.OutboundQueue{}, &models.Domain{}); err != nil {
 		t.Skipf("failure-handling DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb

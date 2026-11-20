@@ -56,7 +56,7 @@ func TestRefreshQueueSize_QueueOldestMessageOld(t *testing.T) {
 
 	age := func() float64 {
 		t.Helper()
-		if err := refreshQueueSize(tx, now); err != nil {
+		if err := refreshQueueSize(tx, now, staleDeliveringTimeout, defaultMaxPerDestination); err != nil {
 			t.Fatal(err)
 		}
 		return testutil.ToFloat64(metrics.QueueOldestAge)

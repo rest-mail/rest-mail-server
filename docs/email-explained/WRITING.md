@@ -93,9 +93,32 @@ node bundle.mjs --archify "$ARCHIFY"         # and it builds into the website's 
   current look), or a source Archify does not accept.
 
 Outside links change on other sites' schedules, so `node check.mjs --external`
-runs daily instead (`scheduled.yml`). A link that no longer answers, or an
-anchor no longer on its page, opens an issue, which closes itself once they all
-answer again.
+runs daily (`scheduled.yml`) and when the guide is published
+(`email-explained.yml`), not on pull requests. It fails on:
+
+- a link that no longer answers, or an anchor no longer on its page;
+- a site that refuses to be checked (HTTP 401, 403 or 429) with no exception;
+- an exception without a reason, without an expiry date, or past its date.
+
+Some sites turn away robots while a person gets the page. Open the link
+yourself, and if it is sound, add an exception to
+[`scripts/email-explained/outside-link-exceptions.json`](../../scripts/email-explained/outside-link-exceptions.json):
+
+```json
+[
+  {
+    "url": "https://check.spamhaus.org/",
+    "reason": "Spamhaus answers robots with 403; opened by hand 2026-11-20 and it shows the lookup form.",
+    "expires": "2027-02-20"
+  }
+]
+```
+
+`url` is the page without its `#anchor`. `reason` says why the link is sound.
+`expires` is the date to look again by: the exception still holds on that day
+and fails the check the day after. An exception covers only a refusal: a broken
+link fails whatever the file says. A failing check opens an issue, which closes
+itself once the check passes again.
 
 ## Diagrams
 
