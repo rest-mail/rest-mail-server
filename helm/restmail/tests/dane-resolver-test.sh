@@ -20,7 +20,11 @@ image=$(yq -r 'select(.metadata.name == "restmail-smtp-gateway") | .spec.templat
 docker run --rm --user 101:102 --cap-drop ALL --security-opt no-new-privileges \
   -v "$tmp:/etc/restmail-dane:ro" --entrypoint /usr/sbin/unbound-checkconf \
   "$image" /etc/restmail-dane/unbound.conf
-docker run --detach --name "$name" --user 101:102 --cap-drop ALL \
+# --oom-score-adj 1000 for the same reason as the postgres service in ci.yml: on a
+# runner whose docker API lives in a user namespace, every `docker exec` into a
+# container that did not ask for the maximum is refused. Without it the readiness
+# probe below never answers and this test fails on the pool but passes on GitHub.
+docker run --detach --name "$name" --user 101:102 --cap-drop ALL --oom-score-adj 1000 \
   --security-opt no-new-privileges -v "$tmp:/etc/restmail-dane:ro" \
   --entrypoint /usr/sbin/unbound "$image" -d -c /etc/restmail-dane/unbound.conf
 ready=false
