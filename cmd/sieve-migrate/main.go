@@ -41,18 +41,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rest-mail/go-sieve/pkg/sieve"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
 // validateScript is the single point of contact with the go-sieve parser. The
 // version swap (v0.2.0 -> a later release) is a go.mod change only; no logic in
-// this package changes because everything routes through here.
+// this package changes because everything routes through here. It parses as the
+// server does, through filters.ValidateSieve, which turns each bare LF into CRLF
+// first (go-sieve v0.9.0 refuses a bare LF).
 func validateScript(script string) error {
-	return sieve.Validate(script)
+	return filters.ValidateSieve(script)
 }
 
 // missingCapRe extracts the capability name from a go-sieve "not declared with

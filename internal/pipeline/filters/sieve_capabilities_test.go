@@ -29,6 +29,10 @@ func TestSieveEnabledCapabilitiesInstall(t *testing.T) {
 		"encoded-character":          `require "encoded-character"; if header :is "Subject" "${hex:41}" { keep; }`,
 		"comparator-i;octet":         `require "comparator-i;octet"; if header :is :comparator "i;octet" "Subject" "A" { keep; }`,
 		"comparator-i;ascii-casemap": `require "comparator-i;ascii-casemap"; if header :is :comparator "i;ascii-casemap" "Subject" "a" { keep; }`,
+		"variables":                  `require ["fileinto", "variables"]; if header :matches "Subject" "* *" { set "first" "${1}"; fileinto "Filed-${first}"; }`,
+		"relational":                 `require ["relational", "comparator-i;ascii-numeric"]; if header :count "ge" :comparator "i;ascii-numeric" "Received" "1" { keep; }`,
+		"subaddress":                 `require ["envelope", "subaddress"]; if envelope :detail "to" "work" { keep; }`,
+		"comparator-i;ascii-numeric": `require "comparator-i;ascii-numeric"; if header :is :comparator "i;ascii-numeric" "X-Count" "1" { keep; }`,
 	}
 	if len(cases) != len(enabledSieveCapabilities) {
 		t.Fatalf("%d cases for %d enabled capabilities: every enabled capability needs a working script", len(cases), len(enabledSieveCapabilities))
@@ -59,8 +63,6 @@ func TestSieveCapabilitiesLeftOffTheListAreRefused(t *testing.T) {
 		{"notify in an untaken branch", "notify", `require "notify"; if false { notify :method "mailto:a@example.com"; }`},
 		{"notify used undeclared", "notify", `notify :method "mailto:a@example.com";`},
 		{"vacation-seconds", "vacation-seconds", `require "vacation-seconds"; if false { vacation :seconds 60 "Away."; }`},
-		{"ascii-numeric comparator", "comparator-i;ascii-numeric", `require "comparator-i;ascii-numeric";`},
-		{"ascii-numeric used undeclared", "comparator-i;ascii-numeric", `if header :is :comparator "i;ascii-numeric" "X" "1" { keep; }`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { assertSieveCapabilityRefused(t, tc.script, tc.capability) })
@@ -68,11 +70,9 @@ func TestSieveCapabilitiesLeftOffTheListAreRefused(t *testing.T) {
 }
 
 // go-sieve does not implement these, so the parser refuses them. They answer in the
-// same shape as an extension this server turned off. `variables`, `relational` and
-// `subaddress` are on the owner's list, but stay refused here until go-sieve runs them
-// and they are added to enabledSieveCapabilities.
+// same shape as an extension this server turned off.
 func TestSieveCapabilitiesTheParserLacksAreRefused(t *testing.T) {
-	for _, capability := range []string{"variables", "relational", "subaddress", "enotify", "x-unknown", `quo"te`} {
+	for _, capability := range []string{"enotify", "x-unknown", `quo"te`} {
 		t.Run(capability, func(t *testing.T) {
 			quoted, err := json.Marshal(capability)
 			if err != nil {
@@ -80,6 +80,73 @@ func TestSieveCapabilitiesTheParserLacksAreRefused(t *testing.T) {
 			}
 			assertSieveCapabilityRefused(t, `require `+string(quoted)+`;`, capability)
 		})
+	}
+}
+
+// Until go-sieve v0.9.0 the parser lacked `variables`, `relational` and `subaddress`,
+// and this server refused `comparator-i;ascii-numeric` as off its list; the rows here
+// pinned those refusals. go-sieve v0.9.0 runs all four and the server enables them
+// (#2108), so a require of each, alone or in a list, installs, and the comparator used
+// without its require gets the parse advice that fixes the script instead of a refusal.
+func TestSieveCapabilitiesGoSieve090RunsAreAccepted(t *testing.T) {
+	for _, capability := range []string{"variables", "relational", "subaddress", "comparator-i;ascii-numeric"} {
+		t.Run(capability, func(t *testing.T) {
+			quoted, err := json.Marshal(capability)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, script := range []string{`require ` + string(quoted) + `;`, `require ["fileinto", ` + string(quoted) + `]; fileinto "Filed";`} {
+				if err := ValidateSieveForInstall(script); err != nil {
+					t.Fatalf("%s: refused: %v", script, err)
+				}
+			}
+		})
+	}
+	err := ValidateSieveForInstall(`if header :is :comparator "i;ascii-numeric" "X" "1" { keep; }`)
+	var refused *SieveInstallError
+	if !errors.As(err, &refused) {
+		t.Fatalf("got %T (%v), want *SieveInstallError", err, err)
+	}
+	if refused.Stage != "parse" || refused.MissingRequire != "comparator-i;ascii-numeric" || refused.Capability != "" {
+		t.Fatalf("stage %q missing %q capability %q: %v", refused.Stage, refused.MissingRequire, refused.Capability, err)
+	}
+	if !strings.Contains(err.Error(), `add: require "comparator-i;ascii-numeric"`) {
+		t.Fatalf("no advice to add the require: %v", err)
+	}
+}
+
+// RFC 5228 §2 ends every script line in CRLF and go-sieve v0.9.0 refuses a bare LF.
+// The server turns each bare LF into CRLF before it parses, at upload and at delivery,
+// leaves CRLF as it is, and still refuses a bare CR.
+func TestSieveSourceTurnsBareLFIntoCRLF(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                  "",
+		"keep;":             "keep;",
+		"keep;\n":           "keep;\r\n",
+		"\nkeep;":           "\r\nkeep;",
+		"keep;\r\n":         "keep;\r\n",
+		"a\nb\r\nc\n\n":     "a\r\nb\r\nc\r\n\r\n",
+		"text:\r\nx\n.\r\n": "text:\r\nx\r\n.\r\n",
+		"bare\rCR\n":        "bare\rCR\r\n",
+	} {
+		if got := sieveSource(in); got != want {
+			t.Errorf("sieveSource(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, script := range []string{"require \"fileinto\";\nfileinto \"Filed\";\n", "require \"fileinto\";\r\nfileinto \"Filed\";\r\n"} {
+		if err := ValidateSieveForInstall(script); err != nil {
+			t.Errorf("ValidateSieveForInstall(%q): %v", script, err)
+		}
+		if err := ValidateSieve(script); err != nil {
+			t.Errorf("ValidateSieve(%q): %v", script, err)
+		}
+		raw, _ := json.Marshal(sieveConfig{Script: script, ScriptHash: HashSieveScript(script)})
+		if _, err := NewSieve(raw); err != nil {
+			t.Errorf("NewSieve(%q): %v", script, err)
+		}
+	}
+	if err := ValidateSieveForInstall("keep;\rkeep;"); err == nil || !strings.Contains(err.Error(), "CR") {
+		t.Errorf("a bare CR installed or was refused for another reason: %v", err)
 	}
 }
 
@@ -139,6 +206,31 @@ func TestSieveFilterDoesNotBuildACapabilityOffTheList(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), `"regex"`) {
 				t.Fatalf("error does not name the capability: %v", err)
+			}
+		})
+	}
+}
+
+// Two go-sieve v0.9.0 tests ask the host for something this server does not give it:
+// `mailboxexists` (under the enabled `mailbox`) needs a mailbox lookup, and `body :raw`
+// needs the undecoded body. Both pass the upload gate, which does not evaluate a
+// runtime error, and at delivery each is a runtime error that keeps the message in
+// INBOX (RFC 5228 §2.10.6) instead of filing it.
+func TestSieveV090HostlessTestsKeepTheMessage(t *testing.T) {
+	for name, script := range map[string]string{
+		"mailboxexists": `require ["fileinto", "mailbox"]; if mailboxexists "INBOX" { fileinto "Filed"; }`,
+		"body :raw":     `require ["fileinto", "body"]; if body :raw :contains "Hello" { fileinto "Filed"; }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateSieveForInstall(script); err != nil {
+				t.Fatalf("refused at upload: %v", err)
+			}
+			result := runSieve(t, script, sieveEmail())
+			if result.Message == nil {
+				t.Fatalf("no message: %+v", result)
+			}
+			if folder := result.Message.Metadata["deliver_to_folder"]; folder != "" {
+				t.Fatalf("filed into %q, want the message kept", folder)
 			}
 		})
 	}

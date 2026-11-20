@@ -162,8 +162,8 @@ github.com/rest-mail/go-mtasts v0.5.0 h1:+VxjzpDmlIneOXKTK0ECn8J9wfpyX6c83oTfSLh
 github.com/rest-mail/go-mtasts v0.5.0/go.mod h1:2jtzwtnBD7BM+MpyDdpq5SwlYZtVQEqAzLKIf2lbVBY=
 github.com/rest-mail/go-pop3 v0.4.0 h1:IoSQXGTJgjZVkkTZQQ6Byko9cSkotD7+xrdMTp3AmHY=
 github.com/rest-mail/go-pop3 v0.4.0/go.mod h1:fH/VVM73Bq7WEue4T/sIolhTa+uWsmD+v/vyb5R8EM8=
-github.com/rest-mail/go-sieve v0.8.0 h1:KYHnxFBCOZMEFw1Sl+BftgmHunw18wlyq3ijXeq74I8=
-github.com/rest-mail/go-sieve v0.8.0/go.mod h1:nRzH/o6SMddM7dBUrzscyKA5+ZHPIZ5dtmTfW4u4MIo=
+github.com/rest-mail/go-sieve v0.9.0 h1:bsA+tgDhoxYkh0l1171cIMn6eAxmFmdgxxsINXVAffE=
+github.com/rest-mail/go-sieve v0.9.0/go.mod h1:nRzH/o6SMddM7dBUrzscyKA5+ZHPIZ5dtmTfW4u4MIo=
 github.com/rest-mail/go-smtp v0.32.0 h1:aIyHNKqKDtOKvFW2wB7jCS0wnDTCFFxu/g+xa1qobjk=
 github.com/rest-mail/go-smtp v0.32.0/go.mod h1:YQ/qzoktT/KKthaoWuLrX0pZ1xYtWd/vCaFlHcVd3s0=
 github.com/rest-mail/go-spf v0.2.0 h1:y8fh9YDxSHkspyO+627zYjAgh6RfgZMULwfNu+cUL9Y=
