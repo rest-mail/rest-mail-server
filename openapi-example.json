@@ -19466,6 +19466,56 @@
       }
     }
   },
+  "getPublicStatus": {
+    "degraded": {
+      "summary": "The API cannot reach its database",
+      "description": "A failed database ping yields only the degraded availability state.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "data": {
+            "status": "degraded"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair exercises its shared error adapter.",
+      "requires": {
+        "fault": "error_adapter"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "operational": {
+      "summary": "The API can reach its database",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "operational"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getQueueEntry": {
     "domain_scope": {
       "summary": "A domain-scoped grant does not satisfy installation-wide reads",

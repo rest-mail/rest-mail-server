@@ -49,12 +49,13 @@ gateways all go through the API, so a slow API is felt everywhere at once.
    ```
 
    `--sort total` shows what costs the database most overall; `--sort mean`
-   shows the statements that are slow on each call. Each statement is the
-   text Postgres records, constants replaced by `$1`, `$2`, so no address or
-   message content is shown. The figures count from the last reset, so a
+   shows the statements that are slow on each call. The view shows normalized
+   SQL shapes with constants replaced by `$1`, `$2` and so on. Statements
+   that may contain comments or unnormalized values show a redaction marker
+   with the query ID. The figures count from the last reset, so a
    statement that was slow last week can still lead the list: reset, let
    traffic run for a few minutes while the problem shows, and list again.
-   `--json` gives the whole statement text. The same view is
+   `--json` gives the same view in machine-readable form. The API path is
    `GET /api/v1/admin/database/statements`.
 
    `statistics_unavailable` means the database does not preload
