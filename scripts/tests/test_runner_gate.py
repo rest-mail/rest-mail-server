@@ -67,6 +67,7 @@ KEPT_HOSTED = {
     ("bump-vertrag.yml", "bump"): "the workflow's only job: no earlier job to pick in",
     ("ci-labels.yml", "rerun-contract-gate"): "the workflow's only job: no earlier job to pick in",
     ("ci-retarget.yml", "dispatch-required-checks"): "the workflow's only job: no earlier job to pick in",
+    ("ci-retry.yml", "retry"): "the workflow's only job, and it must answer when the pool is down",
     ("helm.yml", "publish"): "the workflow's only job: no earlier job to pick in",
     ("load.yml", "load"): "the workflow's only job: no earlier job to pick in",
     ("mail-conformance.yml", "conformance"): "the workflow's only job: no earlier job to pick in",
