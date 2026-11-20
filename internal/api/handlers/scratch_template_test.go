@@ -24,7 +24,10 @@ var (
 	withAudit          = scratchStep{"audit-log", rmdb.MigrateAuditLog}
 	withFolderUIDMarks = scratchStep{"folder-uid-marks", rmdb.MigrateFolderUIDMarks}
 	withFolderModSeqs  = scratchStep{"folder-mod-seqs", rmdb.MigrateFolderModSeqs}
-	withForeignKeys    = scratchStep{"foreign-keys", func(database *gorm.DB) error {
+	// withMessageSearch is the full-text index production builds on messages. Without it a store
+	// test can't see a message the index refuses (#2107).
+	withMessageSearch = scratchStep{"message-search", rmdb.MigrateMessageSearch}
+	withForeignKeys   = scratchStep{"foreign-keys", func(database *gorm.DB) error {
 		database.DisableForeignKeyConstraintWhenMigrating = false
 		return nil
 	}}

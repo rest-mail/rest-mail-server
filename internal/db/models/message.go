@@ -62,6 +62,19 @@ func MessageReplyParentSQL(prefix string) string {
 	return `left(btrim(COALESCE(NULLIF(` + prefix + `in_reply_to, ''), (regexp_match(` + prefix + `"references", '([^\s<>]+)[\s<>]*$'))[1], ''), '<> '), 255)`
 }
 
+// MessageSearchVectorSQL is what full-text search matches a message by: the first 200,000
+// characters of its subject and text. The index is built on it and the search query must spell
+// it the same, or the index isn't used.
+//
+// PostgreSQL refuses a tsvector whose lexemes and positions pass 1,048,575 bytes ("string is too
+// long for tsvector"), and idx_messages_search_text computes one for every row it indexes, so a
+// longer text of many distinct words made the insert fail and the message answer 500: a legal
+// 10 MiB message was never stored (#2107, #1921). A character costs a tsvector at most about 4.5
+// bytes (a 4-byte letter alone between spaces), and the worst shape measured at this length came
+// to 786,404 bytes with the entry headers counted, so no text can pass the limit. The text stored
+// is the whole of it; only what search finds stops here.
+const MessageSearchVectorSQL = `to_tsvector('english', left(coalesce(subject, '') || ' ' || coalesce(body_text, ''), 200000))`
+
 type Message struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	MailboxID uint   `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`

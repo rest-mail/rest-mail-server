@@ -224,8 +224,7 @@ func autoMigrate(db *gorm.DB) error {
 	}
 
 	// Create full-text search index for messages
-	err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_search ON messages USING gin(to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(body_text, '')))`).Error
-	if err != nil {
+	if err := MigrateMessageSearch(db); err != nil {
 		slog.Warn("failed to create full-text search index", "error", err)
 	}
 
@@ -339,4 +338,15 @@ func WaitForDB(cfg *config.Config, timeout time.Duration) (*gorm.DB, error) {
 	}
 
 	return nil, fmt.Errorf("database not ready after %v: %w", timeout, lastErr)
+}
+
+// MigrateMessageSearch builds the full-text index on what search reads of a message,
+// models.MessageSearchVectorSQL. It replaces idx_messages_search, which read all of a message's
+// text: a tsvector of more than 1 MiB is refused, so that index made a long message of many
+// distinct words fail to store at all (#2107).
+func MigrateMessageSearch(db *gorm.DB) error {
+	if err := db.Exec(`DROP INDEX IF EXISTS idx_messages_search`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_search_text ON messages USING gin(` + models.MessageSearchVectorSQL + `)`).Error
 }
