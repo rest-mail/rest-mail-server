@@ -64,9 +64,7 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 
 	// Full-text search
 	if in.Q != "" {
-		query = query.Where(
-			"to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(body_text, '')) @@ plainto_tsquery('english', ?)", in.Q,
-		)
+		query = query.Where(models.MessageSearchVectorSQL+" @@ plainto_tsquery('english', ?)", in.Q)
 	}
 
 	// Folder filter
