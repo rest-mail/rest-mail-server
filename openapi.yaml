@@ -3279,8 +3279,9 @@ paths:
         sendMessage makes, so the two cannot disagree. Asked by the account
         itself, it answers for the credential the request is made with; asked
         by someone else who may read the account, for the account's own
-        sign-in. Uses the same `mail:read` authorization as getAccount; an
-        account the caller may not read is 404.
+        sign-in. Uses the same `mail:read` authorization as getAccount. Hidden
+        or missing accounts return 404. A visible account without `mail:read`
+        for this credential returns 403.
       responses:
         "200":
           description: The account's receiving and sending addresses

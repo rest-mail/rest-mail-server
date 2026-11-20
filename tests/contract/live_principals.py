@@ -27,7 +27,13 @@ def app_gateway(app):
     context.load_cert_chain(transport["cert"], transport["cert-key"])
     request = urllib.request.Request(
         endpoint.rstrip("/") + "/api/v1/gateway-sessions",
-        data=json.dumps({"protocol": "imap", "address": app["address"], "password": app["secret"]}).encode(),
+        data=json.dumps({
+            "protocol": "imap",
+            "address": app["address"],
+            "password": app["secret"],
+            # Match the disposable gateway client used by the contract hooks.
+            "client_ip": "198.51.100.7",
+        }).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
