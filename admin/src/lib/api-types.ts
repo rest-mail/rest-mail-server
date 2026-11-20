@@ -548,7 +548,7 @@ export interface paths {
         put?: never;
         /**
          * Open an audited export of the account's data
-         * @description Records the start of an export of the account's data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account's mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else's account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.
+         * @description Records the start of an export of the account's data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. There is no other pairing: mail is not exported as vcard, nor contacts as maildir, and any other pairing is refused 422 validation_failed naming format. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account's mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else's account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.
          */
         post: operations["createExportSession"];
         delete?: never;
@@ -568,7 +568,7 @@ export interface paths {
         put?: never;
         /**
          * Close an export and record how it ended
-         * @description Records the end of the export as an account.export audit entry: completed or aborted, the rows and bytes written as the exporter reports them, and any folders it was asked to leave out. The summary is returned. Only the account that opened the export may close it, and only once; a session that does not exist, has closed or belongs to another opener is not found. Requires mail:export on the account.
+         * @description Records the end of the export as an account.export audit entry: completed or aborted, the rows and bytes written as the exporter reports them, and any folders it was asked to leave out. Each skipped folder is a name of 1 to 255 bytes, as the account's folder listing gives it; an empty or longer name is refused 422 validation_failed naming skipped_folders, and the export stays open. The summary is returned. Only the account that opened the export may close it, and only once; a session that does not exist, has closed or belongs to another opener is not found. Requires mail:export on the account.
          */
         post: operations["closeExportSession"];
         delete?: never;
@@ -3121,7 +3121,7 @@ export interface paths {
         head?: never;
         /**
          * Update message flags or move to a folder
-         * @description With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 400 invalid_mod_sequence. Read the message again for its current mod_seq.
+         * @description With unchanged_since the change is made only while the message's mod_seq is at most that positive value, checked and written in one statement, as IMAP's STORE (UNCHANGEDSINCE) (RFC 7162 §3.1.3); otherwise it answers 409 message_modified and changes nothing. Without any flag or folder change the request only reads the message and cannot conflict. Zero and negative mod-sequences are 400 invalid_mod_sequence, and one above 9223372036854775807, the largest a mod_seq can be, is 422 validation_failed. Read the message again for its current mod_seq.
          */
         patch: operations["updateMessage"];
         trace?: never;
@@ -6453,6 +6453,7 @@ export interface components {
             is_starred?: boolean | null;
             /** @description RFC 3501 ASCII keywords, without system flags; at most 100 distinct keywords, compared case-insensitively. Repeated keywords are accepted and deduplicated. */
             keywords?: string[] | null;
+            /** @description A positive mod-sequence, at most 9223372036854775807: mod_seq is a 63-bit integer (RFC 7162 §3.1). Change the message only if its mod_seq is still at most this value (IMAP STORE UNCHANGEDSINCE, RFC 7162 §3.1.3); a higher mod_seq answers 409 message_modified and changes nothing. Zero and negative values are 400 invalid_mod_sequence; a value above 9223372036854775807 is 422 validation_failed. */
             unchanged_since?: number | null;
         };
         updatePipelineRequestBody: {
