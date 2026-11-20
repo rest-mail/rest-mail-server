@@ -1,10 +1,12 @@
 package api
 
 import (
+	"reflect"
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 // itemFormats are the formats of list items in a request body, by operation and list property.
@@ -49,6 +51,62 @@ func withItemFormats(doc map[string]interface{}) {
 	}
 }
 
+// folderNamePatterns are rmail.FolderNameProblem as patterns, the ones updateMessage's folder
+// tags state: something besides spaces, no space at either end, no control character, no "..".
+// The first is the property's own pattern, the rest its allOf refinements.
+var folderNamePatterns = []string{
+	"[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]",
+	"^[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]([\\s\\S]*[^\\x09-\\x0d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$",
+	"^[^\\x00-\\x1f\\x7f-\\x9f]*$",
+	"^([^.]|\\.[^.])*(\\.)?$",
+}
+
+// folderNameSchema is a folder name as rmail.FolderNameProblem takes it. It goes into the
+// document only: the handlers that take one bind a plain string and make the refusal
+// themselves, so neither the refusal nor its place in the order of refusals changes.
+func folderNameSchema(description string) map[string]interface{} {
+	refinements := make([]interface{}, 0, len(folderNamePatterns)-1)
+	for _, pattern := range folderNamePatterns[1:] {
+		refinements = append(refinements, map[string]interface{}{"type": "string", "pattern": pattern})
+	}
+	schema := map[string]interface{}{
+		"type": "string", "minLength": 1, "maxLength": 255,
+		"pattern": folderNamePatterns[0], "allOf": refinements,
+	}
+	if description != "" {
+		schema["description"] = description
+	}
+	return schema
+}
+
+// folderNameDescription is what a folder name's schema says of it in words.
+const folderNameDescription = "A folder name: valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending " +
+	`with a space, with no control character and no ".."; any other name is refused 422 validation_failed.`
+
+// withPathConstraints states what the handlers refuse in a path parameter. subscribeFolder holds
+// its name to the folder rule; unsubscribeFolder takes any name, so the parameter they share
+// is replaced on subscribeFolder alone rather than changed where both read it.
+func withPathConstraints(doc map[string]interface{}) {
+	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
+	for _, methods := range paths {
+		for method, operation := range methods {
+			if operation.OperationID != "subscribeFolder" {
+				continue
+			}
+			// A copy, in case the generator built the operations' lists from one array.
+			parameters := append([]oapifly.Parameter(nil), operation.Parameters...)
+			for index := range parameters {
+				if parameters[index].In == "path" && parameters[index].Name == "folder" {
+					parameters[index].Schema = folderNameSchema("")
+					parameters[index].Description = folderNameDescription
+				}
+			}
+			operation.Parameters = parameters
+			methods[method] = operation
+		}
+	}
+}
+
 func withRequestConstraints(doc map[string]interface{}) {
 	paths, _ := doc["paths"].(map[string]map[string]oapifly.PathItem)
 	components, _ := doc["components"].(map[string]interface{})
@@ -71,6 +129,9 @@ func withRequestConstraints(doc map[string]interface{}) {
 				items["minimum"] = 0
 				items["maximum"] = uint64(^uint(0))
 			case "updateMessage":
+				unchangedSince := properties["unchanged_since"].(map[string]interface{})
+				unchangedSince["maximum"] = int64(handlers.MaxModSequence)
+				unchangedSince["description"] = unchangedSinceDescription()
 				keywords := properties["keywords"].(map[string]interface{})
 				items := keywords["items"].(map[string]interface{})
 				items["minLength"] = 1
@@ -107,9 +168,26 @@ func withRequestConstraints(doc map[string]interface{}) {
 					map[string]interface{}{"type": from["type"], "enum": empty},
 					map[string]interface{}{"type": "string", "format": "idn-email"},
 				}
+			case "closeExportSession":
+				// A skipped folder name is 1 to 255 bytes, as the folder listing gives it.
+				skipped := properties["skipped_folders"].(map[string]interface{})
+				items := skipped["items"].(map[string]interface{})
+				items["minLength"] = 1
+				items["maxLength"] = 255
+			case "createFolder", "renameFolder":
+				// Both bodies are folderNameBody, so this states the rule once for the two.
+				properties["name"] = folderNameSchema(folderNameDescription)
 			case "setVacation":
 				properties["enabled"].(map[string]interface{})["type"] = "boolean"
 			}
 		}
 	}
+}
+
+// unchangedSinceDescription is what UpdateMessageBody's unchanged_since tag says of it: the
+// generator writes no field's description. TestUnchangedSinceDescribesTheBigintMaximum holds
+// openapi.yaml to the same words.
+func unchangedSinceDescription() string {
+	field, _ := reflect.TypeOf(apitypes.UpdateMessageBody{}).FieldByName("UnchangedSince")
+	return field.Tag.Get("description") + "."
 }

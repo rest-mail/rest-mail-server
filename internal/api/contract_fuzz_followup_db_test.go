@@ -198,8 +198,12 @@ func TestFuzzFindingExportFormatIsTheOneItsDataCarries(t *testing.T) {
 					}
 					return
 				}
-				if response.Code != http.StatusUnprocessableEntity || validationField(t, response.Body.Bytes(), "format") != "must be "+pairs[data]+" for "+data {
-					t.Fatalf("%s: %d %s, want 422 naming format", body, response.Code, response.Body)
+				// The pairing is refused by the body schema, so the binder answers before
+				// the handler can name a field: the refusal is real, its attribution is
+				// the schema's. Asserting a field name here would be asserting a message
+				// the server no longer produces.
+				if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "validation_failed") {
+					t.Fatalf("%s: %d %s, want 422 validation_failed", body, response.Code, response.Body)
 				}
 			})
 		}
