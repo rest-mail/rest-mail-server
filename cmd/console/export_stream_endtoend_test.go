@@ -160,7 +160,6 @@ func TestExportMaildirStreamsAFolderPastThePageLimitInBoundedMemory(t *testing.T
 		messages[i] = largeMessage(i, size)
 	}
 	root := seedMaildir(t, map[string][]string{"": messages}, time.Date(2020, 3, 4, 5, 6, 7, 0, time.UTC))
-	messages = nil
 	if got := s.importMaildir(t, id, root); got.Imported != count {
 		t.Fatalf("seed the account: %+v", got)
 	}
