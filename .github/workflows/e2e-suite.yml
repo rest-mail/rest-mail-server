@@ -2,8 +2,9 @@ name: E2E suite
 
 # The full end-to-end topology and everything run against it, with the JavaScript
 # filter isolation proof in a job beside it, as a reusable workflow: e2e.yml runs
-# it on every code change (its gate is the required
-# check `E2E (full topology)`), contract-fuzz.yml runs it nightly with the
+# it on every code pull request (its gate is the required check
+# `E2E (full topology)`), and on each merge queue group with contract-phases
+# "none" and a named subset of the stages (#2113); contract-fuzz.yml runs it nightly with the
 # contract tests' fuzz phase instead of their gating phases, and
 # contract-faults.yml runs it nightly with the fault run (#654) instead.
 on:
@@ -28,9 +29,19 @@ on:
           and ownership reports; "live" runs independent live proofs; "fuzz" runs the fuzz phase, reports what it
           finds as an artifact, and fails nothing; "faults" builds the API
           with each fault in tests/contract/faults.yml and fails unless the
-          phase each one names turns red.
+          phase each one names turns red; "none" runs no contract phase, only the
+          topology and its e2e stages (the merge queue's check, #2113).
         type: string
         default: gate
+      stages:
+        description: >-
+          The TestStages subtests to run, by name and separated by spaces, such as
+          "Stage1_Infrastructure Stage2_TraditionalMail". Empty runs every stage and
+          the package's other tests, and requires all 15 stages to pass. A list runs
+          only TestStages with those stages, and requires each one named to pass.
+          A stage reads what the stages before it left, so name a prefix.
+        type: string
+        default: ""
       description-mode:
         description: Read the generated JSON from its exact saved bytes or live URL
         type: string
@@ -152,15 +163,37 @@ jobs:
 
       - name: Run e2e stages
         if: inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'
+        env:
+          STAGES: ${{ inputs.stages }}
         run: |
           set -o pipefail
-          chore test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+          if [ -z "$STAGES" ]; then
+            chore test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+            exit
+          fi
+          # Only the named stages, as go test's -run selects subtests. chore hands
+          # its arguments to a shell unquoted, so the pattern carries its own quotes;
+          # each name is checked first, so nothing but a stage name reaches it.
+          names=""
+          for stage in $STAGES; do
+            if ! [[ "$stage" =~ ^Stage[0-9]+_[A-Za-z]+$ ]]; then
+              echo "::error::'$stage' is not a TestStages stage name" >&2
+              exit 1
+            fi
+            names="${names:+$names|}$stage"
+          done
+          pattern="^TestStages\$/^($names)\$"
+          echo "running only: $pattern"
+          chore test:e2e -- -run "'$pattern'" 2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Assert stages executed (guard against silent skips)
         if: inputs.contract-phases != 'live' && inputs.contract-phases != 'pairs'
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
         # the stages actually RAN. Fail if any top-level stage skipped, or if
-        # fewer than all 15 stages reached PASS.
+        # fewer than all 15 stages reached PASS, or, with a list of stages, if
+        # any stage named did not reach PASS or any other stage ran.
+        env:
+          STAGES: ${{ inputs.stages }}
         run: |
           log="$RUNNER_TEMP/e2e.log"
           skipped=$(grep -cE -- '--- SKIP: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
@@ -171,11 +204,27 @@ jobs:
             grep -E -- '--- SKIP: TestStages/Stage' "$log" || true
             exit 1
           fi
-          if [ "$passed" -lt 15 ]; then
-            echo "::error::expected all 15 e2e stages to PASS, only $passed did"
+          if [ -z "$STAGES" ]; then
+            if [ "$passed" -lt 15 ]; then
+              echo "::error::expected all 15 e2e stages to PASS, only $passed did"
+              exit 1
+            fi
+            echo "all 15 e2e stages executed and passed"
+            exit 0
+          fi
+          expected=0
+          for stage in $STAGES; do
+            expected=$((expected + 1))
+            if ! grep -qE -- "--- PASS: TestStages/${stage} \\(" "$log"; then
+              echo "::error::stage $stage was named but did not PASS"
+              exit 1
+            fi
+          done
+          if [ "$passed" -ne "$expected" ]; then
+            echo "::error::expected exactly the $expected named stages to PASS, $passed did"
             exit 1
           fi
-          echo "all 15 e2e stages executed and passed"
+          echo "the $expected named e2e stages executed and passed: $STAGES"
 
       - name: Copy a mailbox into REST Mail with imapsync
         # What an operator cutting over from Dovecot reaches for (#734): folders,
@@ -193,11 +242,13 @@ jobs:
           fi
 
       - name: Cache Vertrag's pinned archive
+        if: inputs.contract-phases != 'none'
         uses: ./.github/actions/cache-pinned-tool
         with:
           tool: vertrag
 
       - name: Install vertrag (pinned + checksum-verified)
+        if: inputs.contract-phases != 'none'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         # The contract tester (#376), as its released binary rather than a Go

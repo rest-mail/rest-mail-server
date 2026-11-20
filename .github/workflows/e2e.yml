@@ -14,12 +14,19 @@ name: E2E
 #   * `changes`  — always runs, classifies the diff as docs-only vs. code.
 #   * `e2e-run`  — the heavy suite; runs ONLY when code changed (skipped on
 #                  docs-only PRs, so no 20-min wait).
+#   * `e2e-delta` — the merge queue's check (#2113): the topology and the first
+#                  stages only, on the group's commit, which is what main becomes.
 #   * `e2e`      — the gate. It is the job named `E2E (full topology)`, so it is
 #                  the required-check context. It runs even after a job fails and
-#                  reports success when the heavy job passed OR was legitimately
-#                  skipped for a docs-only change. Because this job always posts,
-#                  the required context is satisfied on every PR — code or docs.
-# Stack layers use the same opt-in and merge-queue rules as PRs targeting main.
+#                  reports success when the work its event called for passed OR was
+#                  legitimately skipped for a docs-only change. Because this job always
+#                  posts, the required context is satisfied on every event — code or docs.
+# Where the full suite runs (#2113): on the pull request, which always exists, so a
+# failure costs one push rather than a queue ejection, and the check would still run
+# if the merge queue were ever turned off. The merge queue runs only the cheap delta
+# check above; scripts/e2e_merge_audit.py, run daily by scheduled.yml, checks that
+# every commit on main has a successful E2E run that executed it.
+# Stack layers follow the same rules as PRs targeting main.
 # ci-retarget.yml dispatches this workflow when a branch is retargeted to main.
 # There is no `edited` trigger: every edit starts a run, and from
 # then on GitHub says the required check is expected, whatever an older run on that head
@@ -96,6 +103,7 @@ jobs:
     outputs:
       runners: ${{ steps.runners.outputs.runners || '{}' }}
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
+      run_delta: ${{ steps.classify.outputs.run_delta }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,40 +115,43 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          # A pull request opts in to the heavy suite with the `run-e2e` label.
+          # The `run-e2e` label runs the full suite on a pull request even when only
+          # documentation changed.
           RUN_E2E_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
-          # A merge queue group is classified like a pull request, against the main
-          # it was built on, so a group of docs-only pull requests skips the suite too.
+          # A pull request is classified against its base, and a merge queue group
+          # against the main it was built on, so docs-only changes skip the suite.
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
 
-          # The heavy suite runs once per change, in the merge queue (#825): the queue
-          # tests each group on top of main, and that group's commit is what main
-          # becomes. So a pull request and the push to main skip it, and the
-          # required `E2E (full topology)` check still reports on the pull request.
-          #   pull_request  skip, unless the pull request carries `run-e2e`
-          #   push (main)   skip: the merge group already tested this commit
-          #   merge_group   docs-only groups skip, everything else runs (below)
-          #   dispatch      always runs
+          # The full suite runs on the pull request (#2113). The merge queue tests
+          # each group on top of main, and that group's commit is what main becomes,
+          # so it runs the cheap delta check (e2e-delta) on it instead.
+          #   pull_request  docs-only skips, everything else runs the full suite;
+          #                 `run-e2e` runs it whatever changed
+          #   push (main)   skip: the merge group already checked this commit
+          #   merge_group   docs-only groups skip, everything else runs the delta check
+          #   dispatch      always runs the full suite (ci-retarget.yml sends these)
+          decide() {
+            echo "run_e2e=$1" >> "$GITHUB_OUTPUT"
+            echo "run_delta=$2" >> "$GITHUB_OUTPUT"
+            echo "decision: run_e2e=$1 run_delta=$2"
+          }
           case "$EVENT_NAME" in
             pull_request)
               if [ "$RUN_E2E_LABEL" = "true" ]; then
                 echo "pull request labelled run-e2e -> run full e2e"
-                echo "run_e2e=true" >> "$GITHUB_OUTPUT"
-              else
-                echo "pull request -> e2e runs in the merge queue"
-                echo "run_e2e=false" >> "$GITHUB_OUTPUT"
-              fi
-              exit 0 ;;
+                decide true false
+                exit 0
+              fi ;;
             push)
-              echo "push to main -> the merge group already ran e2e on this commit"
-              echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+              echo "push to main -> the merge group already checked this commit"
+              decide false false
               exit 0 ;;
             merge_group) ;;
             *)
               echo "event=$EVENT_NAME -> run full e2e"
-              echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+              decide true false
               exit 0 ;;
           esac
 
@@ -148,13 +159,6 @@ jobs:
           files="$(git diff --name-only "$BASE_SHA"...HEAD)"
           echo "changed files:"
           printf '%s\n' "$files"
-
-          if [ -z "$files" ]; then
-            # Empty diff is unexpected — fail safe by running the full suite.
-            echo "empty diff -> run full e2e (fail-safe)"
-            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           # Docs-only allowlist. The heavy suite is skipped ONLY when EVERY
           # changed file is documentation; ANY other path (code, go.mod/sum,
@@ -166,17 +170,27 @@ jobs:
           #   \.md$      any Markdown, anywhere
           #   ^LICENSE$  licence text
           #   \.txt$     plain-text notes
-          nondocs="$(printf '%s\n' "$files" | grep -vE '(^docs/|\.md$|^LICENSE$|\.txt$)' || true)"
-          if [ -n "$nondocs" ]; then
-            run_e2e=true
-            echo "non-docs paths force full e2e:"
-            echo "$nondocs"
+          # An empty diff is unexpected: fail safe by treating it as code.
+          code=true
+          if [ -n "$files" ]; then
+            nondocs="$(printf '%s\n' "$files" | grep -vE '(^docs/|\.md$|^LICENSE$|\.txt$)' || true)"
+            if [ -n "$nondocs" ]; then
+              echo "non-docs paths force e2e:"
+              echo "$nondocs"
+            else
+              code=false
+            fi
           else
-            run_e2e=false
+            echo "empty diff -> run e2e (fail-safe)"
           fi
 
-          echo "run_e2e=$run_e2e" >> "$GITHUB_OUTPUT"
-          echo "decision: run_e2e=$run_e2e"
+          if [ "$code" = false ]; then
+            decide false false
+          elif [ "$EVENT_NAME" = merge_group ]; then
+            decide false true
+          else
+            decide true false
+          fi
 
       - name: Pick runners (antimatter-vps runners while free, else GitHub's)
         id: runners
@@ -189,6 +203,7 @@ jobs:
         # It is the last step of its job, so it asks only once the run is known to go on.
         # The suite's jobs are asked for by their ids inside e2e-suite.yml (suite,
         # js-filter-isolation), which are the GITHUB_JOB names the runner hook sees.
+        # The merge queue's delta check is one more call of the suite's job.
         env:
           ORG: ${{ github.repository_owner }}
           ACTOR: ${{ github.triggering_actor }}
@@ -197,6 +212,7 @@ jobs:
           GH_ACTOR: ${{ github.actor }}
           JOBS: >-
             ${{ steps.classify.outputs.run_e2e == 'true' && 'suite.run js-filter-isolation.run suite.pairs suite.reports suite.live' || '' }}
+            ${{ steps.classify.outputs.run_delta == 'true' && 'suite.delta' || '' }}
         run: |
           set -euo pipefail
           ours=true
@@ -228,6 +244,21 @@ jobs:
       runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.run'] || 'ubuntu-24.04' }}
       isolation-runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['js-filter-isolation.run'] || 'ubuntu-24.04' }}
       contract-phases: gate
+      description-mode: ${{ inputs.description-mode || 'saved' }}
+
+  e2e-delta:
+    # The merge queue's check (#2113): the group's commit, which is what main becomes,
+    # boots the whole topology and passes the first four stages, which every later
+    # stage builds on: infrastructure, traditional mail, and the gateway both ways.
+    # No contract phase runs. The full suite already ran on the pull request.
+    name: E2E (merge queue delta)
+    needs: [preflight, changes]
+    if: needs.changes.outputs.run_delta == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.delta'] || 'ubuntu-24.04' }}
+      contract-phases: none
+      stages: Stage1_Infrastructure Stage2_TraditionalMail Stage3_GatewayInbound Stage4_GatewayOutbound
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
   e2e-contract-pairs:
@@ -310,11 +341,13 @@ jobs:
   e2e:
     # Required-check anchor. Branch protection requires the context
     # `E2E (full topology)`, which is THIS job's name except on ignored edits.
-    # On main it runs after failures too, and is green when the heavy suite passed
-    # (code PR) or was intentionally skipped (docs-only PR). This is what keeps
-    # a docs-only PR from being stranded on a never-reported required check.
+    # On main it runs after failures too, and is green when the work its event
+    # called for passed (the full suite on a code PR or dispatch, the delta check on
+    # a merge group) or was intentionally skipped (docs-only, or the push to main).
+    # This is what keeps a docs-only PR from being stranded on a never-reported
+    # required check.
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
-    needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-proofs]
+    needs: [preflight, changes, e2e-run, e2e-delta, e2e-contract-pairs, e2e-proofs]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -324,7 +357,9 @@ jobs:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           CHANGES_RESULT: ${{ needs.changes.result }}
           RUN_E2E: ${{ needs.changes.outputs.run_e2e }}
+          RUN_DELTA: ${{ needs.changes.outputs.run_delta }}
           E2E_RESULT: ${{ needs.e2e-run.result }}
+          DELTA_RESULT: ${{ needs.e2e-delta.result }}
           PAIRS_RESULT: ${{ needs.e2e-contract-pairs.result }}
           PROOFS_RESULT: ${{ needs.e2e-proofs.result }}
           EVENT_NAME: ${{ github.event_name }}
@@ -336,15 +371,29 @@ jobs:
           fi
           echo "classify job result : $CHANGES_RESULT"
           echo "run_e2e decision    : $RUN_E2E"
+          echo "run_delta decision  : $RUN_DELTA"
           echo "heavy e2e result    : $E2E_RESULT"
+          echo "delta check result  : $DELTA_RESULT"
           echo "example pairs result: $PAIRS_RESULT"
           echo "proof union result  : $PROOFS_RESULT"
 
-          # Classifier succeeded and chose to skip the heavy job: a pull request or
-          # push (the merge queue runs it), or a docs-only merge group.
-          if [ "$CHANGES_RESULT" = "success" ] && [ "$RUN_E2E" != "true" ]; then
-            echo "full e2e intentionally skipped here (see the classify step). Reporting success."
+          # Classifier succeeded and chose to skip all of it: a docs-only pull request
+          # or merge group, or the push to main (its merge group checked the commit).
+          if [ "$CHANGES_RESULT" = "success" ] && [ "$RUN_E2E" != "true" ] && [ "$RUN_DELTA" != "true" ]; then
+            echo "e2e intentionally skipped here (see the classify step). Reporting success."
             exit 0
+          fi
+
+          # A merge group: the delta check must have run and passed.
+          if [ "$RUN_DELTA" = "true" ]; then
+            if [ "$CHANGES_RESULT" != "success" ] || [ "$DELTA_RESULT" != "success" ]; then
+              echo "::error::E2E gate failing — classify=$CHANGES_RESULT merge queue delta=$DELTA_RESULT"
+              exit 1
+            fi
+            if [ "$RUN_E2E" != "true" ]; then
+              echo "merge queue delta check ran and passed."
+              exit 0
+            fi
           fi
 
           # A dispatched run has no CI run to join, so nothing judged the union.

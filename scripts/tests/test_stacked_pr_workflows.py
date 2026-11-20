@@ -39,7 +39,7 @@ def context(event="pull_request", action="opened", base="main", changes=None, la
             "event": {"action": action, "changes": changes or {}, "label": {"name": label},
                       "pull_request": {"number": 42} if event == "pull_request" else {}},
         },
-        "needs": {"preflight": {"result": "success"}, "changes": {"outputs": {"run_e2e": "true"}}},
+        "needs": {"preflight": {"result": "success"}, "changes": {"outputs": {"run_e2e": "true", "run_delta": "true"}}},
     }
 
 
@@ -141,7 +141,9 @@ class StackedPRWorkflows(unittest.TestCase):
         for event in ("pull_request", "push", "merge_group", "workflow_dispatch"):
             values = context(event=event)
             values["needs"]["changes"]["outputs"]["run_e2e"] = "false"
+            values["needs"]["changes"]["outputs"]["run_delta"] = "false"
             self.assertFalse(evaluate(field(self.jobs["e2e.yml"]["e2e-run"], "if", 4), values))
+            self.assertFalse(evaluate(field(self.jobs["e2e.yml"]["e2e-delta"], "if", 4), values))
 
     def test_a_merge_queue_push_does_not_run_ci_again_on_the_commit_it_tested(self):
         queue = context(event="push", actor="github-merge-queue[bot]")
@@ -203,31 +205,57 @@ class StackedPRWorkflows(unittest.TestCase):
                  ("cancelled", "", "skipped", 1), ("skipped", "", "skipped", 1)]
         for changes, decision, heavy, expected in cases:
             with self.subTest(changes=changes, decision=decision, heavy=heavy):
-                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, PREFLIGHT_RESULT="success", CHANGES_RESULT=changes, RUN_E2E=decision, E2E_RESULT=heavy, PAIRS_RESULT="success" if decision == "true" else "skipped", PROOFS_RESULT="success", EVENT_NAME="pull_request"), capture_output=True, text=True, timeout=600)
+                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, PREFLIGHT_RESULT="success", CHANGES_RESULT=changes, RUN_E2E=decision, RUN_DELTA="false" if decision else "", E2E_RESULT=heavy, DELTA_RESULT="skipped", PAIRS_RESULT="success" if decision == "true" else "skipped", PROOFS_RESULT="success", EVENT_NAME="pull_request"), capture_output=True, text=True, timeout=600)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
     def test_e2e_verdict_requires_the_proof_union_when_the_heavy_suite_ran(self):
         script = shell_of(self.jobs["e2e.yml"]["e2e"], "Verify e2e outcome")
-        for proofs, event, expected in (("failure", "merge_group", 1), ("skipped", "merge_group", 1),
-                                        ("success", "merge_group", 0), ("skipped", "workflow_dispatch", 0)):
+        for proofs, event, expected in (("failure", "pull_request", 1), ("skipped", "pull_request", 1),
+                                        ("success", "pull_request", 0), ("skipped", "workflow_dispatch", 0)):
             with self.subTest(proofs=proofs, event=event):
-                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, PREFLIGHT_RESULT="success", CHANGES_RESULT="success", RUN_E2E="true", E2E_RESULT="success", PAIRS_RESULT="success", PROOFS_RESULT=proofs, EVENT_NAME=event), capture_output=True, text=True, timeout=600)
+                result = subprocess.run(["bash", "-c", script], env=dict(os.environ, PREFLIGHT_RESULT="success", CHANGES_RESULT="success", RUN_E2E="true", RUN_DELTA="false", E2E_RESULT="success", DELTA_RESULT="skipped", PAIRS_RESULT="success", PROOFS_RESULT=proofs, EVENT_NAME=event), capture_output=True, text=True, timeout=600)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
-    def test_e2e_main_pr_opt_in_and_merge_queue_policy_are_unchanged(self):
+    def classify(self, event, label="false", changed=("internal/api/server.go",)):
+        """Run the classify step in a real repository whose head changes `changed`."""
         script = shell_of(self.jobs["e2e.yml"]["changes"], "Classify diff (docs-only -> skip heavy e2e)")
-        for event, label, expected in (("pull_request", "true", "true"),
-                                       ("pull_request", "false", "false"),
-                                       ("push", "true", "false"),
-                                       ("workflow_dispatch", "false", "true")):
-            with self.subTest(event=event, label=label), tempfile.TemporaryDirectory() as directory:
-                output = Path(directory) / "output"
-                result = subprocess.run(
-                    ["bash", "-c", script], capture_output=True, text=True, timeout=600,
-                    env=dict(os.environ, EVENT_NAME=event, RUN_E2E_LABEL=label, GITHUB_OUTPUT=str(output)),
-                )
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(output.read_text().strip(), f"run_e2e={expected}")
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory) / "repo"
+            repo.mkdir()
+            git = lambda *args: subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
+            git("init", "-q")
+            git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "base")
+            base = git("rev-parse", "HEAD")
+            for path in changed:
+                (repo / path).parent.mkdir(parents=True, exist_ok=True)
+                (repo / path).write_text("changed\n")
+            git("add", "-A")
+            git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "head")
+            output = Path(directory) / "output"
+            result = subprocess.run(
+                ["bash", "-c", script], cwd=repo, capture_output=True, text=True, timeout=600,
+                env=dict(os.environ, EVENT_NAME=event, RUN_E2E_LABEL=label, BASE_SHA=base, GITHUB_OUTPUT=str(output)),
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            return output.read_text().split()
+
+    def test_e2e_full_suite_runs_on_the_pull_request_and_the_queue_runs_the_delta(self):
+        # #2113: the full suite on every code pull request, the delta check on every code
+        # merge group, nothing on docs-only changes or the push to main.
+        code, docs = ("internal/api/server.go", "docs/notes.md"), ("docs/notes.md", "README.md", "LICENSE")
+        for event, label, changed, expected in (
+            ("pull_request", "false", code, ("true", "false")),
+            ("pull_request", "false", docs, ("false", "false")),
+            ("pull_request", "true", docs, ("true", "false")),
+            ("pull_request", "false", (), ("true", "false")),
+            ("merge_group", "false", code, ("false", "true")),
+            ("merge_group", "false", docs, ("false", "false")),
+            ("merge_group", "false", (), ("false", "true")),
+            ("push", "true", code, ("false", "false")),
+            ("workflow_dispatch", "false", code, ("true", "false")),
+        ):
+            with self.subTest(event=event, label=label, changed=changed):
+                self.assertEqual(self.classify(event, label, changed), [f"run_e2e={expected[0]}", f"run_delta={expected[1]}"])
 
     def test_label_helper_reruns_stack_contract_gates_but_ignores_claim_labels(self):
         expression = field(self.jobs["ci-labels.yml"]["rerun-contract-gate"], "if", 4)

@@ -128,7 +128,7 @@ jobs:
           GH_ACTOR: ${{ github.actor }}
           JOBS: >-
             tidy-check security-audit frontend-audit.webmail frontend-audit.admin
-            go-imap-fuzz guide-links
+            go-imap-fuzz guide-links e2e-merge-audit
         run: |
           set -euo pipefail
           ours=true
@@ -306,4 +306,70 @@ jobs:
           number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label documentation --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
           if [ -n "$number" ]; then
             gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Every outside link answers again, or is refused under an exception that holds ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+          fi
+
+  e2e-merge-audit:
+    needs: dependency-review
+    name: Every commit on main had a real E2E run
+    # The full E2E suite runs on the pull request and the merge queue runs only a cheap
+    # check on each group's commit (#2113). This makes that trade checkable: each of the
+    # last 50 commits on main needs an E2E run on that exact commit whose required gate
+    # passed and whose suite jobs ran (scripts/e2e_merge_audit.py says what counts). A
+    # commit without one fails the job and opens an issue listing it (or updates the one
+    # that is open); the issue closes itself once a whole audit passes.
+    runs-on: ${{ fromJSON(needs.dependency-review.outputs.runners || '{}')['e2e-merge-audit'] || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: "E2E merge audit: commits on main without a real E2E run"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 50 commits and the parent of the oldest, whose diff says if it was docs-only.
+          fetch-depth: 51
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
+
+      - name: Audit the last 50 commits on main
+        id: audit
+        run: |
+          set -o pipefail
+          python3 -B scripts/e2e_merge_audit.py --commits 50 --ref HEAD | tee "$RUNNER_TEMP/audit.txt"
+
+      - name: Open or update the issue
+        if: failure() && steps.audit.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          {
+            echo "The daily E2E merge audit found commits on main with no E2E run on that commit whose required gate passed and whose suite ran. The full suite runs on the pull request and the merge queue runs only a cheap check (#2113), so each of these reached main without the check this audit expects. Read each one's runs, and re-run E2E on the commit (\`gh workflow run e2e.yml --ref <branch at that commit>\`) or find why it was merged without one. This issue closes itself once a whole audit passes."
+            echo
+            echo '```'
+            grep -A2 '^FAIL' "$RUNNER_TEMP/audit.txt" || echo "no commit line: the audit failed before judging any; read the run's log"
+            echo '```'
+            echo
+            echo "From [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+          } > "$RUNNER_TEMP/issue.md"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --label bug --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      - name: Close the issue once every commit passes
+        if: success()
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label bug --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Every one of the last 50 commits on main has a real E2E run again ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
           fi

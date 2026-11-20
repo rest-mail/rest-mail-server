@@ -215,12 +215,14 @@ class IndependentContractPairs(unittest.TestCase):
 
     def test_required_gate_rejects_every_unsuccessful_pair_result(self):
         script = self.jobs["e2e"]["steps"][0]["run"]
-        for event in ("merge_group", "workflow_dispatch"):
+        # The full suite runs on a pull request or a dispatch; a merge group runs the delta (#2113).
+        for event in ("pull_request", "workflow_dispatch"):
             for result in ("success", "failure", "cancelled", "skipped"):
                 with self.subTest(event=event, result=result):
                     execution = subprocess.run(
                         ["bash", "-c", script], capture_output=True, text=True,
                         env={**os.environ, "PREFLIGHT_RESULT": "success", "CHANGES_RESULT": "success", "RUN_E2E": "true",
+                             "RUN_DELTA": "false", "DELTA_RESULT": "skipped",
                              "E2E_RESULT": "success", "PAIRS_RESULT": result,
                              "PROOFS_RESULT": "success", "EVENT_NAME": event},
                     )
