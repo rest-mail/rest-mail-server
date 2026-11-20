@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/quotedprintable"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -41,19 +42,26 @@ type vcardProperty struct {
 
 // vcardCard is what has been read of the card being read.
 type vcardCard struct {
-	index     int
-	name      string
-	addresses []string
-	contact   models.Contact
-	problems  map[string]string
+	index int
+	name  string
+	// structuredName is the name the card's first N gives, kept for a card with no FN,
+	// which vCard 2.1 allows.
+	structuredName string
+	addresses      []string
+	contact        models.Contact
+	problems       map[string]string
+	// restoreTrust says whether X-RESTMAIL-TRUST-LEVEL is read; otherwise it is ignored
+	// like any other property REST Mail does not take from a file.
+	restoreTrust bool
 }
 
 // eachVCardContact walks an address-book file one property at a time, giving each with one
 // contact per address on each card. Properties REST Mail does not store are read past and
 // never held, whatever their size. problems is what is wrong with the contact, by field; a
 // file that is not a sequence of cards is refused outright. It answers how many contacts the
-// file gave, counting a card with no address as one that cannot be added.
-func eachVCardContact(file io.Reader, each func(models.Contact, map[string]string) error) (int, error) {
+// file gave, counting a card with no address as one that cannot be added. restoreTrust says
+// whether a card's X-RESTMAIL-TRUST-LEVEL is restored; otherwise every contact is auto.
+func eachVCardContact(file io.Reader, restoreTrust bool, each func(models.Contact, map[string]string) error) (int, error) {
 	in := bufio.NewReaderSize(file, vcardReadBuffer)
 	if start, err := in.Peek(3); err == nil && bytes.Equal(start, []byte("\xef\xbb\xbf")) {
 		if _, err := in.Discard(3); err != nil {
@@ -79,7 +87,7 @@ func eachVCardContact(file io.Reader, each func(models.Contact, map[string]strin
 			if card != nil {
 				return 0, notCards(fmt.Sprintf("card %d begins inside card %d", cards+1, card.index+1))
 			}
-			card = &vcardCard{index: cards, problems: map[string]string{},
+			card = &vcardCard{index: cards, problems: map[string]string{}, restoreTrust: restoreTrust,
 				contact: models.Contact{TrustLevel: "auto", Source: "import"}}
 			cards++
 		case card == nil:
@@ -126,6 +134,15 @@ func (c *vcardCard) read(property vcardProperty) {
 				c.name = value
 			}
 		}
+	case "N":
+		// Family;Given;Additional;Prefixes;Suffixes, written in the order a name is said.
+		if c.structuredName == "" {
+			if value, problem := vcardStructuredName(property); problem != "" {
+				c.problems[field("name")] = problem
+			} else {
+				c.structuredName = value
+			}
+		}
 	case "EMAIL":
 		value, ok := text("email")
 		value = strings.TrimSpace(value)
@@ -137,6 +154,9 @@ func (c *vcardCard) read(property vcardProperty) {
 			c.addresses = append(c.addresses, value)
 		}
 	case "X-RESTMAIL-TRUST-LEVEL":
+		if !c.restoreTrust {
+			break
+		}
 		if value, ok := text("trust_level"); ok {
 			switch value {
 			case "auto", "trusted", "blocked":
@@ -187,8 +207,12 @@ func (c *vcardCard) finish(each func(models.Contact, map[string]string) error) (
 		return 1, nil
 	}
 	prefix := fmt.Sprintf("cards[%d]", c.index)
+	name := c.name
+	if name == "" {
+		name = c.structuredName
+	}
 	for _, address := range c.addresses {
-		entry := importContactEntry{Email: address, Name: c.name}
+		entry := importContactEntry{Email: address, Name: name}
 		// An exported contact with no name carries its address as FN, which vCard requires.
 		if entry.Name == address {
 			entry.Name = ""
@@ -216,21 +240,71 @@ func (c *vcardCard) finish(each func(models.Contact, map[string]string) error) (
 
 // vcardPropertyText is a property's value as text, or what stops it being read as text.
 func vcardPropertyText(property vcardProperty) (string, string) {
+	raw, problem := vcardPropertyRaw(property)
+	if problem != "" {
+		return "", problem
+	}
+	return vcardText(raw)
+}
+
+// vcardPropertyRaw is a property's value with any quoted-printable encoding undone but its
+// escapes still in place, or what stops it being read as UTF-8 text.
+func vcardPropertyRaw(property vcardProperty) (string, string) {
 	if property.tooLong {
 		return "", "is too long"
 	}
 	if vcardValueEncoded(property.params) {
 		return "", "uses an encoding or character set other than UTF-8 text"
 	}
-	if !utf8.ValidString(property.value) {
+	value := property.value
+	if vcardQuotedPrintable(property.params) {
+		// The decoder passes a broken escape through as it is; such a value is refused
+		// instead of being stored with its = left in.
+		if !wellFormedQuotedPrintable(value) {
+			return "", "is not valid quoted-printable"
+		}
+		decoded, err := io.ReadAll(quotedprintable.NewReader(strings.NewReader(value)))
+		if err != nil {
+			return "", "is not valid quoted-printable"
+		}
+		value = string(decoded)
+	}
+	if !utf8.ValidString(value) {
 		return "", "must be UTF-8 text"
 	}
+	return value, ""
+}
+
+// wellFormedQuotedPrintable says whether every = in a value is an escape of two hexadecimal
+// digits or a soft line break (RFC 2045 section 6.7).
+func wellFormedQuotedPrintable(value string) bool {
+	hex := func(character byte) bool {
+		return ('0' <= character && character <= '9') || ('A' <= character && character <= 'F') || ('a' <= character && character <= 'f')
+	}
+	for index := 0; index < len(value); index++ {
+		if value[index] != '=' {
+			continue
+		}
+		rest := value[index+1:]
+		switch {
+		case rest == "" || strings.HasPrefix(rest, "\r\n"):
+		case len(rest) >= 2 && hex(rest[0]) && hex(rest[1]):
+			index += 2
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// vcardText undoes a value's escapes and refuses control characters.
+func vcardText(raw string) (string, string) {
 	var out strings.Builder
-	for index := 0; index < len(property.value); index++ {
-		character := property.value[index]
-		if character == '\\' && index+1 < len(property.value) {
+	for index := 0; index < len(raw); index++ {
+		character := raw[index]
+		if character == '\\' && index+1 < len(raw) {
 			index++
-			character = property.value[index]
+			character = raw[index]
 			if character == 'n' || character == 'N' {
 				character = '\n'
 			}
@@ -246,16 +320,61 @@ func vcardPropertyText(property vcardProperty) (string, string) {
 	return value, ""
 }
 
+// vcardStructuredName is the name an N property gives (RFC 6350 section 6.2.2): its
+// prefixes, given, additional and family names and suffixes, in that order, separated by
+// spaces. A component listing several values, separated by commas, gives each.
+func vcardStructuredName(property vcardProperty) (string, string) {
+	raw, problem := vcardPropertyRaw(property)
+	if problem != "" {
+		return "", problem
+	}
+	components := splitVCardValue(raw, ';')
+	for len(components) < 5 {
+		components = append(components, "")
+	}
+	var words []string
+	for _, index := range []int{3, 1, 2, 0, 4} {
+		for _, part := range splitVCardValue(components[index], ',') {
+			word, problem := vcardText(part)
+			if problem != "" {
+				return "", problem
+			}
+			if word = strings.TrimSpace(word); word != "" {
+				words = append(words, word)
+			}
+		}
+	}
+	return strings.Join(words, " "), ""
+}
+
+// splitVCardValue splits a raw value at each separator not escaped with a backslash,
+// leaving the escapes in place.
+func splitVCardValue(raw string, separator byte) []string {
+	var parts []string
+	start := 0
+	for index := 0; index < len(raw); index++ {
+		switch raw[index] {
+		case '\\':
+			index++
+		case separator:
+			parts = append(parts, raw[start:index])
+			start = index + 1
+		}
+	}
+	return append(parts, raw[start:])
+}
+
 // vcardValueEncoded says whether parameters put the value in something other than UTF-8
-// text: a transfer encoding or another character set, as vCard 2.1 and 3.0 allow.
+// text that can be read here: base64, another transfer encoding or another character set,
+// as vCard 2.1 and 3.0 allow. Quoted-printable is read, and what it gives must be UTF-8.
 func vcardValueEncoded(params []string) bool {
 	for _, param := range params {
 		key, value, named := strings.Cut(strings.ToUpper(param), "=")
 		value = strings.Trim(value, `"`)
 		switch {
-		case !named && (key == "QUOTED-PRINTABLE" || key == "BASE64"):
+		case !named && key == "BASE64":
 			return true
-		case key == "ENCODING" && value != "7BIT" && value != "8BIT":
+		case key == "ENCODING" && value != "7BIT" && value != "8BIT" && value != "QUOTED-PRINTABLE":
 			return true
 		case key == "CHARSET" && value != "UTF-8" && value != "US-ASCII":
 			return true
@@ -302,7 +421,7 @@ func nextVCardProperty(in *bufio.Reader) (vcardProperty, error) {
 	}
 	property := parseVCardProperty(line, over)
 	// A quoted-printable value ending in = goes on to the next line, unfolded, and that
-	// line is not a property of its own.
+	// line is not a property of its own. The soft line break is kept for the decoder.
 	for vcardQuotedPrintable(property.params) && bytes.HasSuffix(line, []byte("=")) {
 		more, cut, err := readVCardLine(in, nil)
 		if errors.Is(err, io.EOF) {
@@ -312,15 +431,23 @@ func nextVCardProperty(in *bufio.Reader) (vcardProperty, error) {
 			return vcardProperty{}, err
 		}
 		line = more
+		if len(property.value)+2+len(more) > maxVCardProperty {
+			property.tooLong = true
+		}
+		if !property.tooLong {
+			property.value += "\r\n" + string(more)
+		}
 		property.tooLong = property.tooLong || cut
 	}
 	return property, nil
 }
 
+// vcardQuotedPrintable says whether parameters put the value in quoted-printable, read the
+// way vcardValueEncoded reads them.
 func vcardQuotedPrintable(params []string) bool {
 	for _, param := range params {
-		upper := strings.ToUpper(param)
-		if upper == "QUOTED-PRINTABLE" || upper == "ENCODING=QUOTED-PRINTABLE" {
+		key, value, named := strings.Cut(strings.ToUpper(param), "=")
+		if (!named && key == "QUOTED-PRINTABLE") || (key == "ENCODING" && strings.Trim(value, `"`) == "QUOTED-PRINTABLE") {
 			return true
 		}
 	}

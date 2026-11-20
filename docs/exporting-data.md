@@ -42,14 +42,31 @@ A failed export does not replace an existing destination. An empty address book
 produces an empty file.
 
 `POST /api/v1/accounts/{id}/contacts/import` takes this file with
-`Content-Type: text/vcard`, on this server or another, and restores every field
-above, including the extension properties, for addresses the account does not
-already have. A contact it already has is skipped and left unchanged. The same
-route reads vCard 2.1, 3.0 and 4.0 files from other address books: each `EMAIL`
-becomes a contact named by the card's first `FN`, and a card with no `EMAIL` is
-counted as skipped. A name or address in quoted-printable, base64 or a character
-set other than UTF-8 is refused, and nothing from that file is imported. CardDAV
-is unrelated to the file format and remains an owner question on #1570.
+`Content-Type: text/vcard`, on this server or another, and restores the name,
+source and both timestamps for addresses the account does not already have. A
+contact it already has is skipped and left unchanged.
+
+The trust level is restored only when the request asks for it with
+`?restore_trust_level=true`, and only for a caller holding `mail:write` on the
+account, which is what setting a trust level directly through the contacts API
+takes. Without it every imported contact is `auto`, whatever the file says, so
+opening a file someone sent cannot trust or block a sender. Restoring your own
+export to another server:
+
+```sh
+curl -X POST -H "Authorization: Bearer $RESTMAIL_API_KEY" \
+  -H 'Content-Type: text/vcard' --data-binary @contacts.vcf \
+  "https://mail.example.com/api/v1/accounts/12/contacts/import?restore_trust_level=true"
+```
+
+The same route reads vCard 2.1, 3.0 and 4.0 files from other address books:
+each `EMAIL` becomes a contact named by the card's first `FN`, or by its first
+`N` (prefixes, given, additional and family names, then suffixes) when the card
+has no `FN`. A card with no `EMAIL` is counted as skipped. A quoted-printable
+name or address, as vCard 2.1 exporters write for text that is not ASCII, is
+decoded and must then be UTF-8. A name or address in base64 or a character set
+other than UTF-8 is refused, and nothing from that file is imported. CardDAV is
+unrelated to the file format and remains an owner question on #1570.
 
 ## Calendar invitations
 

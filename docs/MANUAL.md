@@ -226,7 +226,7 @@ Webmail treats a 404 while disabling vacation as already absent, not an error.
 - `PATCH /api/v1/accounts/:id/contacts/:cid`
 - `DELETE /api/v1/accounts/:id/contacts/:cid`
 - `POST /api/v1/accounts/:id/contacts/block`
-- `POST /api/v1/accounts/:id/contacts/import` — JSON, or a vCard file with `Content-Type: text/vcard`
+- `POST /api/v1/accounts/:id/contacts/import` — JSON, or a vCard file with `Content-Type: text/vcard`; trust levels from the file only with `?restore_trust_level=true`
 - `GET /api/v1/accounts/:id/events` — SSE stream (unidirectional). Events: `message.new`, `message.updated`, `message.deleted`, `message_sent`, `folder.updated`, `queue.delivered`, `queue.bounced`. Supports `Last-Event-ID` header for replay from ring buffer (64 events/mailbox).
 
 #### Admin (capability-gated)
