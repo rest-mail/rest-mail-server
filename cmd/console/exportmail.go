@@ -40,12 +40,15 @@ dovecot-keywords file, and its internal date is the file's modification time.
   --path PATH            destination directory; created when missing
   --allow-non-empty      write into a destination that already holds files
   --max-message-bytes N  refuse a stored message larger than this (default and maximum 1 GiB)
+  --skip-folder NAME     leave this folder out (repeatable); the summary names it
   --json                 one summary on stdout; one error on stderr
 
 Messages are downloaded one at a time to the folder's tmp/ and renamed into
 cur/ when complete, so a message file is never seen half written. Folder names
 containing "." are refused before anything is written: Maildir++ cannot tell
-them apart from subfolders. Raw messages and credentials are never printed.
+them apart from subfolders. A folder that cannot be exported stops the export
+with its name and the narrower command that would succeed: the same export
+with --skip-folder for that folder, into an empty destination. Raw messages and credentials are never printed.
 See docs/migrating-mail.md.
 
 Exit status: 0 complete, 2 usage, 1 export failed.
@@ -78,7 +81,84 @@ type mailExporter struct {
 	maxBytes int64
 	messages int
 	bytes    int64
+	// skip holds the canonical names of the folders --skip-folder leaves out,
+	// and skipped the ones the account turned out to hold, as it listed them.
+	skip    map[string]bool
+	skipped []string
+	// pageBytes bounds one list response that carries message bodies
+	// (exportListPageBytes); a page over it is asked for again in smaller pages.
+	pageBytes int64
 }
+
+// exportListPageBytes bounds one list response an export reads. The folder
+// listing carries each message's decoded bodies, so a page of 100 large
+// messages can pass it; such a page is read again in smaller pages, down to
+// one message, before the export gives up on its folder. A variable only so a
+// test reaches the smaller pages with a few small messages.
+var exportListPageBytes int64 = 64 << 20
+
+// folderNames is a repeatable flag of folder names.
+type folderNames []string
+
+func (f *folderNames) String() string { return strings.Join(*f, ",") }
+
+func (f *folderNames) Set(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("--skip-folder needs a folder name")
+	}
+	*f = append(*f, name)
+	return nil
+}
+
+// skipSet is the canonical names of the folders to leave out.
+func skipSet(names folderNames) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, name := range names {
+		set[rmail.CanonicalFolder(name)] = true
+	}
+	return set
+}
+
+// skips reports whether the export leaves folder out, and records it.
+func (e *mailExporter) skips(folder string) bool {
+	if !e.skip[rmail.CanonicalFolder(folder)] {
+		return false
+	}
+	e.skipped = append(e.skipped, folder)
+	return true
+}
+
+// unknownSkips refuses a --skip-folder the account has no folder for: a typo
+// would otherwise export the folder it meant to leave out.
+func (e *mailExporter) unknownSkips() error {
+	found := map[string]bool{}
+	for _, name := range e.skipped {
+		found[rmail.CanonicalFolder(name)] = true
+	}
+	for name := range e.skip {
+		if !found[name] {
+			return fmt.Errorf("--skip-folder %q names no folder of the account", name)
+		}
+	}
+	return nil
+}
+
+// folderFailed names the folder an export could not finish and the narrower
+// request that would: the same export without that folder.
+func folderFailed(folder string, err error) error {
+	return &folderError{folder: folder, err: err}
+}
+
+type folderError struct {
+	folder string
+	err    error
+}
+
+func (e *folderError) Error() string {
+	return fmt.Sprintf("folder %q could not be exported: %v; the rest of the account exports with --skip-folder %s", e.folder, e.err, strconv.Quote(e.folder))
+}
+
+func (e *folderError) Unwrap() error { return e.err }
 
 func runExportMaildir(ctx context.Context, args []string, token string, client *http.Client, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("export-maildir", flag.ContinueOnError)
@@ -88,6 +168,8 @@ func runExportMaildir(ctx context.Context, args []string, token string, client *
 	path := fs.String("path", "", "destination directory")
 	allowNonEmpty := fs.Bool("allow-non-empty", false, "write into a non-empty destination")
 	limit := fs.Int64("max-message-bytes", 1<<30, "maximum stored message bytes")
+	var skip folderNames
+	fs.Var(&skip, "skip-folder", "leave a folder out")
 	asJSON := fs.Bool("json", false, "JSON output")
 	help := fs.Bool("help", false, "show help")
 	o := output{json: containsFlag(args, "json"), stdout: stdout, stderr: stderr}
@@ -114,17 +196,29 @@ func runExportMaildir(ctx context.Context, args []string, token string, client *
 	}
 	noRedirect := *client
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	e := &mailExporter{ctx: ctx, client: &noRedirect, base: base, token: token, account: *account, maxBytes: *limit}
+	e := &mailExporter{ctx: ctx, client: &noRedirect, base: base, token: token, account: *account, maxBytes: *limit,
+		skip: skipSet(skip), pageBytes: exportListPageBytes}
 	folders, err := e.run(*path)
 	if err != nil {
 		return o.fail(exitFailed, "export_failed", fmt.Sprintf("%s (exported %d messages)", err, e.messages))
 	}
 	if o.json {
-		_ = json.NewEncoder(stdout).Encode(map[string]any{"folders": folders, "messages": e.messages, "bytes": e.bytes})
+		_ = json.NewEncoder(stdout).Encode(map[string]any{"folders": folders, "messages": e.messages, "bytes": e.bytes, "skipped_folders": e.skippedFolders()})
 	} else {
 		fmt.Fprintf(stdout, "Exported %d messages in %d folders to %s.\n", e.messages, folders, *path)
+		if len(e.skipped) > 0 {
+			fmt.Fprintf(stdout, "Left out, as asked: %s.\n", strings.Join(e.skipped, ", "))
+		}
 	}
 	return exitOK
+}
+
+// skippedFolders is the folders left out, never null in JSON.
+func (e *mailExporter) skippedFolders() []string {
+	if e.skipped == nil {
+		return []string{}
+	}
+	return e.skipped
 }
 
 // exportDestination makes the destination directory, refusing one that holds
@@ -155,7 +249,7 @@ func exportDestination(path string, allowNonEmpty bool) error {
 // in modified UTF-7, as Dovecot names them.
 func maildirFolder(name string) (string, error) {
 	if problem := rmail.FolderNameProblem(name); problem != "" {
-		return "", fmt.Errorf("folder %q %s", name, problem)
+		return "", fmt.Errorf("its name %s", problem)
 	}
 	return mailimport.MaildirDirectory(rmail.CanonicalFolder(name))
 }
@@ -163,7 +257,9 @@ func maildirFolder(name string) (string, error) {
 func (e *mailExporter) run(root string) (int, error) {
 	var folders []exportedFolder
 	page, _, err := listOf(e, "/api/v1/accounts/"+strconv.FormatUint(e.account, 10)+"/folders", false, func(f exportedFolder) error {
-		folders = append(folders, f)
+		if !e.skips(f.Name) {
+			folders = append(folders, f)
+		}
 		return nil
 	})
 	if err != nil {
@@ -172,12 +268,15 @@ func (e *mailExporter) run(root string) (int, error) {
 	if page.HasMore {
 		return 0, errUnlistedFolders
 	}
+	if err := e.unknownSkips(); err != nil {
+		return 0, err
+	}
 	// Every folder is checked before anything is written.
 	dirs := make(map[string]string, len(folders))
 	for _, folder := range folders {
 		dir, err := maildirFolder(folder.Name)
 		if err != nil {
-			return 0, err
+			return 0, folderFailed(folder.Name, err)
 		}
 		if other, ok := dirs[dir]; ok {
 			return 0, fmt.Errorf("folders %q and %q would share Maildir folder %s", other, folder.Name, dir)
@@ -187,7 +286,7 @@ func (e *mailExporter) run(root string) (int, error) {
 	for _, folder := range folders {
 		dir, _ := maildirFolder(folder.Name)
 		if err := e.exportFolder(filepath.Join(root, dir), folder.Name); err != nil {
-			return 0, fmt.Errorf("folder %q: %w", folder.Name, err)
+			return 0, folderFailed(folder.Name, err)
 		}
 	}
 	return len(folders), nil

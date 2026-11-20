@@ -109,13 +109,23 @@ source mail has been permanently removed. Those are separate scope questions.
 ## Completion and limits
 
 `--json` returns a summary containing `path` and either `contacts` or `calendars`
-(the latter counts MIME calendar parts, not distinct event UIDs). Exit status is
+(the latter counts MIME calendar parts, not distinct event UIDs, and comes with
+`skipped_folders`). Exit status is
 0 for completion, 2 for usage/destination errors, and 1 for export failures.
 `export-calendar` also fails on a folder list that says it is incomplete, and on
 a message page that says more follows with no messages or without a cursor it
 has not used in that folder.
 Ctrl-C or SIGTERM cancels requests and cleans up staged output. HTTP requests
-have a 30-minute timeout and each list page is capped at 64 MiB. Memory is bounded
+have a 30-minute timeout and each list page is capped at 64 MiB. A folder's
+message listing carries each message's decoded bodies, so a page of 100 large
+messages can pass that cap: `export-calendar` then asks for the same page again
+with half as many messages, down to one, keeping only the ids of the
+invitations on a page and downloading them after the page is read. A folder
+whose single message is still over the cap cannot be exported; the export fails
+naming that folder and the narrower request that would succeed, the same
+command with `--skip-folder "<folder>"` (repeatable, calendar only). The
+summary of such an export lists the folders it left out, and a `--skip-folder`
+naming no folder of the account is refused. Memory is bounded
 by a single decoded list item/MIME header, not by the number of contacts or
 invitations. Message bodies are spooled to disk, never accumulated in memory.
 Allow disk space for the output plus one message source.

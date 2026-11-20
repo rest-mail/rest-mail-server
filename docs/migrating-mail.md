@@ -282,14 +282,28 @@ before or with no messages on the page, stops the export with exit status 1, as
 does a folder list that says it is incomplete. A failed export keeps the
 messages already written, so its directory is not a whole account.
 
+A folder that cannot be exported, such as one holding a message over
+`--max-message-bytes` or one with no stored source, stops the export with that
+folder's name and the narrower request that would succeed:
+
+```text
+restmail: folder "Archive" could not be exported: message 41: its stored source is 9284 bytes, over --max-message-bytes; the rest of the account exports with --skip-folder "Archive" (exported 2 messages)
+```
+
+`--skip-folder NAME` (repeatable) leaves a folder out. Run it into an empty
+directory. The summary names every folder left out (`skipped_folders`), so the
+result never passes for the whole account. A `--skip-folder` naming no folder
+of the account is refused, so a typo cannot export the folder it meant to
+leave out.
+
 The destination is created when missing. One that already holds files is
 refused unless `--allow-non-empty` is given; the export then writes beside them,
 reusing the keyword letters of an existing `dovecot-keywords` file. A message
 exported again gets the same filename, so rerunning into the same directory
 replaces it, unless its flags changed in between, in which case both copies
 remain. `--max-message-bytes` (default and maximum 1 GiB) refuses larger
-messages. `--json` writes one summary (`folders`, `messages`, `bytes`) or one
-error.
+messages. `--json` writes one summary (`folders`, `messages`, `bytes`,
+`skipped_folders`) or one error.
 
 The messages of a snoozed thread are exported like any others; the snooze itself
 is not kept, so the thread is back in its folder after an import. Contacts,
