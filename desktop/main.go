@@ -5,6 +5,9 @@ import (
 
 	"log"
 
+	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/apiproxy"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -33,7 +36,7 @@ func main() {
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
 	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
 	// 'Mac' options tailor the application when running an macOS.
-	app := application.New(application.Options{
+	options := application.Options{
 		Name:        "REST Mail",
 		Description: "REST Mail desktop client",
 		Services: []application.Service{
@@ -45,7 +48,17 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
-	})
+	}
+
+	// Desktop core: share this manager and client with native integrations, including MCP.
+	sessionManager := session.New()
+	mailClient := apiclient.New(sessionManager)
+	_ = mailClient
+	application.RegisterEvent[SessionStatus]("session:changed")
+	options.Services = append(options.Services, application.NewService(NewSession(sessionManager)))
+	options.Assets.Middleware = apiproxy.New(sessionManager)
+	// End desktop core.
+	app := application.New(options)
 
 	// Create a new window with the necessary options.
 	// 'Title' is the title of the window.
