@@ -4420,7 +4420,9 @@ def sign_in_a_mail_client(transaction):
     is sent (#1586). The pair's protocol stays, so 422 still names another."""
     # After a reset the principal is gone: sign_in_and_recovery_after_a_reset
     # gives the exchange an app password of an account made for it.
-    if os.environ.get("CONTRACT_AUTHORIZATION") == "1" or asked_for_a_clean_start():
+    # The gateway's certificate authorizes the request, not the matrix's HTTP
+    # credential. Each cell still needs a real mail-client secret in its body.
+    if asked_for_a_clean_start():
         return
     body = hooks.get_json(transaction)
     if not isinstance(body, dict):
@@ -6503,17 +6505,20 @@ UNKNOWN_EXPORT_SESSION = "ffeeddccbbaa99887766554433221100"
 
 
 def on_the_admins_export_account(transaction):
-    """The path's account becomes the fixture admin's own, for an export
-    request with the fixture admin's session: an account exports itself, and
+    """The path's account becomes the run administrator's own, for an export
+    request with that administrator's session: an account exports itself, and
     the example's account 12 is a number, not a fixture. Answers the new
     path's parts, or None when it is left alone."""
-    if not with_the_fixture_admins_session(transaction):
+    # The authorization report's administrator is the MFA account, not ADMIN.
+    # Its exports must name its own mailbox and retain that same opener.
+    actor = session_address(transaction)
+    if actor not in (ADMIN, mfa_admin.ADDRESS):
         return None
     path, _, query = transaction.get("fullPath", "").partition("?")
     parts = path.split("/")
     if len(parts) < 6 or parts[5] != "exports" or not positive_id(parts[4]):
         return None
-    parts[4] = str(mailbox_id(origin_of(transaction), ADMIN))
+    parts[4] = str(mailbox_id(origin_of(transaction), actor))
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
     return parts
 
@@ -6529,21 +6534,22 @@ def open_an_export_on_the_admins_account(transaction):
 
 @hooks.after("createExportSession")
 def close_the_opened_export(transaction):
-    # An export opened with the fixture admin's session is the fixture admin's
-    # to close, so its close must answer that export: the same data and format,
-    # ended as aborted. One opened by another principal is not the fixture
-    # admin's, and its close is not found.
+    # Either run administrator closes its own export: the same data and format,
+    # ended as aborted. Another principal's export is not the fixture admin's,
+    # and that administrator's attempt to close it must still be not found.
     data = hooks.get_json(transaction, "real").get("data") or {}
     session, account = data.get("id"), data.get("account_id")
     if not isinstance(session, str) or type(account) is not int or account < 1:
         return
-    own = with_the_fixture_admins_session(transaction)
+    actor = session_address(transaction)
+    own = actor in (ADMIN, mfa_admin.ADDRESS)
     closed = fixture_call(
         transaction,
         "POST",
         f"/api/v1/accounts/{account:d}/exports/{session}/close",
         {"result": "aborted", "rows": 0, "bytes": 0},
         expect=(404,),
+        two_factor=actor == mfa_admin.ADDRESS,
     )
     if not own:
         return
@@ -6575,6 +6581,7 @@ def close_an_export_the_run_opened(transaction):
             "POST",
             f"/api/v1/accounts/{parts[4]}/exports",
             {"data": "mail", "format": "maildir"},
+            two_factor=session_address(transaction) == mfa_admin.ADDRESS,
         )
         session = (opened or {}).get("id")
         if not isinstance(session, str):

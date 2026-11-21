@@ -101,6 +101,58 @@ class ExportSessionFixture(unittest.TestCase):
         self.assertEqual(t["fullPath"], f"/api/v1/accounts/4/exports/{unknown}/close")
         self.assertEqual(self.requests, [])
 
+    def test_matrix_admin_closes_an_export_opened_by_the_same_actor(self):
+        transaction = self.transaction(
+            CLOSE + "200 > application/json",
+            f"/api/v1/accounts/12/exports/{DOCUMENTED}/close",
+            self.module.mfa_admin.ADDRESS,
+        )
+        original_headers = transaction["request"]["headers"].copy()
+        with (
+            patch.dict(self.module.os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "mfa_admin_token", return_value="mfa-fixture-token"),
+            patch.object(self.module, "mailbox_id", return_value=9) as mailbox,
+        ):
+            self.module.close_an_export_the_run_opened(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/accounts/9/exports/" + "ab" * 16 + "/close")
+        mailbox.assert_called_once_with("http://server.test:8080", self.module.mfa_admin.ADDRESS)
+        self.assertEqual(len(self.requests), 1)
+        self.assertEqual(self.requests[0].full_url, "http://server.test:8080/api/v1/accounts/9/exports")
+        self.assertEqual(self.requests[0].get_header("Authorization"), "Bearer mfa-fixture-token")
+        self.assertEqual(transaction["request"]["headers"], original_headers)
+
+    def test_matrix_admins_open_is_cleaned_up_by_its_own_session(self):
+        transaction = self.transaction(
+            OPEN + "201 > application/json", "/api/v1/accounts/12/exports", self.module.mfa_admin.ADDRESS,
+        )
+        opened = {"id": "cd" * 16, "account_id": 9, "data": "mail", "format": "maildir"}
+        summary = dict(opened, result="aborted")
+        transaction["real"]["body"] = json.dumps({"data": opened})
+        with (
+            patch.dict(self.module.os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "mfa_admin_token", return_value="mfa-fixture-token"),
+            patch.object(self.module, "mailbox_id", return_value=9),
+            self.closing(summary),
+        ):
+            self.module.open_an_export_on_the_admins_account(transaction)
+            self.module.close_the_opened_export(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/accounts/9/exports")
+        self.assertNotIn("fail", transaction)
+        self.assertEqual(len(self.requests), 1)
+        self.assertEqual(self.requests[0].get_header("Authorization"), "Bearer mfa-fixture-token")
+        self.assertEqual(self.requests[0].full_url, "http://server.test:8080/api/v1/accounts/9/exports/" + "cd" * 16 + "/close")
+
+    def test_matrix_unknown_session_stays_missing_on_its_admins_account(self):
+        unknown = self.module.UNKNOWN_EXPORT_SESSION
+        transaction = self.transaction(
+            CLOSE + "404 > application/json", f"/api/v1/accounts/12/exports/{unknown}/close",
+            self.module.mfa_admin.ADDRESS,
+        )
+        with patch.object(self.module, "mailbox_id", return_value=9):
+            self.module.close_an_export_the_run_opened(transaction)
+        self.assertEqual(transaction["fullPath"], f"/api/v1/accounts/9/exports/{unknown}/close")
+        self.assertEqual(self.requests, [])
+
     def test_invalid_session_coverage_probes_keep_the_generated_request(self):
         with patch.dict(self.module.os.environ, {"CONTRACT_COVERAGE": "1"}):
             for session in (
