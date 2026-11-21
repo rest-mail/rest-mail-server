@@ -153,8 +153,11 @@ func (manager *Manager) loginLocked(login pendingLogin, code string) error {
 	return manager.acceptLocked(credential{Server: login.server, Email: login.email}, response)
 }
 
+// accountKey names a credential's keychain item. It holds no control characters:
+// on macOS go-keyring drives /usr/bin/security interactively, one command per line,
+// so a newline in the account name broke every save with no keychain item written.
 func accountKey(saved credential) string {
-	return saved.Server + "\n" + saved.Email
+	return saved.Email + " at " + saved.Server
 }
 
 func (manager *Manager) acceptLocked(saved credential, response apitypes.LoginResponse) error {
