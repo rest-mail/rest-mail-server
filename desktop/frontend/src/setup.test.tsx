@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { configureMailPlatform } from '@webmail/platform';
+import { AuthenticatorSetup } from '@webmail/components/auth/AuthenticatorSetup';
 import { FirstRunSetup } from './FirstRunSetup';
 import { identity, type SessionBinding, type SessionStatus } from './session';
 import App from './App';
@@ -48,7 +49,10 @@ describe('native first-run account setup', () => {
     fillPassword(); fireEvent.submit(screen.getByTestId('setup-change-password').closest('form')!);
     fireEvent.click(await screen.findByTestId('setup-enroll'));
     expect(session.ChangePassword).toHaveBeenCalledWith('Temporary password', 'A long secure password');
-    expect(await screen.findByRole('img', { name: 'Authenticator setup QR code' })).toBeTruthy();
+    const qrCode = await screen.findByRole('img', { name: 'Authenticator setup QR code' });
+    expect(qrCode.getAttribute('width')).toBe('200');
+    expect(qrCode.getAttribute('height')).toBe('200');
+    expect(qrCode.querySelector('path')?.getAttribute('fill')).toBe('#FFFFFF');
     expect(screen.getByTestId('setup-recovery-codes').textContent).toContain('fixture-recovery-code');
     expect(screen.getByTestId('setup-authenticator').getAttribute('data-ui-sensitive')).toBe('true');
     expect((screen.getByTestId('setup-verify') as HTMLButtonElement).disabled).toBe(true);
@@ -101,5 +105,15 @@ describe('native first-run account setup', () => {
     await waitFor(() => expect(finished).toHaveBeenCalledOnce());
     expect(session.SignOut).toHaveBeenCalledOnce();
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it('preserves the shared webmail QR size and white quiet zone', () => {
+    render(<AuthenticatorSetup secret="fixture-secret" otpauthUrl="otpauth://totp/RESTMail?secret=JBSWY3DPEHPK3PXP" />);
+    const qrCode = screen.getByRole('img', { name: 'Authenticator setup QR code' });
+    expect(qrCode.getAttribute('width')).toBe('256');
+    expect(qrCode.getAttribute('height')).toBe('256');
+    const paths = qrCode.querySelectorAll('path');
+    expect(paths[0].getAttribute('fill')).toBe('#FFFFFF');
+    expect(paths[1].getAttribute('d')).toMatch(/^M4 4h/);
   });
 });
