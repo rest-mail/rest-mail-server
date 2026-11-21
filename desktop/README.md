@@ -160,6 +160,18 @@ desktop/bin/RESTMail.app/Contents/MacOS/RESTMail --mcp \
   --mcp-discovery "$HOME/Library/Application Support/REST Mail/test-run.json"
 ```
 
+REST Mail runs once: launching it again, from any location, brings the running
+window forward and exits. An automated test that must run beside the owner's copy
+names a separate test copy, whose window title then says "test copy <name>":
+
+```sh
+RESTMAIL_DESKTOP_INSTANCE=polish desktop/bin/RESTMail.app/Contents/MacOS/RESTMail --mcp \
+  --mcp-discovery /tmp/desktop-polish-mcp.json
+```
+
+The name is lowercase letters, digits and dashes, up to 32 characters; anything
+else is ignored and the launch joins the single running copy.
+
 The equivalent setting is `RESTMAIL_DESKTOP_MCP_DISCOVERY=/absolute/path.json`.
 Use that exact file when reading the URL and token; it is removed on orderly
 shutdown. A discovery-path option alone does not enable MCP in production.

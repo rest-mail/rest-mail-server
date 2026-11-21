@@ -55,10 +55,10 @@ func main() {
 		},
 		ShouldQuit: nativeUI.shouldQuit,
 	}
-	// One copy per installed app: opening it again brings this window forward.
+	// One copy of REST Mail: opening it again, from anywhere, brings this window forward.
 	var mainWindow *application.WebviewWindow
 	options.SingleInstance = &application.SingleInstanceOptions{
-		UniqueID: singleInstanceID(currentExecutable()),
+		UniqueID: singleInstanceID(currentInstance()),
 		OnSecondInstanceLaunch: func(application.SecondInstanceData) {
 			if mainWindow != nil {
 				mainWindow.UnMinimise()
@@ -94,7 +94,7 @@ func main() {
 	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:           "main",
 		EnableFileDrop: true,
-		Title:          "REST Mail " + version,
+		Title:          windowTitle("REST Mail "+version, currentInstance()),
 		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
 		Width:  1000,
 		Height: 618,

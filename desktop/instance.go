@@ -1,28 +1,42 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
-	"path/filepath"
+	"regexp"
+	"strings"
 )
 
-// singleInstanceID names the lock that keeps one copy of this app running. It is
-// per executable path: opening the installed app again brings its window
-// forward instead of starting a second copy, while a development build from
-// another checkout is a different program and runs beside it.
-func singleInstanceID(executable string) string {
-	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
-		executable = resolved
+// isolatedInstanceEnv names a separate, clearly labelled copy of the app for
+// automated testing. It is unset for everyone else, so REST Mail runs once.
+const isolatedInstanceEnv = "RESTMAIL_DESKTOP_INSTANCE"
+
+var instanceNamePattern = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+
+// singleInstanceID names the lock that keeps one copy of REST Mail running.
+// Opening the app again, from any location, brings the running window forward.
+// An automated test may run a separate copy only by naming it in
+// RESTMAIL_DESKTOP_INSTANCE; that copy says so in its window title.
+func singleInstanceID(instance string) string {
+	if instance = isolatedInstanceName(instance); instance != "" {
+		return "com.restmail.desktop.test." + instance
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(executable)))
-	return "com.restmail.desktop." + hex.EncodeToString(sum[:6])
+	return "com.restmail.desktop"
 }
 
-func currentExecutable() string {
-	executable, err := os.Executable()
-	if err != nil {
-		return os.Args[0]
+// isolatedInstanceName is the validated test instance name, or "" when none.
+func isolatedInstanceName(instance string) string {
+	instance = strings.TrimSpace(instance)
+	if !instanceNamePattern.MatchString(instance) {
+		return ""
 	}
-	return executable
+	return instance
 }
+
+func windowTitle(base, instance string) string {
+	if instance = isolatedInstanceName(instance); instance != "" {
+		return base + " — test copy " + instance
+	}
+	return base
+}
+
+func currentInstance() string { return os.Getenv(isolatedInstanceEnv) }
