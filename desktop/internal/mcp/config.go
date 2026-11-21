@@ -13,7 +13,7 @@ type Launch struct {
 }
 
 func ParseLaunch(args []string, getenv func(string) string) (Launch, error) {
-	launch := Launch{Enabled: developmentBuild || getenv("RESTMAIL_DESKTOP_MCP") == "1", Port: DefaultPort}
+	launch := Launch{Enabled: developmentBuild || getenv("RESTMAIL_DESKTOP_MCP") == "1"}
 	port := getenv("RESTMAIL_DESKTOP_MCP_PORT")
 	for index := 0; index < len(args); index++ {
 		switch argument := args[index]; {
