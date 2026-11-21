@@ -155,7 +155,7 @@ class CoverageTargetHooks(unittest.TestCase):
         self.targets = self.loaded["targets"]
         self.sleep = patch.object(self.targets["time"], "sleep").start()
         self.fixture = patch.object(
-            self.targets["subprocess"], "run", side_effect=self.held_mail
+            self.targets["fixture_command"], "run", side_effect=self.held_mail
         ).start()
         self.addCleanup(patch.stopall)
 
@@ -513,11 +513,10 @@ class CoverageTargetHooks(unittest.TestCase):
             self.send(operation, self.transaction(operation))
         self.assertEqual(self.fixture.call_count, 2)
         for call in self.fixture.call_args_list:
-            self.assertEqual(call.args, (["chore", "test:contract-held-mail-fixture"],))
-            self.assertEqual(
-                call.kwargs,
-                {"check": True, "capture_output": True, "timeout": 20, "text": True},
-            )
+            self.assertEqual(call.args, ("test:contract-held-mail-fixture",))
+            # The bound is the helper's, not the caller's: one place to change
+            # when a cold compile on a loaded runner needs more room.
+            self.assertEqual(call.kwargs, {})
 
     def test_credentials_are_created_with_a_separate_mfa_setup_session(self):
         for operation in ("revokeAPIKey", "revokeCredential"):

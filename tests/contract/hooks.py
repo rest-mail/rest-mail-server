@@ -46,6 +46,7 @@ import mfa_admin  # noqa: E402
 import rate_limits
 import owner_key  # noqa: E402
 from probe_refusals import send_refusal_probe, tls_report_refusal  # noqa: E402
+import fixture_command
 import reset_seed
 from identities import address_key, domain_key
 from api_keys_live import totp  # noqa: E402
@@ -2187,12 +2188,7 @@ def link_a_seeded_account(transaction):
             # createAccount probes need this address absent; linkAccount probes
             # need it present with their generated password. Set up the latter
             # only now, after the preceding operation's probes have finished.
-            subprocess.run(
-                ["chore", "test:contract-link-fixture"],
-                check=True,
-                capture_output=True,
-                timeout=20,
-            )
+            fixture_command.run("test:contract-link-fixture")
             ready[origin] = True
             hooks.stash["link_fixture_prepared"] = ready
     ids = hooks.stash.get("link_fixture_ids", {})
@@ -6194,12 +6190,7 @@ def retry_a_held_entry_after_bulk_examples(transaction):
         return
     # Only this row: the whole fixture set would also add a suppression and a
     # quarantined message, which other operations' examples and probes count.
-    subprocess.run(
-        ["chore", "test:contract-retry-fixture"],
-        check=True,
-        capture_output=True,
-        timeout=20,
-    )
+    fixture_command.run("test:contract-retry-fixture")
     listed = fixture_call(
         transaction,
         "GET",
@@ -6356,12 +6347,7 @@ def host_the_generated_domain_again(transaction):
         if domain.get("name") == GENERATED_DOMAIN:
             delete_a_domain(transaction, domain["id"])
     # The fixtures host it live, which the admin API cannot do without a certificate.
-    subprocess.run(
-        ["chore", "test:contract-link-fixture"],
-        check=True,
-        capture_output=True,
-        timeout=20,
-    )
+    fixture_command.run("test:contract-link-fixture")
 
 
 @hooks.before("createDomain")
