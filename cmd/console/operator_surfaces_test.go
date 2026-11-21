@@ -140,7 +140,7 @@ func TestAC04ScopedOperatorDiagnostics(t *testing.T) {
 		return stdout.String()
 	}
 
-	wrongScope, _ := s.key(t, "domain-only", grants.Domain(migrationDomain), "queue:read", "queue:manage", "database:read", "database:manage")
+	wrongScope, _ := s.key(t, "domain-only", grants.Domain("other.example.test"), "queue:read", "queue:manage", "database:read", "database:manage")
 	diagnose, diagnosticID := s.key(t, "diagnose", grants.All, "database:read")
 	r := s.seed(t)
 	rowID := strconv.FormatUint(uint64(r.refused), 10)
@@ -169,7 +169,8 @@ func TestAC04ScopedOperatorDiagnostics(t *testing.T) {
 		}
 		run(t, exitFailed, "not_found", operator, "mail-queue", "show", "4294967295")
 		run(t, exitFailed, "unauthorized", "invalid-operator-key", "mail-queue", "stats")
-		run(t, exitFailed, "forbidden", wrongScope, "mail-queue", "list")
+		run(t, exitFailed, "forbidden", wrongScope, "mail-queue", "show", rowID)
+		operatorAPIGet(t, s, wrongScope, "/api/v1/admin/queue", http.StatusForbidden)
 		run(t, exitFailed, "forbidden", s.read, "mail-queue", "retry", rowID)
 		run(t, exitFailed, "forbidden", wrongScope, "mail-queue", "retry", rowID)
 		s.wantStatuses(t, r.statuses())

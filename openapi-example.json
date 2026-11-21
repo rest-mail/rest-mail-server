@@ -20727,7 +20727,8 @@
   },
   "getQueueEntry": {
     "domain_scope": {
-      "summary": "A domain-scoped grant does not satisfy installation-wide reads",
+      "summary": "A sending-domain grant cannot read another sending domain's entry",
+      "description": "The reader holds queue:read on a different sending domain. The same refusal is returned for a missing entry to avoid revealing whether it exists.",
       "requires": {
         "principal": "without_capability"
       },
@@ -31292,10 +31293,11 @@
   "listQueue": {
     "available": {
       "summary": "The permitted list is empty",
-      "description": "A current, setup-complete session with the required capability reads an empty database snapshot through the production handler. Pagination and response metadata are preserved.",
+      "description": "A current, setup-complete session with the required capability opts in to scope-filtered results and reads an empty database snapshot. Pagination and response metadata are preserved.",
       "request": {
         "query": {
-          "limit": 20
+          "limit": 20,
+          "scope": "authorized"
         }
       },
       "response": {

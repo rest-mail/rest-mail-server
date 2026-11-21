@@ -41,11 +41,11 @@ func NewSlowStatementsHandler(db *gorm.DB) *SlowStatementsHandler {
 	return &SlowStatementsHandler{db: db}
 }
 
-func (h *SlowStatementsHandler) Register(rs endpoint.Routes, at func(string) endpoint.Middleware) {
+func (h *SlowStatementsHandler) Register(rs endpoint.Routes, at func(string) endpoint.Middleware, auditRead endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/database/statements",
-		OperationID: "listSlowStatements", Summary: "List the database's slowest statements", Description: slowStatementsDescription,
+		OperationID: "listSlowStatements", Summary: "List the database's slowest statements", Description: slowStatementsDescription + " Requires installation-wide database:read. The audit log records the access, not the returned statements.",
 		Tags: []string{"Admin: Stats"}, Errors: []int{http.StatusServiceUnavailable},
-		Middleware: []endpoint.Middleware{at(middleware.CapDatabaseRead)}}, h.list)
+		Middleware: []endpoint.Middleware{at(middleware.CapDatabaseRead), auditRead}}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/database/statements/reset",
 		OperationID: "resetSlowStatements", Summary: "Reset the database's statement statistics", Description: slowStatementsResetDescription,
 		Tags: []string{"Admin: Stats"}, Status: http.StatusNoContent, Errors: []int{http.StatusServiceUnavailable},

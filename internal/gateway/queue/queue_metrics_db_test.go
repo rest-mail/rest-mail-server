@@ -144,7 +144,7 @@ func alertExpr(t *testing.T, name string) string {
 // as the condition tests below assume. That the rules fire and recover on these
 // gauges is proved by promtool (helm/restmail/tests/queue-alerts-test.yml).
 func TestQueueAlerts_ReadTheRightGauge(t *testing.T) {
-	if got, want := alertExpr(t, "QueueWorkerStalled"), "rate(restmail_queue_processed_total[15m]) == 0 and restmail_queue_due > 0"; got != want {
+	if got, want := alertExpr(t, "QueueWorkerStalled"), "restmail_queue_due > 0 and rate(restmail_queue_processed_total[15m]) == 0"; got != want {
 		t.Errorf("QueueWorkerStalled expr = %q, want %q", got, want)
 	}
 	if got, want := alertExpr(t, "QueueBacklogHigh"), "restmail_queue_size - restmail_queue_held_by_destination > 1000"; got != want {
@@ -156,12 +156,12 @@ func TestQueueAlerts_ReadTheRightGauge(t *testing.T) {
 }
 
 // workerStalled is QueueWorkerStalled's condition:
-// rate(restmail_queue_processed_total[15m]) == 0 and restmail_queue_due > 0.
+// restmail_queue_due > 0 and rate(restmail_queue_processed_total[15m]) == 0.
 func workerStalled(processed, due float64) bool { return processed == 0 && due > 0 }
 
 // TestProcess_QueueWorkerStalled: every attempt the worker runs to an outcome
 // counts in restmail_queue_processed_total, so QueueWorkerStalled
-// (rate(restmail_queue_processed_total[15m]) == 0 and restmail_queue_due > 0)
+// (restmail_queue_due > 0 and rate(restmail_queue_processed_total[15m]) == 0)
 // stays quiet while the workers are taking rows, and a failed attempt counts
 // in restmail_queue_errors_total too. It also stays quiet for a queue holding
 // only retries that are not yet due (#1630), and fires for due rows that no

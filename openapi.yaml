@@ -16535,7 +16535,7 @@ paths:
   /api/v1/admin/queue:
     get:
       operationId: listQueue
-      description: Database work follows the HTTP request context, including cancellation and deadlines.
+      description: "A domain-scoped queue reader sees only entries belonging to its authorized sending domains, not the destination domains. Mailbox scopes do not grant access to queue entries. Queue mutations require installation-wide queue:manage. Database work follows the HTTP request context, including cancellation and deadlines. Set scope=authorized for scoped reads; omission requires installation-wide queue:read so bulk-action previews cannot undercount. Scope and filters apply before counting and pagination. Entries are ordered newest first with ID breaking ties."
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:read]
@@ -16570,6 +16570,12 @@ paths:
           schema:
             type: integer
             default: 0
+        - name: scope
+          in: query
+          description: "Opt in to domain-scoped results. Omit to require installation-wide queue:read, as a bulk-action preview must."
+          schema:
+            type: string
+            enum: [authorized]
       responses:
         "422":
           $ref: "#/components/responses/ValidationError"
@@ -16623,7 +16629,7 @@ paths:
   /api/v1/admin/queue/stats:
     get:
       operationId: getQueueStats
-      description: Database work follows the HTTP request context, including cancellation and deadlines.
+      description: "A domain-scoped queue reader sees only entries belonging to its authorized sending domains, not the destination domains. Mailbox scopes do not grant access to queue entries. Queue mutations require installation-wide queue:manage. Database work follows the HTTP request context, including cancellation and deadlines. Counts include only visible entries."
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:read]
@@ -17006,7 +17012,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     get:
       operationId: getQueueEntry
-      description: Database work follows the HTTP request context, including cancellation and deadlines.
+      description: "A domain-scoped queue reader sees only entries belonging to its authorized sending domains, not the destination domains. Mailbox scopes do not grant access to queue entries. Queue mutations require installation-wide queue:manage. Database work follows the HTTP request context, including cancellation and deadlines. Scoped readers receive 403 forbidden for both missing and out-of-scope IDs; installation-wide readers receive 404 not_found for missing IDs."
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:read]
@@ -20817,7 +20823,7 @@ paths:
   /api/v1/admin/database/statements:
     get:
       operationId: listSlowStatements
-      description: "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Shows normalized SQL shapes with constants replaced by `$1`, `$2` and so on. Text that may contain unnormalized values or comments is replaced by a redaction marker with the query ID. Each row includes calls, total and mean execution time in milliseconds, and rows returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has."
+      description: "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Shows normalized SQL shapes with constants replaced by `$1`, `$2` and so on. Text that may contain unnormalized values or comments is replaced by a redaction marker with the query ID. Each row includes calls, total and mean execution time in milliseconds, and rows returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has. Requires installation-wide database:read. The audit log records the access, not the returned statements."
       tags: ["Admin: Stats"]
       security:
         - CookieAuth: [database:read]

@@ -88,11 +88,18 @@ assert_contains "queue alert" "$tmp/metrics-on.yaml" 'alert: QueueOldestMessageO
 assert_contains "queue saturation alert" "$tmp/metrics-on.yaml" 'alert: QueueWorkersSaturated'
 assert_contains "file certificate expiry alert" "$tmp/metrics-on.yaml" 'alert: TLSCertificateFileExpiringSoon'
 assert_absent "compose-only disk alert" "$tmp/metrics-on.yaml" 'alert: DiskSpaceCritical'
-python3 -B "$CHART_DIR/tests/alerting-rules-test.py" "$tmp/metrics-on.yaml"
-yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/alert-rules.yml"
-cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$CHART_DIR/tests/tls-cert-alerts-test.yml" "$CHART_DIR/tests/queue-alerts-test.yml" "$tmp/"
+fixtures=("$CHART_DIR"/tests/*-alerts-test.yml)
+python3 -B "$CHART_DIR/tests/alerting-rules-test.py" "$tmp/metrics-on.yaml" "${fixtures[@]}"
+yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/kubernetes-rules.yml"
+COMPOSE_ALERTS="$CHART_DIR/files/alerting-rules.yml" yq -N e '.groups += [load(strenv(COMPOSE_ALERTS)).groups[] | select(.name == "restmail-disk-node")]' "$tmp/kubernetes-rules.yml" > "$tmp/alert-rules.yml"
+copied_fixtures=()
+for fixture in "${fixtures[@]}"; do
+  cp "$fixture" "$tmp/"
+  copied_fixtures+=("$tmp/${fixture##*/}")
+done
 promtool check rules "$tmp/alert-rules.yml"
-promtool test rules "$tmp/dkim-alerts-test.yml" "$tmp/tls-cert-alerts-test.yml" "$tmp/queue-alerts-test.yml"
+promtool test rules "${copied_fixtures[@]}"
+pass "AC01 promtool behavior for rendered and compose-only alerts"
 
 echo "== render development overlay =="
 helm template restmail "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD" > "$tmp/dev.yaml"

@@ -57,11 +57,13 @@ that moves the count. The rest need harnesses and decisions first.
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 required metrics and alerts, promtool-tested in CI | R | the queue alerts are **P**; the remaining missing-metric inventory is repo work |
+| AC01 required metrics and alerts, promtool-tested in CI | **P** | **Repository proof once merged.** `test_ac01_all_alerts_fire_and_recover` and the promtool fixtures in `helm/restmail/tests/render-test.sh` require no-fault, firing and recovery cases for all 27 rules. Queue age, SMTP/IMAP duration, connection admissions/errors, DB pool and disk telemetry already exist; the missing inventory was executable alert coverage. The DNSBL alert now fires even before a provider's first successful answer, and the stalled worker alert reports the due rows instead of the zero processing rate. `TestAC01PipelineFilterMetricMatchesPersistedStages` compares the metric scrape with 12 PostgreSQL trace rows (4 errors, 8 successes). |
 | AC02 correlation and optional tracing across boundaries | R | propagation + redaction tests |
 | AC03 public status exposes only approved basic data | R | route + owner's approved field list is on the issue |
-| AC04 queue CLI and slow-query diagnostics via scoped APIs | R | CLI through the API, no direct DB |
+| AC04 queue CLI and slow-query diagnostics via scoped APIs | **P** | **Repository proof once merged.** `TestAC04OperatorAPIsWithScopedCredentials`, `TestAC04ScopedOperatorDiagnostics` and `TestMailQueueOnTheRealAPI` exercise the API-only CLI against production routes and PostgreSQL with no database environment in the CLI. Sending-domain scope governs queue visibility and counts before pagination; missing and out-of-scope IDs return the same 403 to scoped readers. Queue actions and bulk previews stay installation-wide. Slow statements require installation-wide `database:read`, mask unsafe text, and record access without storing statement text in the audit row. |
 | AC04b saturation distinguishable from backlog | **P** | three gauges, age-based alert, runbook section |
+
+- AC01 cardinality: no per-domain labels on delivery, receipt or queue counters; use rollups for tenant-level diagnostics. Direct SMTP attempt labels stay at two IP families × four outcomes, verified by `TestSMTPAttempt_SeriesAreBounded`; `TestSMTPAttempt_ProcessAgreesWithRowAndMX` checks the delivery row and receiving peer. The pipeline error-rate rule reads only the allowlisted filter (custom names collapse to `custom`) and the bounded step action. DKIM rules may read hosted `domain`, the current `selector` or bounded rotation `state`, and scrape `job`/`instance`; `TestDKIMKeyAgeCollector_DatabaseInventory` checks the exact series and removes stale selectors. Disk rules read infrastructure mount/PVC labels and require node-exporter or kubelet metrics. These proofs do not establish Internet MX behavior, per-family failures for dials that never opened, or live exporter coverage.
 
 ## #2113 — CI and tests
 

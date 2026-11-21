@@ -26,10 +26,9 @@ func openSlowStatementsScratchDB(t *testing.T) *gorm.DB {
 
 func slowStatementsRoutes(db *gorm.DB) http.Handler {
 	routes := chi.NewRouter()
+	pass := endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
 	NewSlowStatementsHandler(db).Register(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()},
-		func(string) endpoint.Middleware {
-			return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
-		})
+		func(string) endpoint.Middleware { return pass }, pass)
 	return routes
 }
 

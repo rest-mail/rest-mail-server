@@ -128,9 +128,9 @@ groups:
       # correctly idle, and must not page anyone (#1630).
       - alert: QueueWorkerStalled
         expr: >
-          rate(restmail_queue_processed_total[15m]) == 0
-          and
           restmail_queue_due > 0
+          and
+          rate(restmail_queue_processed_total[15m]) == 0
         for: 15m
         labels:
           severity: critical
@@ -242,12 +242,12 @@ groups:
       # Operational, not reputation: a blocklist is not answering. The listing
       # value is left as it was, so a listing is never cleared by errors.
       - alert: DNSBLProviderNotAnswering
-        expr: sum by (provider) (increase(restmail_dnsbl_checks_total{status=~"provider_error|indeterminate"}[3h])) > 0 and sum by (provider) (increase(restmail_dnsbl_checks_total{status=~"listed|not_listed"}[3h])) == 0
+        expr: sum by (provider) (increase(restmail_dnsbl_checks_total{status=~"provider_error|indeterminate"}[3h])) > 0 unless sum by (provider) (increase(restmail_dnsbl_checks_total{status=~"listed|not_listed"}[3h])) > 0
         labels:
           severity: warning
         annotations:
-          summary: "DNSBL provider {{ $labels.provider }} has not answered for 3 hours"
-          description: "Every check against {{ $labels.provider }} in the last 3 hours failed (provider_error or indeterminate). The listing state for it is stale, not clean. Check the zone, its answer codes and the resolver."
+          summary: "DNSBL provider {{ $labels.provider }} has no recent answer"
+          description: "Observed checks against {{ $labels.provider }} in the last 3 hours failed (provider_error or indeterminate), with no successful check. The listing state is stale or unknown, not clean. Check the zone, its answer codes and the resolver."
 
       # The last real answer for an IP and provider is old: the listing value
       # is stale. Tune 6h to a few times the configured interval.

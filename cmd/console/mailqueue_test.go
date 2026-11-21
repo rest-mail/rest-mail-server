@@ -106,7 +106,7 @@ func TestMailQueueListSendsTheFilterAndShowsWhy(t *testing.T) {
 	if len(got) != 1 || got[0].Method != http.MethodGet || got[0].Path != "/api/v1/admin/queue" {
 		t.Fatalf("requests %+v", got)
 	}
-	if want := "domain=example.org&limit=20&offset=0&recipient=b%40&sender=a%40&status=deferred"; got[0].Query != want {
+	if want := "domain=example.org&limit=20&offset=0&recipient=b%40&scope=authorized&sender=a%40&status=deferred"; got[0].Query != want {
 		t.Errorf("query %q, want %q", got[0].Query, want)
 	}
 	for _, want := range []string{"42", "deferred", "3", "2026-11-03T11:00:00Z", "greylisted", "451 4.7.1 try later", "1–1 of 1"} {

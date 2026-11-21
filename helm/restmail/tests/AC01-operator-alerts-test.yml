@@ -1,0 +1,509 @@
+# AC01: no-fault, firing and recovery samples for the remaining operator rules.
+rule_files: [alert-rules.yml]
+evaluation_interval: 1m
+tests:
+  - name: CertificateExpiringSoon
+    interval: 1m
+    input_series:
+      - series: 'restmail_cert_expiry_days{job="api",instance="one"}'
+        values: '13x60 14'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: CertificateExpiringSoon
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: CertificateExpiringSoon
+        exp_alerts:
+          - exp_labels:
+              job: "api"
+              instance: "one"
+              severity: "critical"
+            exp_annotations:
+              summary: "A certificate expires in 13 days"
+              description: "The soonest-expiring certificate in the database expires in less than 14 days (negative: already expired). The admin health endpoint names its domain. Renew now."
+      - eval_time: 61m
+        alertname: CertificateExpiringSoon
+        exp_alerts: []
+  - name: DomainCertificateMissing
+    interval: 1m
+    input_series:
+      - series: 'restmail_tls_cert_missing_total{job="smtp",instance="one"}'
+        values: '0+1x15 15x20'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DomainCertificateMissing
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: DomainCertificateMissing
+        exp_alerts:
+          - exp_labels:
+              job: "smtp"
+              instance: "one"
+              severity: "critical"
+            exp_annotations:
+              summary: "Handshakes refused: a domain served here has no usable certificate"
+              description: "8 handshakes in the last 10 minutes were refused because the domain asked for is served here but has no usable certificate (none stored, expired, or the stored pair will not load). Mail for it is being turned away. The gateway logs name the domain."
+      - eval_time: 30m
+        alertname: DomainCertificateMissing
+        exp_alerts: []
+  - name: AuthFailureRateHigh
+    interval: 1m
+    input_series:
+      - series: 'restmail_auth_failures_total{protocol="smtp"}'
+        values: '0+30x15 450x20'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: AuthFailureRateHigh
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: AuthFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              protocol: "smtp"
+              severity: "warning"
+            exp_annotations:
+              summary: "High authentication failure rate on smtp"
+              description: "More than 100 authentication failures in the last 5 minutes on protocol smtp. Possible brute-force attempt."
+      - eval_time: 30m
+        alertname: AuthFailureRateHigh
+        exp_alerts: []
+  - name: SignInAccountUnderAttack
+    interval: 1m
+    input_series:
+      - series: 'restmail_signin_accounts_under_attack_total{job="api",instance="one"}'
+        values: '0+1x15 15x25'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SignInAccountUnderAttack
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: SignInAccountUnderAttack
+        exp_alerts:
+          - exp_labels:
+              job: "api"
+              instance: "one"
+              severity: "warning"
+            exp_annotations:
+              summary: "An address is taking many failed sign-ins"
+              description: "One address reached 20 recent failed sign-ins. Failures for it now wait up to 3 seconds; the correct password is not slowed. The API log event api_signin_account_under_attack gives the masked address, and the audit log's auth.sign_in entries give the sources."
+      - eval_time: 35m
+        alertname: SignInAccountUnderAttack
+        exp_alerts: []
+  - name: SignInDelayBoundReached
+    interval: 1m
+    input_series:
+      - series: 'restmail_signin_failures_unslowed_total{job="api",instance="one"}'
+        values: '0+1x15 15x20'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SignInDelayBoundReached
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: SignInDelayBoundReached
+        exp_alerts:
+          - exp_labels:
+              job: "api"
+              instance: "one"
+              severity: "warning"
+            exp_annotations:
+              summary: "Failed sign-ins are being answered without their delay"
+              description: "8 failed sign-ins in the last 10 minutes were answered at once because 256 were already waiting. Nobody is refused, but guessing is no longer slowed. Look for a large attack."
+      - eval_time: 30m
+        alertname: SignInDelayBoundReached
+        exp_alerts: []
+  - name: HTTPErrorRateHigh
+    interval: 1m
+    input_series:
+      - series: 'restmail_http_requests_total{status="500",job="api",instance="one"}'
+        values: '0+2x15 30x20'
+      - series: 'restmail_http_requests_total{status="200",job="api",instance="one"}'
+        values: '0+8x35'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: HTTPErrorRateHigh
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: HTTPErrorRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: "critical"
+            exp_annotations:
+              summary: "HTTP 5xx error rate exceeds 5%"
+              description: "The API server is returning server errors at a rate of 20%."
+      - eval_time: 30m
+        alertname: HTTPErrorRateHigh
+        exp_alerts: []
+  - name: APIResponseTimeSlow
+    interval: 1m
+    input_series:
+      - series: 'restmail_http_request_duration_seconds_bucket{le="1",job="api",instance="one"}'
+        values: '0x15 0+100x20'
+      - series: 'restmail_http_request_duration_seconds_bucket{le="2.5",job="api",instance="one"}'
+        values: '0+95x15 1425+100x20'
+      - series: 'restmail_http_request_duration_seconds_bucket{le="5",job="api",instance="one"}'
+        values: '0+100x35'
+      - series: 'restmail_http_request_duration_seconds_bucket{le="+Inf",job="api",instance="one"}'
+        values: '0+100x35'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: APIResponseTimeSlow
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: APIResponseTimeSlow
+        exp_alerts:
+          - exp_labels:
+              severity: "warning"
+            exp_annotations:
+              summary: "API p95 response time exceeds 2 seconds"
+              description: "The 95th percentile API response time is 2.5s, which is above the 2s threshold."
+      - eval_time: 30m
+        alertname: APIResponseTimeSlow
+        exp_alerts: []
+  - name: QueueErrorRateHigh
+    interval: 1m
+    input_series:
+      - series: 'restmail_queue_errors_total{job="smtp",instance="one"}'
+        values: '0+12x15 180x20'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: QueueErrorRateHigh
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: QueueErrorRateHigh
+        exp_alerts:
+          - exp_labels:
+              job: "smtp"
+              instance: "one"
+              severity: "warning"
+            exp_annotations:
+              summary: "Queue processing error rate is elevated"
+              description: "Queue errors are occurring at 0.2 per second."
+      - eval_time: 30m
+        alertname: QueueErrorRateHigh
+        exp_alerts: []
+  - name: QueueWorkerStalled
+    interval: 1m
+    input_series:
+      - series: 'restmail_queue_processed_total{job="smtp",instance="one"}'
+        values: '0x35 0 1 2'
+      - series: 'restmail_queue_due{job="smtp",instance="one"}'
+        values: '0 2x33 0x4'
+      - series: 'restmail_queue_processed_total{job="smtp",instance="future-retries"}'
+        values: '0x38'
+      - series: 'restmail_queue_due{job="smtp",instance="future-retries"}'
+        values: '0x38'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: QueueWorkerStalled
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: QueueWorkerStalled
+        exp_alerts:
+          - exp_labels:
+              job: "smtp"
+              instance: "one"
+              severity: "critical"
+            exp_annotations:
+              summary: "Queue workers appear stalled"
+              description: "No messages have been processed in the last 15 minutes although 2 queued messages are due for an attempt now. Messages waiting for a later retry are not counted."
+      - eval_time: 35m
+        alertname: QueueWorkerStalled
+        exp_alerts: []
+  - name: QueueOldestMessageOld
+    interval: 1m
+    input_series:
+      - series: 'restmail_queue_oldest_age_seconds{job="smtp",instance="one"}'
+        values: '21600 25200x18 0'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: QueueOldestMessageOld
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: QueueOldestMessageOld
+        exp_alerts:
+          - exp_labels:
+              job: "smtp"
+              instance: "one"
+              severity: "warning"
+            exp_annotations:
+              summary: "The oldest queued message is 7h 0m 0s old"
+              description: "A pending or deferred outbound message has waited more than 6 hours. Check the queue in the admin API for the destinations that are deferring."
+      - eval_time: 20m
+        alertname: QueueOldestMessageOld
+        exp_alerts: []
+  - name: DatabaseConnectionErrors
+    interval: 1m
+    input_series:
+      - series: 'restmail_db_connection_errors_total{job="api",instance="one"}'
+        values: '0+1x15 15x20'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DatabaseConnectionErrors
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: DatabaseConnectionErrors
+        exp_alerts:
+          - exp_labels:
+              job: "api"
+              instance: "one"
+              severity: "critical"
+            exp_annotations:
+              summary: "api cannot reach the database"
+              description: "5 database operations in the last 5 minutes failed because the database could not be reached. Check the Postgres server, its network and its connection limit."
+      - eval_time: 30m
+        alertname: DatabaseConnectionErrors
+        exp_alerts: []
+  - name: DatabasePoolSaturated
+    interval: 1m
+    input_series:
+      - series: 'restmail_db_pool_max_open_connections{job="api",instance="one"}'
+        values: '10x20'
+      - series: 'restmail_db_pool_in_use_connections{job="api",instance="one"}'
+        values: '10x19 9'
+      - series: 'restmail_db_pool_wait_count_total{job="api",instance="one"}'
+        values: '0+1x20'
+      - series: 'restmail_db_pool_max_open_connections{job="api",instance="unlimited"}'
+        values: '0x20'
+      - series: 'restmail_db_pool_in_use_connections{job="api",instance="unlimited"}'
+        values: '10x20'
+      - series: 'restmail_db_pool_wait_count_total{job="api",instance="unlimited"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DatabasePoolSaturated
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: DatabasePoolSaturated
+        exp_alerts:
+          - exp_labels:
+              job: "api"
+              instance: "one"
+              severity: "warning"
+            exp_annotations:
+              summary: "api database pool is nearly exhausted"
+              description: "More than 90% of the pool's connections are in use and callers are waiting for one. Raise DB_MAX_OPEN_CONNS (within Postgres max_connections) or find the slow queries."
+      - eval_time: 20m
+        alertname: DatabasePoolSaturated
+        exp_alerts: []
+  - name: PipelineFilterErrorRateHigh
+    interval: 1m
+    input_series:
+      - series: 'restmail_pipeline_stage_decisions_total{filter="rspamd",action="error",job="smtp",instance="one"}'
+        values: '0+1x15 15x20'
+      - series: 'restmail_pipeline_stage_decisions_total{filter="rspamd",action="continue",job="smtp",instance="one"}'
+        values: '0+9x35'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: PipelineFilterErrorRateHigh
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: PipelineFilterErrorRateHigh
+        exp_alerts:
+          - exp_labels:
+              filter: "rspamd"
+              severity: "warning"
+            exp_annotations:
+              summary: "Pipeline filter rspamd is erroring"
+              description: "10% of filter rspamd's steps in the last 10 minutes ended in an error. Its service may be down; the gateway logs name the cause."
+      - eval_time: 30m
+        alertname: PipelineFilterErrorRateHigh
+        exp_alerts: []
+  - name: SMTPConnectionsStopped
+    interval: 1m
+    input_series:
+      - series: 'restmail_connections_accepted_total{protocol="smtp",job="smtp",instance="one"}'
+        values: '0x75 1'
+      - series: 'restmail_connections_accepted_total{protocol="smtp",job="healthy",instance="two"}'
+        values: '0+1x76'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SMTPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 75m
+        alertname: SMTPConnectionsStopped
+        exp_alerts:
+          - exp_labels:
+              job: "smtp"
+              severity: "warning"
+            exp_annotations:
+              summary: "No SMTP connections in the last hour"
+              description: "The SMTP gateway has admitted no connection for an hour. Check the listener, the load balancer, the MX records and the firewall."
+      - eval_time: 76m
+        alertname: SMTPConnectionsStopped
+        exp_alerts: []
+  - name: IMAPConnectionsStopped
+    interval: 1m
+    input_series:
+      - series: 'restmail_connections_accepted_total{protocol="imap",job="imap",instance="one"}'
+        values: '0x75 1'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: IMAPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 75m
+        alertname: IMAPConnectionsStopped
+        exp_alerts:
+          - exp_labels:
+              job: "imap"
+              severity: "warning"
+            exp_annotations:
+              summary: "No IMAP connections in the last hour"
+              description: "The IMAP gateway has admitted no connection for an hour. Check the listener, the load balancer and the firewall."
+      - eval_time: 76m
+        alertname: IMAPConnectionsStopped
+        exp_alerts: []
+  - name: DNSBLSendingIPListed
+    interval: 1m
+    input_series:
+      - series: 'restmail_dnsbl_listed{ip="192.0.2.10",provider="dnsbl"}'
+        values: '0 1 0'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DNSBLSendingIPListed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: DNSBLSendingIPListed
+        exp_alerts:
+          - exp_labels:
+              ip: "192.0.2.10"
+              provider: "dnsbl"
+              severity: "critical"
+            exp_annotations:
+              summary: "Sending IP 192.0.2.10 is listed by dnsbl"
+              description: "The last answer from DNSBL provider dnsbl listed 192.0.2.10. Mail sent from it may be refused. The API log line 'dnsbl: sending IP listed' carries the codes and reason."
+      - eval_time: 2m
+        alertname: DNSBLSendingIPListed
+        exp_alerts: []
+  - name: DNSBLProviderNotAnswering
+    interval: 1m
+    input_series:
+      - series: 'restmail_dnsbl_checks_total{status="provider_error",provider="dnsbl"}'
+        values: '0+1x10'
+      - series: 'restmail_dnsbl_checks_total{status="not_listed",provider="dnsbl"}'
+        values: '_x6 0 1 2 3'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts:
+          - exp_labels:
+              provider: "dnsbl"
+              severity: "warning"
+            exp_annotations:
+              summary: "DNSBL provider dnsbl has no recent answer"
+              description: "Observed checks against dnsbl in the last 3 hours failed (provider_error or indeterminate), with no successful check. The listing state is stale or unknown, not clean. Check the zone, its answer codes and the resolver."
+      - eval_time: 8m
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts: []
+  - name: DNSBLAnswerStale
+    interval: 1m
+    input_series:
+      - series: 'restmail_dnsbl_last_answer_timestamp_seconds{ip="192.0.2.10",provider="dnsbl"}'
+        values: '0x361 21720'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DNSBLAnswerStale
+        exp_alerts: []
+      - eval_time: 361m
+        alertname: DNSBLAnswerStale
+        exp_alerts:
+          - exp_labels:
+              ip: "192.0.2.10"
+              provider: "dnsbl"
+              severity: "warning"
+            exp_annotations:
+              summary: "No DNSBL answer for 192.0.2.10 from dnsbl in 6 hours"
+              description: "restmail_dnsbl_listed for this pair reflects an answer more than 6 hours old."
+      - eval_time: 362m
+        alertname: DNSBLAnswerStale
+        exp_alerts: []
+  - name: PVCSpaceLow and PVCSpaceCritical
+    interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_available_bytes{namespace="mail",persistentvolumeclaim="restmail-postgres-data"}'
+        values: '20 5x31 20'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="mail",persistentvolumeclaim="restmail-postgres-data"}'
+        values: '100x33'
+      - series: 'kubelet_volume_stats_available_bytes{namespace="mail",persistentvolumeclaim="unrelated"}'
+        values: '0x33'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="mail",persistentvolumeclaim="unrelated"}'
+        values: '100x33'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: PVCSpaceLow
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: PVCSpaceLow
+        exp_alerts:
+          - exp_labels:
+              namespace: "mail"
+              persistentvolumeclaim: "restmail-postgres-data"
+              severity: "warning"
+            exp_annotations:
+              summary: "PVC mail/restmail-postgres-data is over 80% full"
+              description: "Only 5% of the volume is free. Grow the PVC (its storage class must allow expansion) or free space before it fills."
+      - eval_time: 33m
+        alertname: PVCSpaceLow
+        exp_alerts: []
+      - eval_time: 0m
+        alertname: PVCSpaceCritical
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: PVCSpaceCritical
+        exp_alerts:
+          - exp_labels:
+              namespace: "mail"
+              persistentvolumeclaim: "restmail-postgres-data"
+              severity: "critical"
+            exp_annotations:
+              summary: "PVC mail/restmail-postgres-data is over 90% full"
+              description: "Only 5% of the volume is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+      - eval_time: 33m
+        alertname: PVCSpaceCritical
+        exp_alerts: []
+  - name: DiskSpaceLow and DiskSpaceCritical
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node",mountpoint="/volumes/certificates"}'
+        values: '20 5x31 20'
+      - series: 'node_filesystem_size_bytes{job="node",mountpoint="/volumes/certificates"}'
+        values: '100x33'
+      - series: 'node_filesystem_avail_bytes{job="node",mountpoint="/host"}'
+        values: '0x33'
+      - series: 'node_filesystem_size_bytes{job="node",mountpoint="/host"}'
+        values: '100x33'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: DiskSpaceLow
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: DiskSpaceLow
+        exp_alerts:
+          - exp_labels:
+              job: "node"
+              mountpoint: "/volumes/certificates"
+              severity: "warning"
+            exp_annotations:
+              summary: "Volume /volumes/certificates is over 80% full"
+              description: "Only 5% of the filesystem holding /volumes/certificates is free. Free space or grow the volume before it fills."
+      - eval_time: 33m
+        alertname: DiskSpaceLow
+        exp_alerts: []
+      - eval_time: 0m
+        alertname: DiskSpaceCritical
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: DiskSpaceCritical
+        exp_alerts:
+          - exp_labels:
+              job: "node"
+              mountpoint: "/volumes/certificates"
+              severity: "critical"
+            exp_annotations:
+              summary: "Volume /volumes/certificates is over 90% full"
+              description: "Only 5% of the filesystem holding /volumes/certificates is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+      - eval_time: 33m
+        alertname: DiskSpaceCritical
+        exp_alerts: []

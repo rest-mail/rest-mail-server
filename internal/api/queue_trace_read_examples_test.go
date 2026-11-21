@@ -43,6 +43,9 @@ func (c queueTraceReadConnection) ExecContext(context.Context, string, []driver.
 	return nil, errors.New("queue/trace read attempted a write")
 }
 func (c queueTraceReadConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(query, "outbound_queue.sending_domain") && len(args) == 3 && args[0].Value == "other.example.com" {
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
 	if len(args) == 0 {
 		return nil, errors.New("resource read lost its ID restriction")
 	}
@@ -119,7 +122,7 @@ func queueTraceReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTServ
 	minimum := scoped(grants.Entry{Capability: middleware.CapQueueRead, Scope: grants.All}, grants.Entry{Capability: middleware.CapObservabilityRead, Scope: grants.All})
 	queueOnly := scoped(grants.Entry{Capability: middleware.CapQueueRead, Scope: grants.All})
 	observabilityOnly := scoped(grants.Entry{Capability: middleware.CapObservabilityRead, Scope: grants.All})
-	domain := scoped(grants.Entry{Capability: middleware.CapQueueRead, Scope: grants.Domain("example.com")}, grants.Entry{Capability: middleware.CapObservabilityRead, Scope: grants.Domain("example.com")})
+	domain := scoped(grants.Entry{Capability: middleware.CapQueueRead, Scope: grants.Domain("other.example.com")}, grants.Entry{Capability: middleware.CapObservabilityRead, Scope: grants.Domain("example.com")})
 	wrong := scoped(grants.Entry{Capability: middleware.CapPipelinesRead, Scope: grants.All}, grants.Entry{Capability: middleware.CapDomainsRead, Scope: grants.All})
 	heldGrants = func(*grants.Cache) middleware.HeldGrants {
 		return func(uint) (grants.Held, error) { return grants.Held{}, errors.New("private grant-store detail") }

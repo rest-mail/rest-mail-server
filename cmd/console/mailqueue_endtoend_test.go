@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	"flag"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -32,6 +34,7 @@ type queueServer struct {
 	db     *gorm.DB
 	url    string
 	client *http.Client
+	cover  string
 	holder models.Mailbox
 	manage string // queue:read and queue:manage
 	read   string // queue:read only
@@ -63,7 +66,11 @@ func newQueueServer(t *testing.T) *queueServer {
 		Scope: grants.All, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
 		t.Fatalf("grant the admin role: %v", err)
 	}
-	s := &queueServer{db: db, url: server.URL, client: server.Client(), holder: holder}
+	cover := t.TempDir()
+	if output := flag.Lookup("test.gocoverdir"); output != nil && output.Value.String() != "" {
+		cover = output.Value.String()
+	}
+	s := &queueServer{db: db, url: server.URL, client: server.Client(), holder: holder, cover: cover}
 	s.manage, _ = s.key(t, "manage", grants.All, "queue:read", "queue:manage")
 	s.read, _ = s.key(t, "read", grants.All, "queue:read")
 	return s
@@ -119,10 +126,36 @@ func (s *queueServer) seed(t *testing.T) queueRows {
 
 func (s *queueServer) run(t *testing.T, key, stdin string, args ...string) (int, string, string) {
 	t.Helper()
+	return s.cli(t, key, stdin, "mail-queue", args...)
+}
+
+func (s *queueServer) cli(t *testing.T, key, stdin, command string, args ...string) (int, string, string) {
+	t.Helper()
 	var out, errOut bytes.Buffer
-	full := append([]string{args[0], "--server", s.url}, args[1:]...)
-	code := runMailQueue(context.Background(), full, key, strings.NewReader(stdin), s.client, &out, &errOut)
+	full := append([]string{"-test.run=^TestOperatorCLIChild$", "--", command, args[0], "--server", s.url}, args[1:]...)
+	child := exec.CommandContext(t.Context(), os.Args[0], full...)
+	child.Env = []string{"RESTMAIL_OPERATOR_CLI_CHILD=1", "RESTMAIL_API_KEY=" + key, "GORACE=atexit_sleep_ms=0", "GOCOVERDIR=" + s.cover}
+	child.Stdin, child.Stdout, child.Stderr = strings.NewReader(stdin), &out, &errOut
+	code := exitOK
+	if err := child.Run(); err != nil {
+		if exited, ok := err.(*exec.ExitError); ok {
+			code = exited.ExitCode()
+		} else {
+			t.Fatal(err)
+		}
+	}
 	return code, out.String(), errOut.String()
+}
+
+func TestOperatorCLIChild(t *testing.T) {
+	if os.Getenv("RESTMAIL_OPERATOR_CLI_CHILD") != "1" {
+		return
+	}
+	code, handled := runSubcommand(append([]string{"restmail"}, os.Args[3:]...), os.Stdout, os.Stderr)
+	if !handled {
+		os.Exit(99)
+	}
+	os.Exit(code)
 }
 
 // statuses is each entry's status in the database, by ID.

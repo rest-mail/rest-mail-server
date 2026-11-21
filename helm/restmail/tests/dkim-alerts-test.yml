@@ -5,9 +5,9 @@ tests:
   - interval: 1h
     input_series:
       - series: 'restmail_dkim_key_age_seconds{domain="overdue.test",selector="mail",job="api",instance="one"}'
-        values: '7948800+3600x25'
+        values: '7948800+3600x25 0'
       - series: 'restmail_dkim_rotation_interval_seconds{domain="overdue.test",job="api",instance="one"}'
-        values: '7776000+0x25'
+        values: '7776000+0x26'
       - series: 'restmail_dkim_key_age_seconds{domain="overdue.test",selector="mail",job="api",instance="two"}'
         values: '0+3600x25'
       - series: 'restmail_dkim_rotation_interval_seconds{domain="overdue.test",job="api",instance="two"}'
@@ -19,7 +19,7 @@ tests:
       - series: 'restmail_dkim_rotation_step_started_seconds{domain="stuck.test",job="api",instance="one"}'
         values: '0+0x25'
       - series: 'restmail_dkim_rotation_state{domain="stuck.test",state="awaiting_publication",job="api",instance="one"}'
-        values: '1+0x25'
+        values: '1+0x25 0'
       - series: 'restmail_dkim_rotation_step_started_seconds{domain="stuck.test",job="api",instance="two"}'
         values: '0+0x25'
       - series: 'restmail_dkim_rotation_state{domain="stuck.test",state="waiting_ttl",job="api",instance="two"}'
@@ -58,3 +58,9 @@ tests:
             exp_annotations:
               summary: DKIM publication for stuck.test is stuck
               description: The staged record has not resolved for more than 24 hours. Publish the TXT record reported by the rotation status endpoint.
+      - eval_time: 26h
+        alertname: DKIMKeyOverdue
+        exp_alerts: []
+      - eval_time: 26h
+        alertname: DKIMPublicationStuck
+        exp_alerts: []

@@ -341,6 +341,7 @@ func queueStats(ctx context.Context, c queueClient, o output) int {
 
 func queueList(ctx context.Context, c queueClient, o output, f queueFilter, limit, offset int) int {
 	q := f.query()
+	q.Set("scope", "authorized")
 	q.Set("limit", strconv.Itoa(limit))
 	q.Set("offset", strconv.Itoa(offset))
 	var page queuePage

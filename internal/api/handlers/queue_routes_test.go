@@ -20,10 +20,10 @@ import (
 // queueRoutes exercises the production registration with capability checks that pass.
 func queueRoutes(h *QueueHandler) http.Handler {
 	r := chi.NewRouter()
+	pass := endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
 	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, QueueRouteChecks{
-		At: func(string) endpoint.Middleware {
-			return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
-		},
+		Read: pass,
+		At:   func(string) endpoint.Middleware { return pass },
 	})
 	return r
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	clientmodel "github.com/prometheus/client_model/go"
 	"github.com/rest-mail/rest-mail-server/internal/config"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
@@ -26,21 +25,10 @@ func TestDKIMKeyAgeCollector_DatabaseInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	database, err := rmdb.Connect(&config.Config{
+	database := testdb.Clone(t, &config.Config{
 		DBHost: env("DB_HOST", "localhost"), DBPort: port,
 		DBName: env("DB_NAME", "restmail"), DBUser: env("DB_USER", "restmail"), DBPass: env("DB_PASS", "restmail"),
-	})
-	if err != nil {
-		testdb.Unreachable(t, "DKIM metric DB test skipped: no database reachable (%v)", err)
-	}
-	sqlDB, err := database.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := database.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}); err != nil {
-		t.Fatal(err)
-	}
+	}, "dkim_metric", testdb.Models(&models.Domain{}, &models.DKIMRotationKey{}))
 	tx := database.Begin()
 	if tx.Error != nil {
 		t.Fatal(tx.Error)

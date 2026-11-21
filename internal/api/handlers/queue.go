@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -14,6 +15,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -50,6 +52,7 @@ type listQueueRequest struct {
 	Recipient string           `query:"recipient"`
 	Limit     *queuePageNumber `query:"limit"`
 	Offset    *queuePageNumber `query:"offset"`
+	Scope     *string          `query:"scope" enums:"authorized" description:"Opt in to domain-scoped results. Omit to require installation-wide queue:read, as a bulk-action preview must."`
 }
 
 // QueueList preserves the queue's established pagination envelope.
@@ -61,7 +64,11 @@ type QueueList struct {
 }
 
 func (h *QueueHandler) listQueue(r *http.Request, in listQueueRequest) (QueueList, error) {
-	query := h.db.WithContext(r.Context()).Model(&models.OutboundQueue{}).Order("created_at DESC")
+	query, restricted := h.queueRead(r)
+	if restricted && in.Scope == nil {
+		return QueueList{}, errQueueOutOfScope
+	}
+	query = query.Order("created_at DESC, id DESC")
 
 	if in.Status != nil {
 		query = query.Where("status = ?", *in.Status)
@@ -106,6 +113,22 @@ type queuePath struct {
 }
 
 var errQueueNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Queue entry not found")
+var errQueueOutOfScope = endpoint.Refuse(http.StatusForbidden, "forbidden", "Insufficient permissions")
+
+func (h *QueueHandler) queueRead(r *http.Request) (*gorm.DB, bool) {
+	query := h.db.WithContext(r.Context()).Model(&models.OutboundQueue{})
+	scopes, restricted := middleware.CapabilityScopes(r, middleware.CapQueueRead)
+	if !restricted || slices.Contains(scopes, grants.All) {
+		return query, false
+	}
+	var domains []string
+	for _, scope := range scopes {
+		if domain, ok := strings.CutPrefix(scope, "domain:"); ok {
+			domains = append(domains, domain)
+		}
+	}
+	return query.Where(models.OutboundQueueSendingDomainSQL+" IN ?", domains), true
+}
 
 // queueRule is the states an action works on and, for a single entry, its
 // refusal of any other. The bulk routes pass over entries in other states.
@@ -139,7 +162,15 @@ func findQueue(db *gorm.DB, id uint32) (models.OutboundQueue, error) {
 }
 
 func (h *QueueHandler) getQueueEntry(r *http.Request, in queuePath) (QueueEntry, error) {
-	item, err := findQueue(h.db.WithContext(r.Context()), in.ID)
+	query, restricted := h.queueRead(r)
+	var item models.OutboundQueue
+	err := query.First(&item, in.ID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if restricted {
+			return QueueEntry{}, errQueueOutOfScope
+		}
+		return QueueEntry{}, errQueueNotFound
+	}
 	if err != nil {
 		return QueueEntry{}, err
 	}
@@ -207,7 +238,8 @@ func (h *QueueHandler) queueStats(r *http.Request, _ struct{}) (QueueStatistics,
 	}
 
 	var counts []statusCount
-	if err := h.db.WithContext(r.Context()).Model(&models.OutboundQueue{}).
+	query, _ := h.queueRead(r)
+	if err := query.
 		Select("status, count(*) as count").
 		Group("status").
 		Scan(&counts).Error; err != nil {
@@ -380,17 +412,19 @@ type BulkQueueResult struct {
 }
 
 type QueueRouteChecks struct {
-	At func(string) endpoint.Middleware
+	Read endpoint.Middleware
+	At   func(string) endpoint.Middleware
 }
 
 const bulkQueueDescription = "Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines."
+const queueReadDescription = "A domain-scoped queue reader sees only entries belonging to its authorized sending domains, not the destination domains. Mailbox scopes do not grant access to queue entries. Queue mutations require installation-wide queue:manage. Database work follows the HTTP request context, including cancellation and deadlines."
 
 func (h *QueueHandler) Register(rs endpoint.Routes, checks QueueRouteChecks) {
 	tags := []string{"Admin: Queue"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/queue",
-		OperationID: "listQueue", Summary: "List outbound queue entries", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueRead)}}, h.listQueue)
+		OperationID: "listQueue", Summary: "List outbound queue entries", Description: queueReadDescription + " Set scope=authorized for scoped reads; omission requires installation-wide queue:read so bulk-action previews cannot undercount. Scope and filters apply before counting and pagination. Entries are ordered newest first with ID breaking ties.", Tags: tags, Middleware: []endpoint.Middleware{checks.Read}}, h.listQueue)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/queue/stats",
-		OperationID: "getQueueStats", Summary: "Get queue status counts", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueRead)}}, h.queueStats)
+		OperationID: "getQueueStats", Summary: "Get queue status counts", Description: queueReadDescription + " Counts include only visible entries.", Tags: tags, Middleware: []endpoint.Middleware{checks.Read}}, h.queueStats)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/bulk-retry",
 		OperationID: "bulkRetryQueue", Summary: "Retry multiple queue entries", Description: bulkQueueDescription, Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkRetry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/bulk-bounce",
@@ -398,7 +432,7 @@ func (h *QueueHandler) Register(rs endpoint.Routes, checks QueueRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/queue/bulk-delete",
 		OperationID: "bulkDeleteQueue", Summary: "Delete multiple queue entries", Description: bulkQueueDescription, Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkDelete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/queue/{id}",
-		OperationID: "getQueueEntry", Summary: "Get a single queue entry", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueRead)}}, h.getQueueEntry)
+		OperationID: "getQueueEntry", Summary: "Get a single queue entry", Description: queueReadDescription + " Scoped readers receive 403 forbidden for both missing and out-of-scope IDs; installation-wide readers receive 404 not_found for missing IDs.", Tags: tags, Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.Read}}, h.getQueueEntry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/{id}/retry",
 		OperationID: "retryQueueEntry", Summary: "Retry a single queue entry", Description: "Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.", Tags: tags, Errors: []int{http.StatusNotFound, http.StatusBadRequest}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.retryQueueEntry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/{id}/bounce",

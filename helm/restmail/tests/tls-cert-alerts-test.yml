@@ -6,9 +6,9 @@ evaluation_interval: 1h
 tests:
   - interval: 1h
     input_series:
-      # Its renewals never arrive.
+      # Its renewal takes an additional hour.
       - series: 'restmail_tls_cert_expiry_timestamp_seconds{job="restmail-smtp",instance="stuck"}'
-        values: '1123200+0x4'
+        values: '1123200+0x2 8000000 8000000'
       # A renewal reaches it at 2h.
       - series: 'restmail_tls_cert_expiry_timestamp_seconds{job="restmail-imap",instance="renewed"}'
         values: '1123200 1123200 8000000 8000000 8000000'
@@ -46,3 +46,6 @@ tests:
             exp_annotations:
               summary: A TLS certificate file on stuck expires in 12d 22h 0m 0s
               description: *description
+      - eval_time: 3h
+        alertname: TLSCertificateFileExpiringSoon
+        exp_alerts: []

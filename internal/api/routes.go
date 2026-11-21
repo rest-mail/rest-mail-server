@@ -745,7 +745,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Group(func(r chi.Router) {
 		r.Use(apiKeys.Authenticate(middleware.JWTMiddleware(jwtService, machineTokens)))
 		// Every change through the admin API is recorded, including those the
-		// checks below refuse; reads are not, except of the audit log itself.
+		// checks below refuse; sensitive reads are audited on their own routes.
 		r.Use(auditLog("admin.change", middleware.AuditWritesOnly()))
 		// A token minted before the account's last credential change is dead.
 		r.Use(middleware.RejectStaleSessions(sessionCurrent))
@@ -830,11 +830,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		statsH.RegisterPipelineAnalytics(admin, describedCapability(needs)(middleware.CapObservabilityRead))
 
 		// Queue management
-		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
+		queueH.Register(admin, handlers.QueueRouteChecks{Read: describedCapability(needsOnList)(middleware.CapQueueRead), At: describedCapability(needs)})
 		handlers.NewReputationHandler(db).Register(admin, describedCapability(needs))
 
 		// The slow statement view (#1629): database:read lists, database:manage resets.
-		handlers.NewSlowStatementsHandler(db).Register(admin, describedCapability(needs))
+		handlers.NewSlowStatementsHandler(db).Register(admin, describedCapability(needs), audited("admin.database.statements.read"))
 
 		policyChecks := handlers.DomainPolicyRouteChecks{
 			OnDomain: describedCapability(needsOnDomain),
