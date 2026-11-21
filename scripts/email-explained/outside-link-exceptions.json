@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "url": "https://security.googleblog.com/2019/04/gmail-making-email-more-secure-with-mta.html",
+    "reason": "Google's security blog answers the daily checker with HTTP 429 (rate limited). Opened by hand on 2026-11-21: the post is live and still describes Gmail's MTA-STS and TLS reporting rollout, which the guide cites.",
+    "expires": "2027-02-21"
+  }
+]
