@@ -1,6 +1,7 @@
 package apiproxy
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,10 @@ func New(manager *session.Manager) func(http.Handler) http.Handler {
 				fail(writer, http.StatusBadGateway)
 				return
 			}
+			if session.IsEventStream(response.Header.Get("Content-Type")) {
+				stream(writer, response, manager)
+				return
+			}
 			body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseSize+1))
 			if err != nil || len(body) > maxResponseSize {
 				fail(writer, http.StatusBadGateway)
@@ -76,6 +81,58 @@ func New(manager *session.Manager) func(http.Handler) http.Handler {
 			_, _ = writer.Write(body)
 		})
 	}
+}
+
+// stream relays a server-sent event stream one line at a time, so events reach
+// the webview while the stream stays open. Each data line gets the same
+// credential stripping and redaction as a buffered response; credentials hold no
+// newline, so a line never splits one.
+func stream(writer http.ResponseWriter, response *http.Response, manager *session.Manager) {
+	flusher, canFlush := writer.(http.Flusher)
+	writer.Header().Set("Content-Type", "text/event-stream")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	writer.WriteHeader(response.StatusCode)
+	if canFlush {
+		flusher.Flush()
+	}
+	reader := bufio.NewReaderSize(response.Body, 64<<10)
+	for {
+		line, err := reader.ReadSlice('\n')
+		if errors.Is(err, bufio.ErrBufferFull) {
+			return
+		}
+		if len(line) != 0 {
+			if _, writeErr := writer.Write(streamLine(line, manager)); writeErr != nil {
+				return
+			}
+			if canFlush && (len(bytes.TrimRight(line, "\r\n")) == 0 || err != nil) {
+				flusher.Flush()
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func streamLine(line []byte, manager *session.Manager) []byte {
+	ending := line[len(bytes.TrimRight(line, "\r\n")):]
+	content := line[:len(line)-len(ending)]
+	if payload, ok := bytes.CutPrefix(content, []byte("data:")); ok {
+		trimmed := bytes.TrimPrefix(payload, []byte(" "))
+		if json.Valid(trimmed) {
+			var value any
+			decoder := json.NewDecoder(bytes.NewReader(trimmed))
+			decoder.UseNumber()
+			if decoder.Decode(&value) == nil {
+				if encoded, err := json.Marshal(sanitize(value, manager)); err == nil {
+					content = append([]byte("data: "), encoded...)
+				}
+			}
+		}
+	}
+	return append(manager.Redact(append([]byte(nil), content...)), ending...)
 }
 
 func sanitize(value any, manager *session.Manager) any {
