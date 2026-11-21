@@ -92,11 +92,11 @@ func TestAPIHTTPSListenerAndGatewayClientServeRenewedCertificates(t *testing.T) 
 			fresh := func() string {
 				t.Helper()
 				conn := connect()
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				return read(conn)
 			}
 			established := connect()
-			defer established.Close()
+			defer func() { _ = established.Close() }()
 			original := read(established)
 			cert, key := issue(side)
 			pair, err := tls.X509KeyPair(cert, key)
