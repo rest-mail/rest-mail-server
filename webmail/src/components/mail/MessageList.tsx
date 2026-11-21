@@ -1,4 +1,6 @@
 import { displayAddress } from '@/lib/addressDisplay';
+import { mailPlatform } from '@/platform';
+import { MessageActions } from './MessageActions';
 import { useEffect, useCallback, useState } from 'react';
 import { visibleMessages } from '@/lib/messageClass';
 import { useMailStore } from '@/stores/mailStore';
@@ -32,9 +34,25 @@ export function MessageList() {
 
   const isInSearch = searchResults !== null;
   const [collapseLists, setCollapseLists] = useState(false);
+  const [sort, setSort] = useState('newest');
+  const [threaded, setThreaded] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
+  const desktop = mailPlatform().desktop;
+  useEffect(() => setSelected([]), [activeFolder, searchQuery]);
   const isWaiting = waitingMessages !== null;
   const allMessages = waitingMessages ?? (isInSearch ? searchResults : messages);
-  const displayMessages = visibleMessages(allMessages, collapseLists && !isInSearch && !isWaiting, selectedMessageId);
+  let displayMessages = visibleMessages(allMessages, collapseLists && !isInSearch && !isWaiting, selectedMessageId);
+  if (desktop) {
+    displayMessages = [...displayMessages].sort((first, second) => sort === 'subject' ? first.subject.localeCompare(second.subject) : sort === 'sender' ? first.sender.localeCompare(second.sender) : (sort === 'oldest' ? 1 : -1) * (Date.parse(first.received_at) - Date.parse(second.received_at)));
+    if (threaded) {
+      const seen = new Set<string>();
+      displayMessages = displayMessages.filter(message => {
+        const thread = message.thread_id || String(message.id);
+        if (seen.has(thread)) return false;
+        seen.add(thread); return true;
+      });
+    }
+  }
   const listCount = allMessages.filter(message => message.class === 'newsletter').length;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -130,6 +148,14 @@ export function MessageList() {
   return (
     <ScrollArea className={cn('h-full', TYPEFACE_CLASS[v.listType])}>
       <div className={cn('flex flex-col', v.surface === 'cards' && 'py-1')}>
+        {desktop && <>
+          <div className="flex gap-3 px-3 py-2 text-xs items-center">
+            <input data-testid="messages-select-all" aria-label="Select all messages" type="checkbox" checked={displayMessages.length > 0 && displayMessages.every(message => selected.includes(message.id))} onChange={event => setSelected(event.target.checked ? displayMessages.map(message => message.id) : [])} />
+            <select data-testid="messages-sort" aria-label="Sort messages" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="subject">Subject</option><option value="sender">Sender</option></select>
+            <label><input data-testid="messages-threaded" type="checkbox" checked={threaded} onChange={event => setThreaded(event.target.checked)} /> Threads</label>
+          </div>
+          {selected.length > 0 && <MessageActions ids={selected} prefix="bulk" onComplete={() => setSelected([])} />}
+        </>}
         {/* List header */}
         <div className="flex items-center justify-between h-8 px-3 shrink-0">
           <span className={cn(
@@ -174,8 +200,10 @@ export function MessageList() {
 
         {/* Messages */}
         {displayMessages.map((msg, i) => (
-          <div key={msg.id}>
+          <div key={msg.id} className={desktop ? 'flex items-start' : undefined}>
+            {desktop && <input data-testid={`message-select-${msg.id}`} aria-label={`Select ${msg.subject}`} className="ml-2 mt-3" type="checkbox" checked={selected.includes(msg.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, msg.id] : previous.filter(id => id !== msg.id))} />}
             <button
+              data-testid={`message-${msg.id}`}
               onClick={() => selectMessage(msg.id)}
               className={cn(
                 "w-full text-left px-3 flex items-start gap-2 transition-all duration-150",
@@ -248,6 +276,7 @@ export function MessageList() {
 
         {(isWaiting ? waitingHasMore : hasMore) && (
           <button
+            data-testid="messages-load-more"
             onClick={() => (isWaiting ? loadMoreWaiting() : loadMoreMessages())}
             className="w-full py-3 text-xs text-primary hover:bg-secondary/30 transition-colors"
           >

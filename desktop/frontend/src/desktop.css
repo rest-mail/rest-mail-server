@@ -1,0 +1,4 @@
+@font-face { font-family: Inter; src: url('../../../webmail/node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+html, body, #root { height: 100%; margin: 0; }
+.desktop-input { display: block; width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); }
+@media (min-width: 900px) { .lg\:flex-row { flex-direction: row; } .lg\:w-\[380px\] { width: 350px; height: 100%; } }

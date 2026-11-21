@@ -9,9 +9,10 @@ interface AutocompleteInputProps {
   value: string[];
   onChange: (emails: string[]) => void;
   placeholder?: string;
+  testId?: string;
 }
 
-export function AutocompleteInput({ value, onChange, placeholder }: AutocompleteInputProps) {
+export function AutocompleteInput({ value, onChange, placeholder, testId }: AutocompleteInputProps) {
   const { activeAccountId } = useMailStore();
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
@@ -201,6 +202,7 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
           </span>
         ))}
         <input
+          data-testid={testId}
           ref={inputRef}
           type="text"
           value={inputValue}

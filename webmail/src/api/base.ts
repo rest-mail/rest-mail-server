@@ -40,4 +40,4 @@ export function resolveApiBase(raw: string | undefined): string {
   return base;
 }
 
-export const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
+export const API_BASE = import.meta.env.VITE_DESKTOP === 'true' ? DEFAULT_API_BASE : resolveApiBase(import.meta.env.VITE_API_URL);

@@ -26,7 +26,7 @@ import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { handleThreadSnoozeEvent } from '@/lib/threadSnooze';
 import { useNotifications } from '@/hooks/useNotifications';
 
-function App() {
+function App({ loginPage }: { loginPage?: React.ReactNode }) {
   const { user, setupRequired, acceptSession, isAuthenticated, sessionChecked, checkSession, logout } = useAuthStore();
   const { startCompose } = useUIStore();
   const { accounts, refresh, loadFolders } = useMailStore();
@@ -104,7 +104,7 @@ function App() {
   }
 
   const content = !isAuthenticated ? (
-    <LoginPage />
+    loginPage ?? <LoginPage />
   ) : (
     <MailApp />
   );
