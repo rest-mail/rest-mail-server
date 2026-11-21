@@ -253,6 +253,7 @@ class WorkflowWiringTests(unittest.TestCase):
 # does to its job (#1896). Add a new artifact to one of these sets.
 SECOND_TRY = " (second try)"
 READ_BY_PEOPLE = {
+    "desktop-${{ env.BUILD_PLATFORM }}",
     "go-imap-statement-coverage",
     "go-imap-fuzz-findings",
     "api-contract-changes",
