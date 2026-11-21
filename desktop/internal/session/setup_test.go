@@ -123,7 +123,7 @@ func TestFirstRunSetupWalksPasswordThenAuthenticator(t *testing.T) {
 	if _, err := manager.ChangePassword("wrong", "a-long-new-password"); err == nil || !strings.Contains(err.Error(), "Current password is incorrect") {
 		t.Fatalf("wrong current password not reported: %v", err)
 	}
-	if _, err := manager.ChangePassword("bootstrap-password", "short"); err == nil || err.Error() != "new password must be at least 12 characters" {
+	if _, err := manager.ChangePassword("bootstrap-password", "short"); err == nil || err.Error() != "New password must be at least 12 characters" {
 		t.Fatalf("field problem not reported: %v", err)
 	}
 	result, err = manager.ChangePassword("bootstrap-password", "a-long-new-password")
