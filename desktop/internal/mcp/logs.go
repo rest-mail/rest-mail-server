@@ -31,6 +31,24 @@ func scrubFields(value any) any {
 	return value
 }
 
+func redactStrings(value any, redact func(string) string) any {
+	switch typed := value.(type) {
+	case string:
+		return redact(typed)
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for key, child := range typed {
+			result[redact(key)] = redactStrings(child, redact)
+		}
+		return result
+	case []any:
+		for index, child := range typed {
+			typed[index] = redactStrings(child, redact)
+		}
+	}
+	return value
+}
+
 type LogBuffer struct {
 	mutex    sync.Mutex
 	lines    []string
