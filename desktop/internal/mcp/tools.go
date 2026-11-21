@@ -95,10 +95,12 @@ func domainTool[Args any](server *Server, name, description string) {
 
 func uiTool[Args any](server *Server, name, action string) {
 	sdk.AddTool(server.protocol, &sdk.Tool{Name: name, Description: "Drive the desktop UI: " + action}, func(ctx context.Context, request *sdk.CallToolRequest, args Args) (*sdk.CallToolResult, any, error) {
-		ctx, cancel := context.WithTimeout(ctx, server.options.Timeout)
-		defer cancel()
 		if action == "screenshot" {
-			data, err := server.options.Screenshot(ctx)
+			// Native capture gets its own deadline, so a capture that runs out
+			// of time still leaves the bridge fallback a full one.
+			nativeCtx, cancelNative := context.WithTimeout(ctx, server.options.Timeout)
+			data, err := server.options.Screenshot(nativeCtx)
+			cancelNative()
 			if err == nil {
 				result := screenshotResult(map[string]any{"data": base64.StdEncoding.EncodeToString(data)})
 				if !result.IsError {
@@ -111,6 +113,8 @@ func uiTool[Args any](server *Server, name, action string) {
 		if server.options.UI == nil {
 			return server.toolFailure(name, "ui_unavailable", nil), nil, nil
 		}
+		ctx, cancel := context.WithTimeout(ctx, server.options.Timeout)
+		defer cancel()
 		value, err := server.options.UI.Call(ctx, action, args)
 		if err != nil {
 			code := "ui_error"
