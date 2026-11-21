@@ -69,13 +69,19 @@ loopback port. Always read the actual URL from `mcp.json`. Host overrides are no
 supported. An MCP startup failure is logged and never prevents the app from running.
 
 Every launch creates a fresh MCP bearer token, separate from the mail API token.
-The user-only discovery file is `os.UserConfigDir()/REST Mail/mcp.json`, containing
-`url`, `token`, `pid`, and `version`. On macOS this is
+Each instance writes `os.UserConfigDir()/REST Mail/mcp-<pid>.json`, containing
+`url`, `token`, `pid`, and `version`. The `mcp.json` alias points to the most
+recently started live instance. On orderly shutdown, that instance's own file is
+removed and the alias is restored to the newest surviving instance, or removed
+when none remain. Registry updates use an interprocess lock and atomic file
+replacement. On macOS the alias is
 `~/Library/Application Support/REST Mail/mcp.json`; on Linux it is normally
 `~/.config/REST Mail/mcp.json`; on Windows it is under `%AppData%\REST Mail`.
 The directory is mode `0700` and the file is mode `0600` on Unix. The file is
-removed on orderly shutdown. Do not share this file: its token grants full mail
-and UI control, including sending and deleting messages. HTTP requires the token
+removed on orderly shutdown. Readers must skip entries whose PID is no longer
+alive after a crash; Go clients can use `mcp.ReadDiscovery` or
+`mcp.ListDiscoveries`, which perform this check. Do not share these files: their
+token grants full mail and UI control, including sending and deleting messages. HTTP requires the token
 on every request and rejects browser-origin requests. Reconnect after each launch.
 
 After launching `desktop/bin/RESTMail.app/Contents/MacOS/RESTMail --mcp`, connect
@@ -83,9 +89,23 @@ Claude Code on macOS (requires `jq`):
 
 ```sh
 config="$HOME/Library/Application Support/REST Mail/mcp.json"
+kill -0 "$(jq -r .pid "$config")" || exit 1
 claude mcp add --transport http restmail "$(jq -r .url "$config")" \
   --header "Authorization: Bearer $(jq -r .token "$config")"
 ```
+
+To target a particular running app, use `mcp-<pid>.json` instead of `mcp.json`.
+For an isolated test harness, launch with a dedicated discovery path; this writes
+only that file and does not alter the shared registry or alias:
+
+```sh
+desktop/bin/RESTMail.app/Contents/MacOS/RESTMail --mcp \
+  --mcp-discovery "$HOME/Library/Application Support/REST Mail/test-run.json"
+```
+
+The equivalent setting is `RESTMAIL_DESKTOP_MCP_DISCOVERY=/absolute/path.json`.
+Use that exact file when reading the URL and token; it is removed on orderly
+shutdown. A discovery-path option alone does not enable MCP in production.
 
 Or let Claude Code launch the app with a private stdio connection:
 
