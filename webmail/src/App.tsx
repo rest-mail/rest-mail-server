@@ -27,7 +27,7 @@ import { handleThreadSnoozeEvent } from '@/lib/threadSnooze';
 import { useNotifications } from '@/hooks/useNotifications';
 import { mailPlatform } from '@/platform';
 
-function App({ loginPage }: { loginPage?: React.ReactNode }) {
+function App({ loginPage, showToasts = true }: { loginPage?: React.ReactNode; showToasts?: boolean }) {
   const { user, setupRequired, acceptSession, isAuthenticated, sessionChecked, checkSession, logout } = useAuthStore();
   const { startCompose } = useUIStore();
   const { accounts, refresh, loadFolders } = useMailStore();
@@ -115,7 +115,7 @@ function App({ loginPage }: { loginPage?: React.ReactNode }) {
     <AccountAccess apiBase="/api/v1" email={user?.email} steps={setupRequired}
       onSession={acceptSession} onSignOut={logout}>
       {content}
-      <Toaster richColors position="bottom-right" />
+      {showToasts && <Toaster richColors position="bottom-right" />}
     </AccountAccess>
   );
 }
