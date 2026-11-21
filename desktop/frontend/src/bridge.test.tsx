@@ -6,6 +6,18 @@ import type { RuntimeEvents } from './session';
 
 function options(): BridgeOptions { return { route: () => '/signin', navigate: vi.fn(), screenshot: async () => 'iVBORw0KGgo=' }; }
 describe('MCP UI bridge', () => {
+  it('keeps generated IDs unique across repeated controls and snapshots', async () => {
+    const click = vi.fn();
+    render(<><button data-testid="control-inbox">Explicit Inbox</button><button onClick={click}>Inbox</button><button>Inbox</button></>);
+    const request = { id: 'unique', action: 'snapshot' };
+    const snapshot = await handleUIRequest(request, options()) as { elements: { testId: string }[] };
+    const ids = snapshot.elements.map(element => element.testId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(['control-inbox', 'control-inbox-2', 'control-inbox-3']);
+    expect(await handleUIRequest(request, options())).toEqual(snapshot);
+    await handleUIRequest({ id: 'click', action: 'click', args: { testId: 'control-inbox-2' } }, options());
+    expect(click).toHaveBeenCalledOnce();
+  });
   it('snapshots stable test IDs on the sign-in screen before authentication', async () => {
     render(<><input data-testid="signin-password" type="password" defaultValue="secret" /><button data-testid="signin-submit">Sign in</button></>);
     const snapshot = await handleUIRequest({ id: '1', action: 'snapshot' }, options());
@@ -39,5 +51,13 @@ describe('MCP UI bridge', () => {
     await listener({ id: '2', action: 'click', args: { testId: 'missing' } });
     expect(emit).toHaveBeenCalledWith('mcp:ui:response', expect.objectContaining({ id: '2', ok: false, error: 'Expected one element: missing' }));
     close(); expect(stop).toHaveBeenCalledOnce();
+  });
+  it('returns the renderer failure reason instead of an opaque screenshot error', async () => {
+    let listener: (data: unknown) => unknown = () => {};
+    const emit = vi.fn();
+    const close = registerUIBridge({ on: (_name, handler) => { listener = handler; return () => {}; }, emit }, { ...options(), screenshot: async () => { throw new Error('Canvas export blocked by origin policy'); } });
+    await listener({ id: 'capture', action: 'screenshot' });
+    expect(emit).toHaveBeenCalledWith('mcp:ui:response', { id: 'capture', ok: false, error: 'Canvas export blocked by origin policy' });
+    close();
   });
 });
