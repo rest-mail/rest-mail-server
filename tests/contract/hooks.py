@@ -4890,8 +4890,12 @@ def remove_a_previous_alias_probe(transaction):
     local, domain = source.split("@")
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
-    # domain_missing's domain is one no one hosts, so it stays unhosted.
-    if source.lower() == "sales@missing.test":
+    # domain_missing's domain is one no one hosts, so it stays unhosted. Compare
+    # with the trailing dot the example now carries (one trailing ASCII dot is
+    # accepted and normalized everywhere): the guard is about which domain the
+    # probe names, not about the exact bytes, and missing it made this hook
+    # create the alias the 404 example expects the handler to refuse.
+    if source.lower().rstrip(".") == "sales@missing.test":
         return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
