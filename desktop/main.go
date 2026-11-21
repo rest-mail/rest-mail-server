@@ -64,6 +64,7 @@ func main() {
 
 	// Embedded MCP service registration.
 	stopMCP := startMCP(app, sessionManager, mailClient)
+	app.OnShutdown(stopMCP)
 	defer stopMCP()
 	// End embedded MCP service registration.
 
