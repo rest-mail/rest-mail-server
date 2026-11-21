@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHorizontal, Image, FileText as FileTextIcon, File } from 'lucide-react';
+import { Mail, Paperclip, MessageSquare, Reply, ReplyAll, Flag, Forward, Trash2, Archive, MoreHorizontal, Image, FileText as FileTextIcon, File } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Attachment, MessageDetail, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
@@ -49,6 +49,7 @@ function ActionBtn({ onClick, title, children }: { onClick: () => void; title: s
       data-testid={`reader-${title.toLowerCase().replace(/\s+/g, '-')}`}
       onClick={onClick}
       title={title}
+      aria-label={title}
       className="w-7 h-7 rounded-2xl bg-background flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
     >
       {children}
@@ -201,7 +202,7 @@ export function MessageViewer() {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
         <Mail className="w-10 h-10 stroke-1" />
-        <p className="font-mono text-sm">// select_a_message</p>
+        <p className="font-mono text-sm">{mailPlatform().desktop ? 'Select a message to read it.' : '// select_a_message'}</p>
       </div>
     );
   }
@@ -295,14 +296,15 @@ export function MessageViewer() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className={cn('h-full flex flex-col bg-background', mailPlatform().desktop && 'desktop-reader')}>
       {/* Action bar — style pinned by the active theme pack */}
-      <div className="flex items-center gap-1.5 h-10 px-3 bg-secondary shrink-0">
-        {v.actions === 'icons' ? (
+      <div className={cn('flex items-center gap-1.5 h-10 px-3 bg-secondary shrink-0', mailPlatform().desktop && 'desktop-reader-toolbar')}>
+        {v.actions === 'icons' || mailPlatform().desktop ? (
           <>
             <ActionBtn onClick={handleReply} title="Reply">
               <Reply className="w-3.5 h-3.5" />
             </ActionBtn>
+            {mailPlatform().desktop && <ActionBtn onClick={handleReplyAll} title="Reply all"><ReplyAll size={16} /></ActionBtn>}
             <ActionBtn onClick={handleForward} title="Forward">
               <Forward className="w-3.5 h-3.5" />
             </ActionBtn>
@@ -312,6 +314,7 @@ export function MessageViewer() {
             <ActionBtn onClick={() => deleteMsg(msg.id)} title="Delete">
               <Trash2 className="w-3.5 h-3.5" />
             </ActionBtn>
+            {mailPlatform().desktop && <ActionBtn onClick={() => void markFlagged(msg.id, !msg.is_flagged)} title={msg.is_flagged ? 'Unflag' : 'Flag'}><Flag size={16} /></ActionBtn>}
           </>
         ) : (
           <>
@@ -322,8 +325,7 @@ export function MessageViewer() {
           </>
         )}
 
-        <ThreadSnoozeControl key={msg.id} message={msg} />
-        <UnsubscribeControl messageId={msg.id} />
+        {!mailPlatform().desktop && <><ThreadSnoozeControl key={msg.id} message={msg} /><UnsubscribeControl messageId={msg.id} /></>}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -374,7 +376,7 @@ export function MessageViewer() {
 
       {/* Message content */}
       <ScrollArea className="flex-1">
-        <div className="px-5 py-4">
+        <div className={cn('px-5 py-4', mailPlatform().desktop && 'desktop-reader-content')}>
           {/* Subject — typeface pinned by the pack */}
           <h2 className={cn(
             "mb-3 text-foreground",
@@ -387,7 +389,7 @@ export function MessageViewer() {
             {msg.subject || '(no subject)'}
           </h2>
 
-          <ThreadDueControl key={`${msg.mailbox_id}:${msg.thread_id}`} message={msg} setThreadDue={setThreadDue} />
+          {!mailPlatform().desktop && <ThreadDueControl key={`${msg.mailbox_id}:${msg.thread_id}`} message={msg} setThreadDue={setThreadDue} />}
 
           {/* Sender row */}
           <div className="flex items-start gap-3">
@@ -429,7 +431,7 @@ export function MessageViewer() {
                 disabled={loadingThread}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-                {loadingThread ? '// loading...' : showThread ? '// hide_conversation' : '// show_conversation'}
+                {mailPlatform().desktop ? (loadingThread ? 'Loading conversation…' : showThread ? 'Hide conversation' : 'Show conversation') : loadingThread ? '// loading...' : showThread ? '// hide_conversation' : '// show_conversation'}
               </button>
               {showThread && threadMessages.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -474,7 +476,7 @@ export function MessageViewer() {
             <div className="mb-4">
               <div className={cn("flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-2", TYPEFACE_CLASS[v.readerType])}>
                 <Paperclip className="w-3.5 h-3.5" />
-                <span>// attachments</span>
+                <span>{mailPlatform().desktop ? 'Attachments' : '// attachments'}</span>
               </div>
               {loadingAttachments ? (
                 <div className="flex gap-2">
@@ -514,7 +516,7 @@ export function MessageViewer() {
             <CalendarInvite events={msg.calendar_events} messageId={msg.id} />
           )}
 
-          {mailPlatform().desktop && <MessageActions ids={[msg.id]} prefix="reader-message" />}
+          {mailPlatform().desktop && <details className="desktop-more-actions"><summary data-testid="reader-more-actions">More message actions</summary><MessageActions ids={[msg.id]} prefix="reader-message" /></details>}
           {/* Body — untrusted HTML rendered in a sandboxed, CSP-locked iframe */}
           {msg.body_html ? (
             <HtmlMessageBody html={msg.body_html} />

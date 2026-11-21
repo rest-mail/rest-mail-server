@@ -33,6 +33,7 @@ export function ComposeView() {
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<NativeAttachment[]>([]);
   const attachmentsBlocked = attachments.length > 0;
+  const draftBccBlocked = !!mailPlatform().desktop && bcc.length > 0;
   const [draftId, setDraftId] = useState<number | null>(composeState?.draftId || null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -66,7 +67,7 @@ export function ComposeView() {
       if (autoSaveRef.current) clearInterval(autoSaveRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, cc, bcc, subject, htmlContent, plainText, draftId]);
+  }, [from, to, cc, bcc, subject, htmlContent, plainText, draftId, isHtml, attachmentsBlocked, composeState?.forwardMessageId]);
 
   const getDraftData = () => ({
     from,
@@ -75,10 +76,11 @@ export function ComposeView() {
     subject: subject || undefined,
     body_text: isHtml ? stripHtml(htmlContent) : plainText,
     body_html: isHtml ? htmlContent : undefined,
+    ...(mailPlatform().desktop && composeState?.inReplyTo ? { in_reply_to: composeState.inReplyTo } : {}),
   });
 
   const handleSaveDraft = async (silent = false) => {
-    if (attachmentsBlocked || composeState?.forwardMessageId) {
+    if (attachmentsBlocked || composeState?.forwardMessageId || draftBccBlocked) {
       if (!silent) toast.error("Attachments can't be sent or saved yet (#2212). Remove the selected files first.");
       return;
     }
@@ -182,12 +184,13 @@ export function ComposeView() {
     try {
       if (composeState?.forwardMessageId) {
         await api.forwardMessage(composeState.forwardMessageId, { from, to, body_text: isHtml ? stripHtml(htmlContent) : plainText });
-      } else if (draftId) {
+      } else if (draftId && !draftBccBlocked) {
         // Update draft with latest content then send it
         await api.updateDraft(draftId, getDraftData());
         await api.sendDraft(draftId);
       } else {
         await api.sendMessage(messageData());
+        if (draftId && draftBccBlocked) await api.deleteMessage(draftId).catch(() => toast.warning('Message sent, but the old draft could not be removed.'));
       }
       toast.success('Message sent');
       closeCompose();
@@ -210,7 +213,7 @@ export function ComposeView() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className={mailPlatform().desktop ? 'desktop-compose h-full flex flex-col bg-background' : 'h-full flex flex-col bg-background'}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2">
         <h2 className="font-semibold">{draftId ? 'Edit Draft' : 'Compose'}</h2>
@@ -256,14 +259,11 @@ export function ComposeView() {
 
       {/* Editor toggle + calendar */}
       {mailPlatform().pickAttachments && <div className="px-4 py-2 text-sm space-y-2">
-        <Button data-testid="compose-attach" variant="outline" size="sm" onClick={async () => {
-          try { const picked = await mailPlatform().pickAttachments!(); setAttachments(previous => [...previous, ...picked]); }
-          catch (error) { toast.error(error instanceof Error ? error.message : 'Could not select files'); }
-        }}>Attach files…</Button>
         {attachments.map((attachment, index) => <div key={`${attachment.filename}-${index}`} className="flex gap-3 items-center">
           <span>{attachment.filename}</span><button data-testid={`compose-remove-attachment-${index}`} onClick={() => setAttachments(previous => previous.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
         </div>)}
         {attachmentsBlocked && <p role="alert">Attachments can't be sent yet. <a href="https://github.com/rest-mail/rest-mail-server/issues/2212" target="_blank" rel="noreferrer">Track #2212</a>. Remove them to send or save this draft.</p>}
+        {!mailPlatform().canSendAttachments && <p className="text-muted-foreground text-xs">Attachments can't be sent yet. <a href="https://github.com/rest-mail/rest-mail-server/issues/2212" target="_blank" rel="noreferrer">Track #2212</a>.</p>}
         {composeState?.forwardMessageId && <p>Original attachments will be preserved when forwarding.</p>}
       </div>}
       <div className="px-4 py-1 flex items-center gap-2">
@@ -386,14 +386,19 @@ export function ComposeView() {
 
       <Separator />
       {/* Footer */}
+      {draftBccBlocked && <p className="px-4 text-xs text-muted-foreground">Bcc recipients are included when sending. The server cannot store them in a draft.</p>}
       <div className="flex items-center justify-end gap-2 px-4 py-2">
+        {mailPlatform().pickAttachments && <Button data-testid="compose-attach" variant="outline" size="sm" disabled={!mailPlatform().canSendAttachments} title="Sending attachments isn't available yet (#2212)" onClick={async () => {
+          try { const picked = await mailPlatform().pickAttachments!(); setAttachments(previous => [...previous, ...picked]); }
+          catch (error) { toast.error(error instanceof Error ? error.message : 'Could not select files'); }
+        }}>Attach</Button>}
         <Button variant="outline" size="sm" onClick={handleDiscard}>
           <Trash2 className="w-4 h-4 mr-1" />
           Discard
         </Button>
-        <Button data-testid="compose-save" variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft || attachmentsBlocked || !!composeState?.forwardMessageId}>
+        <Button data-testid="compose-save" variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft || attachmentsBlocked || draftBccBlocked || !!composeState?.forwardMessageId}>
           <Save className="w-4 h-4 mr-1" />
-          {savingDraft ? 'Saving...' : 'Save Draft'}
+          {savingDraft ? 'Saving...' : mailPlatform().desktop ? 'Save draft' : 'Save Draft'}
         </Button>
         <Button variant={showSchedule ? 'default' : 'outline'} size="sm" onClick={openSchedule} disabled={attachmentsBlocked || !!composeState?.forwardMessageId} aria-expanded={showSchedule}>
           <Clock className="w-4 h-4 mr-1" />

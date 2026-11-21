@@ -10,9 +10,15 @@ async function launch() {
   const binding = mock?.session ?? session;
   const events = mock?.events ?? runtimeEvents;
   const transport = createDesktopTransport(mock?.mockFetch);
+  let serverHost = '';
   configureMailPlatform({
     desktop: true, fetch: transport, streamURL: mock?.streamURL,
-    restoreSession: async () => identity(await binding.Status()),
+    serverHost: () => serverHost,
+    restoreSession: async () => {
+      const status = await binding.Status();
+      serverHost = status.Server ? new URL(status.Server).host : '';
+      return identity(status);
+    },
     signOut: () => binding.SignOut(),
     pickAttachments: nativeFiles.pick,
     saveAttachment: async (url, filename) => {
@@ -28,7 +34,9 @@ async function launch() {
     import('@webmail/stores/authStore'), import('@webmail/stores/uiStore'), import('@webmail/stores/mailStore'), import('./App'),
   ]);
   events.on('session:changed', data => {
-    const user = identity(data as Awaited<ReturnType<typeof binding.Status>>);
+    const status = data as Awaited<ReturnType<typeof binding.Status>>;
+    serverHost = status.Server ? new URL(status.Server).host : '';
+    const user = identity(status);
     useAuthStore.setState({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: [] });
     if (!user) useMailStore.setState({ accounts: [], folders: [], messages: [], selectedMessage: null, selectedMessageId: null, activeAccountId: null });
   });
