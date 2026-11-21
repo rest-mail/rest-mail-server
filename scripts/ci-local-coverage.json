@@ -29,7 +29,7 @@
       "local": "golangci-lint"
     },
     "Run golangci-lint": {
-      "sha256": "5361801dc95f4040cb84d8923e27a8369549a7c2eba1d72d82792060a4caa470",
+      "sha256": "67f04cf9fe10a8a46051b0c945370b9b024be54f68b3d73e138c884649278c57",
       "local": "golangci-lint"
     },
     "Decide whether the vendored IMAP module's gates run": {
