@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { configureMailPlatform } from '@webmail/platform';
 import { HtmlMessageBody } from '@webmail/components/mail/HtmlMessageBody';
+import { TrustReceipt } from '@webmail/components/mail/signals/TrustReceipt';
 
 const hostile = '<h1>Hello</h1><script>window.pwned=true</script><img src="https://tracker.test/pixel" onerror="window.pwned=true"><iframe src="https://evil.test"></iframe><a href="javascript:alert(1)">Bad</a>';
 describe('desktop HTML reader security', () => {
@@ -28,5 +29,15 @@ describe('desktop HTML reader security', () => {
   it('preserves the existing webmail safe sizing path', () => {
     configureMailPlatform({}); render(<HtmlMessageBody html="<p>Web mail</p>" />);
     expect(screen.getByTitle('Message content').getAttribute('sandbox')).toBe('allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+  });
+  it('uses plain sender-trust copy only on desktop', () => {
+    const view = render(<TrustReceipt remoteImagesBlocked={1} />);
+    expect(screen.getByTestId('reader-sender-trust').textContent).toContain('Sender trust');
+    expect(screen.queryByText('// trust')).toBeNull();
+    fireEvent.click(screen.getByTestId('reader-sender-trust'));
+    expect(screen.getByText('1 remote image blocked')).toBeTruthy();
+    configureMailPlatform({});
+    view.rerender(<TrustReceipt remoteImagesBlocked={1} />);
+    expect(screen.getByText('// trust')).toBeTruthy();
   });
 });

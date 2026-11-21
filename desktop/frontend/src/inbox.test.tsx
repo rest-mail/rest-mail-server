@@ -10,10 +10,11 @@ import { useMailStore } from '@webmail/stores/mailStore';
 import { useUIStore } from '@webmail/stores/uiStore';
 import { createDesktopTransport } from './transport';
 import { handleUIRequest } from './bridge';
+import type { MessageSummary } from '@webmail/types';
 
 vi.mock('@webmail/components/ui/scroll-area', () => ({ ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
 
-const response = {
+const response: { data: (MessageSummary & { recipients_cc: string[] })[]; pagination: { has_more: boolean; total: number } } = {
   data: [
     { id: 6, class: 'person', mailbox_id: 1, folder: 'INBOX', message_id: '<n2@navy.example>', thread_id: '<n2@navy.example>', sender: 'grace@navy.example', sender_name: 'Grace Hopper', recipients_to: ['admin@desktop.test'], recipients_cc: [], subject: 'Compiler release on Monday', body_html: '<h2>Release plan</h2><script>alert(1)</script>', size_bytes: 260, has_attachments: false, is_read: false, is_flagged: false, is_starred: false, is_draft: false, received_at: '2026-11-21T15:30:00+01:00' },
     { id: 5, class: 'person', mailbox_id: 1, folder: 'INBOX', message_id: '<n1@analytical.example>', thread_id: '<n1@analytical.example>', sender: 'ada@analytical.example', sender_name: 'Ada Lovelace', recipients_to: ['admin@desktop.test'], recipients_cc: [], subject: 'Notes on the engine', body_text: 'The second set of punched cards is ready for review.', size_bytes: 112, has_attachments: false, is_read: false, is_flagged: false, is_starred: false, is_draft: false, received_at: '2026-11-21T10:12:00+01:00' },
@@ -42,6 +43,7 @@ describe('desktop inbox integration', () => {
     configureMailPlatform({ desktop: true, fetch: createDesktopTransport(send), serverHost: () => 'localhost:18080' });
     render(<TooltipProvider><Sidebar /><MessageList /></TooltipProvider>);
     expect(await screen.findByTestId('message-6')).toBeTruthy();
+    expect(screen.getByTestId('message-6').querySelector('.desktop-message-preview')?.textContent).toBe('Release plan');
     expect(screen.getByTestId('message-5').textContent).toContain('Notes on the engine');
     expect(screen.getByTestId('message-7').textContent).toContain('Re: patch series v3');
     expect(screen.queryByText('No messages in Inbox.')).toBeNull();
@@ -54,6 +56,21 @@ describe('desktop inbox integration', () => {
     await waitFor(() => expect(screen.getByTestId('message-6')).toBeTruthy());
     fireEvent.click(screen.getByTestId('folder-1-Sent'));
     expect(await screen.findByText('No messages in Sent.')).toBeTruthy();
+  });
+
+  it('prefers plain text and safely derives HTML-only previews without active content', () => {
+    configureMailPlatform({ desktop: true });
+    useMailStore.setState({ messages: [
+      { ...response.data[0], body_text: '  Plain text\n wins ', body_html: '<p>Not the preview</p>' },
+      { ...response.data[1], body_text: ' ', body_html: '<style>hidden style</style><p>Release &amp; review</p><p>Monday</p><script>window.previewPwned=true</script><img src="https://tracker.invalid/pixel" onerror="window.previewPwned=true">' },
+      { ...response.data[2], body_text: '', has_attachments: true },
+    ] });
+    render(<MessageList />);
+    expect(screen.getByTestId('message-6').querySelector('.desktop-message-preview')?.textContent).toBe('Plain text wins');
+    expect(screen.getByTestId('message-5').querySelector('.desktop-message-preview')?.textContent).toBe('Release & review Monday');
+    expect(screen.getByTestId('message-5').querySelector('.desktop-message-preview img, .desktop-message-preview script')).toBeNull();
+    expect((window as unknown as { previewPwned?: boolean }).previewPwned).toBeUndefined();
+    expect(screen.getByTestId('message-7').querySelector('.desktop-message-preview')?.textContent).toBe('Includes attachments');
   });
 
   it('uses plain desktop empty-state copy and preserves webmail copy', () => {

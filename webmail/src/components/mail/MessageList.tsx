@@ -1,4 +1,5 @@
 import { displayAddress } from '@/lib/addressDisplay';
+import { messagePreview } from '@/lib/messagePreview';
 import { mailPlatform } from '@/platform';
 import { MessageActions } from './MessageActions';
 import { useEffect, useCallback, useState } from 'react';
@@ -272,7 +273,7 @@ export function MessageList() {
                     <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
                   )}
                 </div>
-                {desktop && <p className="desktop-message-preview">{msg.body_text?.replace(/\s+/g, ' ') || (msg.has_attachments ? 'Includes attachments' : '')}</p>}
+                {desktop && <p className="desktop-message-preview">{messagePreview(msg)}</p>}
                 <WaitingBadge since={msg.awaiting_since} />
               </div>
             </button>
