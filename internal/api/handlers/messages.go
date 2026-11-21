@@ -198,12 +198,13 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	reads := handlerChecked(models.CapMailRead, folderSchemes...)
 	writes := handlerChecked(models.CapMailWrite, folderSchemes...)
 	tags := []string{"Messages"}
+	const messageDates = "The received_at, date_header, created_at and updated_at timestamps use UTC, regardless of the account time zone. The raw Date header is unchanged."
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders/{folder}/messages",
 		OperationID: "listMessages", Summary: "List messages in a folder", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessages)
+		Description: messageDates, Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessages)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}",
 		OperationID: "getMessage", Summary: "Get a message by ID", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getMessage)
+		Description: messageDates, Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/seal",
 		OperationID: "verifyMessageSeal", Summary: "Verify a message's receipt seal", Tags: tags,
 		Description: "Compares the stored receipt seal with the current source, headers and bodies, without changing the seal. intact means unchanged since this server accepted it, not who wrote it or whether it is safe. not_sealed is distinct from mismatch; historical messages are never backfilled. Uses the same mail:read authorization as reading the message. See docs/message-seals.md for the streaming restmail-seal-v1 algorithm and byte framing.",

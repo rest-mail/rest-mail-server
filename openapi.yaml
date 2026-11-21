@@ -6032,6 +6032,7 @@ paths:
         - APIKeyAuth: [mail:read]
         - GatewaySessionAuth: [mail:read]
       summary: List messages in a folder with cursor pagination
+      description: The received_at, date_header, created_at and updated_at timestamps use UTC, regardless of the account time zone. The raw Date header is unchanged.
       parameters:
         - name: include_imap_deleted
           in: query
@@ -6187,6 +6188,7 @@ paths:
         - APIKeyAuth: [mail:read]
         - GatewaySessionAuth: [mail:read]
       summary: Get a single message by ID
+      description: The received_at, date_header, created_at and updated_at timestamps use UTC, regardless of the account time zone. The raw Date header is unchanged.
       responses:
         "200":
           description: Message details
