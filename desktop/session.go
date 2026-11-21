@@ -12,11 +12,24 @@ type SignInResult = session.SignInResult
 type SessionStatus = session.SessionStatus
 type TwoFactorEnrollment = session.TwoFactorEnrollment
 
-type Session struct {
-	manager *session.Manager
+type SessionManager interface {
+	SignIn(string, string, string) (SignInResult, error)
+	SubmitTOTP(string) error
+	ChangePassword(string, string) (SignInResult, error)
+	EnrollTwoFactor() (TwoFactorEnrollment, error)
+	ConfirmTwoFactor(string) error
+	SignOut() error
+	Status() SessionStatus
+	SetOnChange(func(session.SessionStatus))
+	Restore(context.Context) error
+	Run(context.Context)
 }
 
-func NewSession(manager *session.Manager) *Session {
+type Session struct {
+	manager SessionManager
+}
+
+func NewSession(manager SessionManager) *Session {
 	return &Session{manager: manager}
 }
 

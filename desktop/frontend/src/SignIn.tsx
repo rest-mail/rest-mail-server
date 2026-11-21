@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { identity, type SessionBinding } from './session';
 import { Brace } from './Brace';
+import { IMAPAccountSheet } from './IMAPAccounts';
 
 export function SignIn({ session }: { session: SessionBinding }) {
   const [server, setServer] = useState('');
@@ -11,6 +12,7 @@ export function SignIn({ session }: { session: SessionBinding }) {
   const [challenge, setChallenge] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [imap, setIMAP] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try {
@@ -30,6 +32,7 @@ export function SignIn({ session }: { session: SessionBinding }) {
     }
     finally { setBusy(false); }
   }
+  if (imap) return <IMAPAccountSheet session={session} onClose={() => setIMAP(false)} />;
   return <main className="desktop-signin">
     <Brace side="left" />
     <Brace side="right" />
@@ -44,6 +47,7 @@ export function SignIn({ session }: { session: SessionBinding }) {
       </>}
       <button data-testid="signin-submit" className="desktop-primary" disabled={busy}>{busy && <span className="desktop-spinner" aria-hidden="true" />}{busy ? 'Signing in…' : challenge ? 'Verify' : 'Sign in'}</button>
       {error && <p role="alert" className="desktop-signin-error">{error}</p>}
+      {!challenge && <button type="button" onClick={() => setIMAP(true)}>Use IMAP and SMTP instead</button>}
       {challenge && <button type="button" className="desktop-signin-back" data-testid="signin-back" onClick={() => { setChallenge(false); setTotp(''); }}>Back to sign in</button>}
     </form>
   </main>;

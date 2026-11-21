@@ -7,7 +7,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiproxy"
-	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -54,13 +53,15 @@ func main() {
 	}
 
 	// Desktop core: share this manager and client with native integrations, including MCP.
-	sessionManager := session.New()
+	sessionManager := newDesktopSession()
 	mailClient := apiclient.New(sessionManager)
 	application.RegisterEvent[SessionStatus]("session:changed")
 	options.Services = append(options.Services, application.NewService(NewSession(sessionManager)))
+	options.Services = append(options.Services, application.NewService(&Accounts{manager: sessionManager}))
 	options.Assets.Middleware = apiproxy.New(sessionManager)
 	// End desktop core.
 	app := application.New(options)
+	app.OnShutdown(sessionManager.Close)
 
 	// Embedded MCP service registration.
 	stopMCP := startMCP(app, sessionManager, mailClient)

@@ -3,6 +3,7 @@ package apiproxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,7 +15,13 @@ import (
 
 const maxResponseSize = 64 << 20
 
-func New(manager *session.Manager) func(http.Handler) http.Handler {
+type Manager interface {
+	Status() session.SessionStatus
+	DoRequest(context.Context, *http.Request) (*http.Response, error)
+	Redact([]byte) []byte
+}
+
+func New(manager Manager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			if !strings.HasPrefix(request.URL.Path, "/api/") && !strings.HasPrefix(request.URL.Path, "/restmail/") {
@@ -87,7 +94,7 @@ func New(manager *session.Manager) func(http.Handler) http.Handler {
 // the webview while the stream stays open. Each data line gets the same
 // credential stripping and redaction as a buffered response; credentials hold no
 // newline, so a line never splits one.
-func stream(writer http.ResponseWriter, response *http.Response, manager *session.Manager) {
+func stream(writer http.ResponseWriter, response *http.Response, manager Manager) {
 	flusher, canFlush := writer.(http.Flusher)
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Cache-Control", "no-store")
@@ -116,7 +123,7 @@ func stream(writer http.ResponseWriter, response *http.Response, manager *sessio
 	}
 }
 
-func streamLine(line []byte, manager *session.Manager) []byte {
+func streamLine(line []byte, manager Manager) []byte {
 	ending := line[len(bytes.TrimRight(line, "\r\n")):]
 	content := line[:len(line)-len(ending)]
 	if payload, ok := bytes.CutPrefix(content, []byte("data:")); ok {
@@ -135,7 +142,7 @@ func streamLine(line []byte, manager *session.Manager) []byte {
 	return append(manager.Redact(append([]byte(nil), content...)), ending...)
 }
 
-func sanitize(value any, manager *session.Manager) any {
+func sanitize(value any, manager Manager) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, nested := range typed {
