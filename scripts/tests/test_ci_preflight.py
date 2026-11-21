@@ -11,7 +11,7 @@ from test_stacked_pr_workflows import WORKFLOWS, blocks, context, evaluate, fiel
 
 STEP = "Require the current base tip in the pull request head"
 HEAVY_WORKFLOWS = {
-    "ci.yml", "e2e.yml", "email-explained.yml", "pulumi.yml", "release-cli.yml",
+    "ci.yml", "e2e.yml", "email-explained.yml", "pulumi.yml", "release-cli.yml", "desktop.yml",
 }
 
 
