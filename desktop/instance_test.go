@@ -1,36 +1,29 @@
 package main
 
-import (
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestSingleInstanceIDIsPerExecutablePath(t *testing.T) {
-	installed := singleInstanceID("/Users/someone/Applications/RESTMail.app/Contents/MacOS/RESTMail")
-	if installed != singleInstanceID("/Users/someone/Applications/RESTMail.app/Contents/MacOS/RESTMail") {
-		t.Fatal("the same executable must always take the same lock")
-	}
-	if installed == singleInstanceID("/checkout/desktop/bin/RESTMail.app/Contents/MacOS/RESTMail") {
-		t.Fatal("a development build must not share the installed app's lock")
-	}
-	if !strings.HasPrefix(installed, "com.restmail.desktop.") {
-		t.Fatalf("unexpected lock name %q", installed)
+func TestOneCopyRunsWhereverItIsLaunchedFrom(t *testing.T) {
+	if singleInstanceID("") != "com.restmail.desktop" {
+		t.Fatal("every normal launch must take the same lock, whatever its location")
 	}
 }
 
-func TestSingleInstanceIDFollowsSymlinks(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "RESTMail")
-	if err := os.WriteFile(target, nil, 0o755); err != nil {
-		t.Fatal(err)
+func TestOnlyANamedTestCopyRunsSeparately(t *testing.T) {
+	if singleInstanceID("polish") == singleInstanceID("") {
+		t.Fatal("a named test copy must take its own lock")
 	}
-	link := filepath.Join(dir, "link")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
+	for _, invalid := range []string{" ", "../x", "UPPER", "with space", "a-very-long-name-that-goes-past-thirty-two-chars"} {
+		if singleInstanceID(invalid) != singleInstanceID("") {
+			t.Fatalf("an invalid instance name %q must not escape the single-copy lock", invalid)
+		}
 	}
-	if singleInstanceID(link) != singleInstanceID(target) {
-		t.Fatal("a symlink to the app must take the app's own lock")
+}
+
+func TestATestCopySaysSoInItsTitle(t *testing.T) {
+	if got := windowTitle("REST Mail 0.1", "polish"); got != "REST Mail 0.1 — test copy polish" {
+		t.Fatalf("title %q", got)
+	}
+	if got := windowTitle("REST Mail 0.1", ""); got != "REST Mail 0.1" {
+		t.Fatalf("title %q", got)
 	}
 }
