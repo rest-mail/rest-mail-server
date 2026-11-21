@@ -4,7 +4,7 @@ vi.mock('@webmail/components/compose/RichTextEditor', () => ({ RichTextEditor: (
 vi.mock('@webmail/api/client', () => ({
   createDraft: vi.fn().mockResolvedValue({ data: { id: 88 } }), updateDraft: vi.fn().mockResolvedValue({ data: { id: 88 } }),
   sendDraft: vi.fn().mockResolvedValue(undefined), sendMessage: vi.fn().mockResolvedValue(undefined), forwardMessage: vi.fn().mockResolvedValue(undefined),
-  suggestContacts: vi.fn().mockResolvedValue({ data: [] }),
+  suggestContacts: vi.fn().mockResolvedValue({ data: [] }), deleteMessage: vi.fn().mockResolvedValue(undefined),
 }));
 import { ComposeView } from '@webmail/components/compose/ComposeView';
 import { configureMailPlatform } from '@webmail/platform';
@@ -43,5 +43,25 @@ describe('desktop compose', () => {
     render(<ComposeView />); fireEvent.click(screen.getByTestId('compose-send'));
     await waitFor(() => expect(api.forwardMessage).toHaveBeenCalledWith(17, expect.objectContaining({ from: 'chris@test.invalid', to: ['alex@test.invalid'] })));
     expect(api.sendMessage).not.toHaveBeenCalled();
+  });
+  it('disables native attachment selection until the server capability exists', () => {
+    const pickAttachments = vi.fn(); configureMailPlatform({ desktop: true, pickAttachments });
+    render(<ComposeView />);
+    const button = screen.getByTestId('compose-attach') as HTMLButtonElement;
+    expect(button.disabled).toBe(true); expect(button.title).toContain('#2212');
+    fireEvent.click(button); expect(pickAttachments).not.toHaveBeenCalled();
+  });
+  it('preserves reply headers in server drafts', async () => {
+    useUIStore.getState().startCompose({ to: 'alex@test.invalid', cc: '', bcc: '', subject: 'Re: Hello', inReplyTo: '<original@test.invalid>' });
+    render(<ComposeView />); fireEvent.click(screen.getByTestId('compose-save'));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledWith(expect.objectContaining({ in_reply_to: '<original@test.invalid>' })));
+  });
+  it('sends Bcc directly rather than losing recipients through the draft API', async () => {
+    useUIStore.getState().startCompose({ to: 'alex@test.invalid', cc: '', bcc: 'private@test.invalid', subject: 'Private copy', draftId: 88 });
+    render(<ComposeView />);
+    expect((screen.getByTestId('compose-save') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('compose-send'));
+    await waitFor(() => expect(api.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ bcc: ['private@test.invalid'] })));
+    expect(api.sendDraft).not.toHaveBeenCalled();
   });
 });
