@@ -10,6 +10,7 @@ import (
 
 type SignInResult = session.SignInResult
 type SessionStatus = session.SessionStatus
+type TwoFactorEnrollment = session.TwoFactorEnrollment
 
 type Session struct {
 	manager *session.Manager
@@ -25,6 +26,23 @@ func (service *Session) SignIn(server, email, password string) (SignInResult, er
 
 func (service *Session) SubmitTOTP(code string) error {
 	return service.manager.SubmitTOTP(code)
+}
+
+// ChangePassword replaces the password during first-run setup or later. The
+// server ends the session, so the app signs in again with the new password.
+func (service *Session) ChangePassword(current, replacement string) (SignInResult, error) {
+	return service.manager.ChangePassword(current, replacement)
+}
+
+// EnrollTwoFactor starts adding an authenticator and returns what the user
+// must see: the secret, the otpauth URL for a QR code, and recovery codes.
+func (service *Session) EnrollTwoFactor() (TwoFactorEnrollment, error) {
+	return service.manager.EnrollTwoFactor()
+}
+
+// ConfirmTwoFactor switches the new authenticator on with its first code.
+func (service *Session) ConfirmTwoFactor(code string) error {
+	return service.manager.ConfirmTwoFactor(code)
 }
 
 func (service *Session) SignOut() error {
