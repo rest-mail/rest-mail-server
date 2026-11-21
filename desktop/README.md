@@ -57,3 +57,44 @@ Take a moment to familiarize yourself with your project structure:
 4. When ready, build your application with `wails3 build`.
 
 Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+
+## Desktop automation (MCP)
+
+Development builds enable the embedded MCP server automatically. Production builds
+disable it unless launched with `--mcp`, `--mcp-stdio`, or
+`RESTMAIL_DESKTOP_MCP=1`. HTTP always binds to `127.0.0.1:47821`; override the port
+with `--mcp-port 47822` or `RESTMAIL_DESKTOP_MCP_PORT=47822`. Host overrides are
+not supported. A port conflict fails startup rather than exposing another address.
+
+Every launch creates a fresh MCP bearer token, separate from the mail API token.
+The user-only discovery file is `os.UserConfigDir()/REST Mail/mcp.json`, containing
+`url`, `token`, `pid`, and `version`. On macOS this is
+`~/Library/Application Support/REST Mail/mcp.json`; on Linux it is normally
+`~/.config/REST Mail/mcp.json`; on Windows it is under `%AppData%\REST Mail`.
+The directory is mode `0700` and the file is mode `0600` on Unix. The file is
+removed on orderly shutdown. Do not share this file: its token grants full mail
+and UI control, including sending and deleting messages. HTTP requires the token
+on every request and rejects browser-origin requests. Reconnect after each launch.
+
+After launching `desktop/bin/RESTMail.app/Contents/MacOS/RESTMail --mcp`, connect
+Claude Code on macOS (requires `jq`):
+
+```sh
+config="$HOME/Library/Application Support/REST Mail/mcp.json"
+claude mcp add --transport http restmail "$(jq -r .url "$config")" \
+  --header "Authorization: Bearer $(jq -r .token "$config")"
+```
+
+Or let Claude Code launch the app with a private stdio connection:
+
+```sh
+claude mcp add --transport stdio restmail -- \
+  /absolute/path/to/desktop/bin/RESTMail.app/Contents/MacOS/RESTMail --mcp-stdio
+```
+
+Stdio reserves stdout for MCP and sends application logs to stderr. HTTP remains
+available for other agents; use a different `--mcp-port` when another instance is
+running. Domain tools operate through the same Go session as the UI. UI tools
+require the frontend's `mcp:ui:request` / `mcp:ui:response` bridge and time out after
+10 seconds if it is not ready. `ui_screenshot` returns a PNG from its `screenshot`
+action (`{data: base64PNG}`). `app_logs` returns up to 500 recent redacted lines.
