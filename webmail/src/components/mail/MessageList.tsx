@@ -125,9 +125,9 @@ export function MessageList() {
     if (isWaiting) {
       return (
         <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
-          <p className="text-sm">// nothing_waiting_on_a_reply</p>
+          <p className="text-sm">{desktop ? 'No messages waiting for a reply.' : '// nothing_waiting_on_a_reply'}</p>
           <button onClick={clearWaiting} className="text-xs text-primary hover:underline">
-            [back_to_{activeFolder?.toLowerCase()}]
+            {desktop ? 'Back to messages' : `[back_to_${activeFolder?.toLowerCase()}]`}
           </button>
         </div>
       );
@@ -135,19 +135,19 @@ export function MessageList() {
     if (isInSearch) {
       return (
         <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
-          <p className="text-sm">// no_results for "{searchQuery}"</p>
+          <p className="text-sm">{desktop ? `No results for “${searchQuery}”.` : `// no_results for "${searchQuery}"`}</p>
           <button
             onClick={clearSearch}
             className="text-xs text-primary hover:underline"
           >
-            [clear_search]
+            {desktop ? 'Clear search' : '[clear_search]'}
           </button>
         </div>
       );
     }
     return (
       <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
-        <p className="text-sm">// no_messages in {activeFolder?.toLowerCase()}</p>
+        <p className="text-sm">{desktop ? `No messages in ${activeFolder === 'INBOX' ? 'Inbox' : activeFolder}.` : `// no_messages in ${activeFolder?.toLowerCase()}`}</p>
       </div>
     );
   }

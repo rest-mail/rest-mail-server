@@ -31,7 +31,7 @@ function Indicator({ active }: { active: boolean }) {
 export function Sidebar() {
   const desktop = mailPlatform().desktop;
   const { user } = useAuthStore();
-  const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, selectFolder } = useMailStore();
+  const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, loadMessages, selectFolder } = useMailStore();
   const { sidebarCollapsed, toggleAccountCollapsed, setView, setSelectedAccountId, startCompose } = useUIStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -48,8 +48,9 @@ export function Sidebar() {
   useEffect(() => {
     if (activeAccountId) {
       loadFolders();
+      if (desktop) void loadMessages();
     }
-  }, [activeAccountId, loadFolders]);
+  }, [activeAccountId, loadFolders, loadMessages, desktop]);
 
   const handleFolderClick = (folder: string) => {
     if (renamingFolder) return;
@@ -115,7 +116,7 @@ export function Sidebar() {
   };
 
   const isExpanded = (accountId: number) => {
-    return activeAccountId === accountId && !sidebarCollapsed[accountId];
+    return activeAccountId === accountId && ((desktop && accounts.length === 1) || !sidebarCollapsed[accountId]);
   };
 
   const sidebarContent = (
@@ -174,7 +175,7 @@ export function Sidebar() {
           {accounts.map(account => (
             <div key={account.id}>
               {/* Account row */}
-              <div className="group flex items-center hover:bg-sidebar-accent transition-colors">
+              {(!desktop || accounts.length > 1) && <div className="group flex items-center hover:bg-sidebar-accent transition-colors">
                 <button
                   onClick={() => handleAccountClick(account.id)}
                   className="flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0"
@@ -196,7 +197,7 @@ export function Sidebar() {
                 >
                   <Settings2 className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              </div>}
 
               {/* Folder list */}
               {isExpanded(account.id) && (
