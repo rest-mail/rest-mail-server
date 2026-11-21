@@ -60,6 +60,16 @@ func TestSearchZoneFollowsTheAccount(t *testing.T) {
 	}
 }
 
+func TestSearchZoneUnsetIsUTCNotHostLocal(t *testing.T) {
+	zone, err := newUnitMailbox(t, newFakeAPI()).SearchZone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zone != time.UTC {
+		t.Errorf("unset account zone = %s (host-local=%t), want UTC independent of the host", zone, zone == time.Local)
+	}
+}
+
 // TestSearchZoneUnreadableAnswersNO proves a zone the gateway cannot read or load
 // answers NO rather than searching some other zone's days, and that the session
 // goes on working.

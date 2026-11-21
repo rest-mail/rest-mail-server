@@ -41,6 +41,11 @@ func messageOf(m models.Message) Message {
 	if authed {
 		authVerdict = pipeline.AuthVerdict(authResults)
 	}
+	var dateHeader *time.Time
+	if m.DateHeader != nil {
+		utc := m.DateHeader.UTC()
+		dateHeader = &utc
+	}
 	return Message{
 		Class:             messageClass(m),
 		ID:                m.ID,
@@ -83,10 +88,10 @@ func messageOf(m models.Message) Message {
 		IsStarred:         m.IsStarred,
 		IsDraft:           m.IsDraft,
 		IsDeleted:         m.IsDeleted,
-		ReceivedAt:        m.ReceivedAt,
-		DateHeader:        m.DateHeader,
-		CreatedAt:         m.CreatedAt,
-		UpdatedAt:         m.UpdatedAt,
+		ReceivedAt:        m.ReceivedAt.UTC(),
+		DateHeader:        dateHeader,
+		CreatedAt:         m.CreatedAt.UTC(),
+		UpdatedAt:         m.UpdatedAt.UTC(),
 		Mailbox:           mailbox,
 		AuthResults:       authResults,
 		AuthVerdict:       authVerdict,

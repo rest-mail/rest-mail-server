@@ -62,6 +62,22 @@ func TestMessageResponseJSONParity(t *testing.T) {
 	}
 }
 
+func TestMessageDateProjectionNormalizesUTC(t *testing.T) {
+	stamp := time.Date(1994, 2, 7, 22, 43, 4, 0, time.FixedZone("PST", -8*60*60))
+	message := messageOf(models.Message{ReceivedAt: stamp, DateHeader: &stamp, CreatedAt: stamp, UpdatedAt: stamp})
+	for name, date := range map[string]time.Time{
+		"received_at": message.ReceivedAt, "date_header": *message.DateHeader,
+		"created_at": message.CreatedAt, "updated_at": message.UpdatedAt,
+	} {
+		if got := date.Format(time.RFC3339); got != "1994-02-08T06:43:04Z" {
+			t.Errorf("%s = %s, want 1994-02-08T06:43:04Z", name, got)
+		}
+	}
+	if messageOf(models.Message{}).DateHeader != nil {
+		t.Error("missing message Date header must remain null")
+	}
+}
+
 // An attachment's answer says what it is, never where it is stored (#658): no path on the
 // server's disk or S3 key, and no storage backend.
 func TestAttachmentAnswerLeavesOutStorage(t *testing.T) {

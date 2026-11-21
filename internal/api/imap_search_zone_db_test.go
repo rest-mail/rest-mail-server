@@ -29,6 +29,12 @@ type imapZoneSession struct {
 
 func openIMAPZoneSession(t *testing.T, f *credentialFixture, api *apiclient.Client, password string) *imapZoneSession {
 	t.Helper()
+	prepareIMAPImport(t, f)
+	return openIMAPWireSession(t, imapgw.NewBackend(api, nil), f.address, password)
+}
+
+func prepareIMAPImport(t *testing.T, f *credentialFixture) {
+	t.Helper()
 	if err := f.db.Create(&models.QuotaUsage{MailboxID: f.mailboxID}).Error; err != nil {
 		t.Fatalf("seed quota usage: %v", err)
 	}
@@ -38,8 +44,12 @@ func openIMAPZoneSession(t *testing.T, f *credentialFixture, api *apiclient.Clie
 	if err := grants.EnsureImport(f.db, &mailbox); err != nil {
 		t.Fatalf("seed import grant: %v", err)
 	}
+}
+
+func openIMAPWireSession(t *testing.T, backend goimap.Backend, address, password string) *imapZoneSession {
+	t.Helper()
 	client, server := net.Pipe()
-	session := imapserver.NewSession(clientAtAddress{Conn: server}, imapgw.NewBackend(api, nil), "imap.test", nil, goimap.NopLimiter{})
+	session := imapserver.NewSession(clientAtAddress{Conn: server}, backend, "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -53,7 +63,7 @@ func openIMAPZoneSession(t *testing.T, f *credentialFixture, api *apiclient.Clie
 	if greeting := s.line(); !strings.HasPrefix(greeting, "* OK") {
 		t.Fatalf("greeting: %q", greeting)
 	}
-	if _, status := s.command(fmt.Sprintf("LOGIN %q %q", f.address, password)); !strings.Contains(status, " OK") {
+	if _, status := s.command(fmt.Sprintf("LOGIN %q %q", address, password)); !strings.Contains(status, " OK") {
 		t.Fatalf("LOGIN: %q", status)
 	}
 	return s
@@ -101,18 +111,20 @@ func (s *imapZoneSession) command(command string) (untagged []string, status str
 }
 
 // appendAt stores a message through IMAP APPEND with the instant as its date-time.
-func (s *imapZoneSession) appendAt(instant time.Time, dateHeader string) {
+func (s *imapZoneSession) appendAt(instant time.Time, dateHeader string) string {
 	s.t.Helper()
 	message := fmt.Sprintf("Date: %s\r\nFrom: a@example.test\r\nTo: chris@example.test\r\nSubject: zone\r\nMessage-ID: <%d@example.test>\r\n\r\nbody\r\n", dateHeader, instant.UnixNano())
 	tag := s.nextTag()
-	s.write(fmt.Sprintf("%s APPEND INBOX \"%s\" {%d}\r\n", tag, instant.UTC().Format("02-Jan-2006 15:04:05 -0700"), len(message)))
+	s.write(fmt.Sprintf("%s APPEND INBOX \"%s\" {%d}\r\n", tag, instant.Format("02-Jan-2006 15:04:05 -0700"), len(message)))
 	if line := s.line(); !strings.HasPrefix(line, "+") {
 		s.t.Fatalf("APPEND continuation: %q", line)
 	}
 	s.write(message + "\r\n")
-	if _, status := s.responses(tag); !strings.Contains(status, " OK") {
+	_, status := s.responses(tag)
+	if !strings.Contains(status, " OK") {
 		s.t.Fatalf("APPEND %s: %q", instant, status)
 	}
+	return status
 }
 
 func (s *imapZoneSession) requireSearch(criteria, want string) {

@@ -452,7 +452,8 @@ type GatewaySessionOpenRequest = gatewaySessionOpenRequest
 // SendMessageRequest is the sendMessageRequest wire type used by the endpoint registration.
 type SendMessageRequest = sendMessageRequest
 
-// DeliverMessageBody is the deliverMessageBody wire type used by the endpoint registration.
+// DeliverMessageBody is the inbound gateway request. Historical mailbox metadata
+// belongs to ImportMessageBody, not to delivery.
 type DeliverMessageBody = deliverMessageBody
 
 // ListUnsubscribe is the listUnsubscribe wire type used by the endpoint registration.

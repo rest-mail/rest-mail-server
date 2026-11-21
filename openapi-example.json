@@ -18791,7 +18791,7 @@
       }
     },
     "found": {
-      "description": "The production message lookup, credential verification and current holder ceilings are used. Controlled SQL proves wiring, not PostgreSQL semantics or audit persistence. JSON omits raw source and unloaded mailboxes; the source route preserves every octet, repeated headers, CRLF, UTF-8 and a leading dot.",
+      "description": "The production message lookup, credential verification and current holder ceilings are used. Controlled SQL proves wiring, not PostgreSQL semantics or audit persistence. The returned message timestamps use UTC. JSON omits raw source and unloaded mailboxes; the source route preserves every octet, repeated headers, CRLF, UTF-8 and a leading dot.",
       "request": {
         "path": {
           "id": 1

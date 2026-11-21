@@ -936,12 +936,13 @@ func (c *Client) patchAuth(path, token string, body interface{}, out interface{}
 
 // putAuth sends a bodiless PUT and checks only its status.
 func (c *Client) putAuth(path, token string) error {
-	req, err := http.NewRequest("PUT", c.baseURL+path, nil)
+	base, client := c.destination(token)
+	req, err := http.NewRequest("PUT", base+path, nil)
 	if err != nil {
 		return err
 	}
 	authorize(req, token)
-	resp, err := c.send(c.httpClient, req)
+	resp, err := c.send(client, req)
 	if err != nil {
 		return fmt.Errorf("PUT %s: %w", path, err)
 	}
