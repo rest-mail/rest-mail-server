@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { identity, type SessionBinding } from './session';
+import { Brace } from './Brace';
 
 export function SignIn({ session }: { session: SessionBinding }) {
   const [server, setServer] = useState('');
@@ -30,8 +31,8 @@ export function SignIn({ session }: { session: SessionBinding }) {
     finally { setBusy(false); }
   }
   return <main className="desktop-signin">
-    <span aria-hidden="true" className="desktop-brace desktop-brace-left">{'{'}</span>
-    <span aria-hidden="true" className="desktop-brace desktop-brace-right">{'}'}</span>
+    <Brace side="left" />
+    <Brace side="right" />
     <form onSubmit={submit} className="desktop-signin-sheet">
       <img src="/rest-mail-icon.svg" alt="" width="64" height="64" />
       <h1>REST Mail</h1>
