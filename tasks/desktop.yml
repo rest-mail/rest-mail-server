@@ -16,6 +16,12 @@ version: "3"
 
 silent: true
 
+# webmail's dependencies need Node ^20.19, ^22.13 or >=24 (eslint-visitor-keys); Node 23
+# is refused. Prefer Homebrew's node@22 when it is installed, whatever node is first on PATH.
+env:
+  PATH:
+    sh: 'd=/opt/homebrew/opt/node@22/bin; if [ -x "$d/node" ]; then echo "$d:$PATH"; else echo "$PATH"; fi'
+
 vars:
   WAILS3:
     sh: command -v wails3 || echo "$HOME/go/bin/wails3"
