@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -162,6 +163,34 @@ func utcInstant(t *testing.T, value string) time.Time {
 func TestIMAPSearchUsesTheAccountZone(t *testing.T) {
 	gateway := newGatewayFixture(t)
 	f := gateway.credentialFixture
+	reader := personalMailboxKey(t, f.db, f.accountID, f.address, models.CapMailRead)
+	writer := personalMailboxKey(t, f.db, f.accountID, f.address, models.CapMailWrite)
+	path := fmt.Sprintf("/api/v1/accounts/%d/time-zone", f.mailboxID)
+	readZone := func(t *testing.T, want string) {
+		t.Helper()
+		response := f.do(http.MethodGet, path, reader, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("get time zone: %d %s", response.Code, response.Body)
+		}
+		var reply struct {
+			Data struct {
+				TimeZone json.RawMessage `json:"time_zone"`
+			}
+		}
+		decodeInto(t, response, &reply)
+		if got := string(reply.Data.TimeZone); got != want {
+			t.Fatalf("stored time zone = %s, want %s", got, want)
+		}
+	}
+	setZone := func(value string) {
+		t.Helper()
+		response := f.do(http.MethodPut, path, writer, `{"time_zone":`+value+`}`)
+		if response.Code != http.StatusOK {
+			t.Fatalf("set time zone %s: %d %s", value, response.Code, response.Body)
+		}
+		readZone(t, value)
+	}
+	readZone(t, "null")
 	api := gatewayAPI(t, gateway.router, gateway.internal, imapCN)
 	session := openIMAPZoneSession(t, f, api, gateway.app.Password)
 
@@ -212,7 +241,7 @@ func TestIMAPSearchUsesTheAccountZone(t *testing.T) {
 		internalDateInUTC()
 	})
 
-	setIMAPZoneFixtureZone(t, f, `{"time_zone":"America/New_York"}`, http.StatusOK)
+	setZone(`"America/New_York"`)
 	t.Run("west of UTC across both changes", func(t *testing.T) {
 		session.t = t
 		session.requireSearch("ON 7-Mar-2026", "1")
@@ -232,7 +261,7 @@ func TestIMAPSearchUsesTheAccountZone(t *testing.T) {
 		internalDateInUTC()
 	})
 
-	setIMAPZoneFixtureZone(t, f, `{"time_zone":"Asia/Tokyo"}`, http.StatusOK)
+	setZone(`"Asia/Tokyo"`)
 	t.Run("east of UTC", func(t *testing.T) {
 		session.t = t
 		// Tokyo is nine hours ahead: 15:00 UTC is already the next day.
@@ -244,15 +273,32 @@ func TestIMAPSearchUsesTheAccountZone(t *testing.T) {
 		internalDateInUTC()
 	})
 
-	setIMAPZoneFixtureZone(t, f, `{"time_zone":"Mars/Olympus"}`, http.StatusUnprocessableEntity)
+	setZone(`"America/New_York"`)
 	t.Run("a refused name changes nothing", func(t *testing.T) {
 		session.t = t
-		session.requireSearch("ON 1-Nov-2026", "5 6")
+		response := f.do(http.MethodPut, path, writer, `{"time_zone":"Mars/Olympus"}`)
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Errorf("unknown time zone status = %d, want 422", response.Code)
+		} else {
+			var refusal struct {
+				Error struct {
+					Code    string
+					Details struct{ Fields map[string]string }
+				}
+			}
+			decodeInto(t, response, &refusal)
+			if refusal.Error.Code != "validation_failed" || refusal.Error.Details.Fields["time_zone"] != "must be an IANA time zone name" {
+				t.Errorf("unknown time zone is not identified in the refusal: %s", response.Body)
+			}
+		}
+		readZone(t, `"America/New_York"`)
+		session.requireSearch("ON 8-Mar-2026", "2 3")
 	})
 
-	setIMAPZoneFixtureZone(t, f, `{"time_zone":null}`, http.StatusOK)
+	setZone("null")
 	t.Run("cleared on an open connection is UTC again", func(t *testing.T) {
 		session.t = t
+		session.requireSearch("ON 7-Mar-2026", "")
 		session.requireSearch("ON 8-Mar-2026", "1 2")
 		session.requireSearch("ON 2-Nov-2026", "7 8")
 	})

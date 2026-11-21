@@ -153,6 +153,11 @@ that moves the count. The rest need harnesses and decisions first.
 | AC04 meeting workflow uses real calendar facts | R | conflict/availability tests |
 | AC05 foundations and client acceptance proven together | H | final integrated run |
 
+Local PostgreSQL proofs for the personal-mail rows, not client or installation acceptance:
+
+- AC01: [`TestAC01LocalSubmissionPreservesSentStateAndRecipientOutcomes`](../internal/api/personal_workflows_db_test.go) uses authenticated SMTP submission, the queue worker, inbound SMTP and the public API. It verifies one Sent copy, independent delivery and refusal for two local recipients, recipient-only attachment metadata, and a scoped message update visible in a later read. The read-only credential cannot change the message. Remote delivery and client presentation are outside this proof.
+- AC03: [`TestIMAPSearchUsesTheAccountZone`](../internal/api/imap_search_zone_db_test.go) uses scoped API credentials to choose, read and clear the zone. An invalid name leaves the saved zone and search behavior unchanged. The same authenticated IMAP connection follows zone changes and returns to UTC on clear. Browser settings UI and real push are outside this proof.
+
 ## #2100 — protocols and gateways
 
 | AC | Bucket | What is missing |
