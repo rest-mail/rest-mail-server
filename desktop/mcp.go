@@ -7,12 +7,12 @@ import (
 	"os"
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/mailbackend"
 	desktopmcp "github.com/rest-mail/rest-mail-server/desktop/internal/mcp"
-	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-func startMCP(app *application.App, manager *session.Manager, client *apiclient.Client) func() {
+func startMCP(app *application.App, manager *mailbackend.Manager, client *apiclient.Client) func() {
 	launch, err := desktopmcp.ParseLaunch(os.Args[1:], os.Getenv)
 	if err != nil {
 		log.Printf("Desktop MCP configuration invalid; continuing without MCP: %v", err)
