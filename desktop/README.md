@@ -4,6 +4,73 @@ The Wails application reuses `../webmail/src` through Vite and TypeScript aliase
 Go owns authentication, the OS keychain and the relative API proxy. JavaScript
 receives identity and setup state, never access or refresh tokens.
 
+## Direct IMAP and SMTP accounts
+
+Choose **IMAP and SMTP** from the desktop's existing Add account control, or
+**Use IMAP and SMTP instead** on the sign-in screen. Go verifies both servers
+before saving the account. IMAP supports implicit TLS (default 993) and mandatory
+STARTTLS (default 143); SMTP supports mandatory STARTTLS (default 587) and
+implicit TLS (default 465), with AUTH PLAIN or LOGIN only after verified TLS.
+Certificate verification cannot be disabled. The native/MCP inputs additionally
+accept custom ports with `imap_security` and `smtp_security` set to `tls` or
+`starttls`. SMTP uses the IMAP username and password. OAuth and separate SMTP
+credentials are not implemented.
+
+Passwords live in the `REST Mail` OS keychain service under newline-free
+`imap:<numeric-id>` keys. Non-secret account and folder-identity metadata lives
+in the same keychain under `imap-accounts-v1`; no plaintext config file is used.
+`Accounts.AddIMAPAccount`, `Accounts.ListAccounts`, and
+`Accounts.RemoveIMAPAccount` expose no password in their results. The matching
+MCP tools are `add_imap_account`, `list_accounts`, and `remove_imap_account`.
+Mailbox MCP tools accept an optional `account_id` where an account is needed.
+Sign out disconnects local accounts for the current run, retaining their saved
+configuration. Re-adding the same settings verifies credentials and reconnects
+without changing IDs; removal deletes the keychain password. Restart restores
+saved accounts.
+
+The composite Go transport merges local accounts with REST Mail accounts and
+implements these REST-shaped routes without frontend account-type branches:
+
+- `GET /api/v1/accounts`; `DELETE /api/v1/accounts/{id}` for local accounts.
+- `GET/POST /api/v1/accounts/{id}/folders`, and `PATCH/DELETE` on a named folder.
+- `GET /api/v1/accounts/{id}/folders/{folder}/messages`, with opaque paging.
+- `GET /api/v1/accounts/{id}/search`, with folder-scoped or cross-folder paging.
+- `GET/PATCH/DELETE /api/v1/messages/{id}`: MIME bodies and headers, read/star/
+  flagged/answered/draft flags, moves, trash, and permanent deletion.
+- `GET /api/v1/messages/{id}/attachments`, `/messages/{id}/raw`, and
+  `/attachments/{id}` for attachment metadata and downloads.
+- `POST /api/v1/messages/send` for plain-text/HTML messages, including Cc/Bcc.
+- `GET /api/v1/accounts/{id}/events`, relaying INBOX changes through the existing
+  SSE `new_message` and `folder_update` events. IDLE is preferred; servers without
+  it are polled every 60 seconds. The notification includes sender and subject
+  when the newest message is fetchable.
+
+IDs reserve the JavaScript-safe integer range `[2^52, 2^53)` for desktop-local
+objects. Account IDs are monotonically allocated `2^52 + sequence`, never reused.
+Each `(account, folder, UIDVALIDITY)` receives a persisted 20-bit folder slot;
+message IDs are `2^52 + (slot << 32) + UID`. This survives restarts and prevents
+UID reuse from addressing a different message. Upstream account lists with IDs
+in the reserved range fail closed instead of merging conflicting identities.
+Attachment IDs hash the message ID and MIME part index into the same reserved
+range, detect collisions, and are resolved after reading the message's attachment
+list in the current process.
+
+One serialized command connection is retained per account and reconnected before
+operations as needed. Each open SSE subscription uses a separate INBOX watcher
+connection, so IDLE does not block mailbox operations. Reads use BODY.PEEK; writes
+are never automatically replayed. Safe move/delete requires MOVE or UIDPLUS as
+appropriate; the client never uses a broad EXPUNGE that could delete somebody
+else's marked messages. Message downloads are limited to 32 MiB. Lists are newest
+UID first; cross-folder search walks folder names, then newest UIDs, with cursors
+bound to account, query, folder and UIDVALIDITY.
+
+This adapter does not implement server drafts, forwarding endpoints, attachment
+sending, scheduled sends, calendar sends, receipt/seal verification, server-side
+account settings, or saving an SMTP send into Sent. Unsupported local features
+return an explicit error rather than being sent to the REST Mail server or
+silently downgraded. INBOX is watched, not every folder; this is not an offline
+store or a full synchronization engine.
+
 ## Build and run
 
 Use Node 22, pnpm, Go and the pinned Wails CLI. Node 23 is unsupported by shared

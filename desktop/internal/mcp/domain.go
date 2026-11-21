@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
@@ -32,12 +33,20 @@ type MailClient interface {
 }
 
 type MailDomain struct {
-	session SessionClient
-	mail    MailClient
+	session  SessionClient
+	mail     MailClient
+	accounts AccountClient
+}
+
+type AccountClient interface {
+	AddIMAPAccount(context.Context, imapmail.AccountInput) (imapmail.Account, error)
+	RemoveIMAPAccount(uint) error
+	ListAccounts() []imapmail.Account
 }
 
 func NewDomain(manager SessionClient, client MailClient) *MailDomain {
-	return &MailDomain{session: manager, mail: client}
+	accounts, _ := manager.(AccountClient)
+	return &MailDomain{session: manager, mail: client, accounts: accounts}
 }
 
 var errInvalidArguments = errors.New("invalid MCP arguments")
@@ -52,6 +61,29 @@ func decodeArgs[Args any](data json.RawMessage) (Args, error) {
 
 func (domain *MailDomain) Call(ctx context.Context, name string, data json.RawMessage) (any, error) {
 	switch name {
+	case "add_imap_account":
+		if domain.accounts == nil {
+			return nil, errors.New("IMAP accounts unavailable")
+		}
+		args, err := decodeArgs[imapmail.AccountInput](data)
+		if err != nil {
+			return nil, err
+		}
+		return domain.accounts.AddIMAPAccount(ctx, args)
+	case "list_accounts":
+		if domain.accounts == nil {
+			return nil, errors.New("IMAP accounts unavailable")
+		}
+		return domain.accounts.ListAccounts(), nil
+	case "remove_imap_account":
+		if domain.accounts == nil {
+			return nil, errors.New("IMAP accounts unavailable")
+		}
+		args, err := decodeArgs[AccountArgs](data)
+		if err != nil || args.AccountID == 0 {
+			return nil, errInvalidArguments
+		}
+		return map[string]bool{"ok": true}, domain.accounts.RemoveIMAPAccount(args.AccountID)
 	case "session_status":
 		status := domain.session.Status()
 		return map[string]any{"signedIn": status.SignedIn, "server": status.Server, "email": status.Email, "accountId": status.AccountID}, nil
@@ -74,6 +106,26 @@ func (domain *MailDomain) Call(ctx context.Context, name string, data json.RawMe
 	status := domain.session.Status()
 	if !status.SignedIn {
 		return nil, session.ErrSignedOut
+	}
+	if domain.accounts != nil {
+		args, err := decodeArgs[AccountArgs](data)
+		if err != nil {
+			return nil, err
+		}
+		if args.AccountID != 0 {
+			found := false
+			for _, account := range domain.accounts.ListAccounts() {
+				if account.ID == args.AccountID {
+					status.AccountID = account.ID
+					status.Email = account.Address
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, errInvalidArguments
+			}
+		}
 	}
 	switch name {
 	case "list_folders":

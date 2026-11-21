@@ -10,9 +10,14 @@ import (
 	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
 )
 
 type EmptyArgs struct{}
+
+type AccountArgs struct {
+	AccountID uint `json:"account_id,omitempty"`
+}
 
 type SignInArgs struct {
 	Server   string `json:"server"`
@@ -25,24 +30,27 @@ type TOTPArgs struct {
 }
 
 type ListMessagesArgs struct {
-	Folder string `json:"folder"`
-	Page   int    `json:"page,omitempty"`
-	Query  string `json:"query,omitempty"`
+	AccountID uint   `json:"account_id,omitempty"`
+	Folder    string `json:"folder"`
+	Page      int    `json:"page,omitempty"`
+	Query     string `json:"query,omitempty"`
 }
 
 type MessageArgs struct {
 	ID string `json:"id"`
 }
 type SearchArgs struct {
-	Query string `json:"query"`
+	AccountID uint   `json:"account_id,omitempty"`
+	Query     string `json:"query"`
 }
 
 type ComposeArgs struct {
-	To      []string `json:"to"`
-	CC      []string `json:"cc,omitempty"`
-	Subject string   `json:"subject"`
-	Body    string   `json:"body"`
-	HTML    string   `json:"html,omitempty"`
+	AccountID uint     `json:"account_id,omitempty"`
+	To        []string `json:"to"`
+	CC        []string `json:"cc,omitempty"`
+	Subject   string   `json:"subject"`
+	Body      string   `json:"body"`
+	HTML      string   `json:"html,omitempty"`
 }
 
 type FlagsArgs struct {
@@ -156,11 +164,14 @@ func screenshotResult(value any) *sdk.CallToolResult {
 }
 
 func (server *Server) registerTools() {
+	domainTool[imapmail.AccountInput](server, "add_imap_account", "Add an IMAP/SMTP account using verified TLS; password is stored in the OS keychain and never returned")
+	domainTool[EmptyArgs](server, "list_accounts", "List configured REST Mail and IMAP accounts without passwords")
+	domainTool[AccountArgs](server, "remove_imap_account", "Remove an IMAP account and its keychain password")
 	domainTool[EmptyArgs](server, "session_status", "Get the signed-in server and email, never credentials")
 	domainTool[SignInArgs](server, "sign_in", "Sign in to a REST Mail server")
 	domainTool[TOTPArgs](server, "submit_totp", "Complete two-factor sign-in")
 	domainTool[EmptyArgs](server, "sign_out", "Sign out and clear saved credentials")
-	domainTool[EmptyArgs](server, "list_folders", "List mail folders")
+	domainTool[AccountArgs](server, "list_folders", "List mail folders; account_id optionally selects a configured account")
 	domainTool[ListMessagesArgs](server, "list_messages", "List a folder's messages with paging and query")
 	domainTool[MessageArgs](server, "get_message", "Read a message")
 	domainTool[SearchArgs](server, "search", "Search messages on the server")
