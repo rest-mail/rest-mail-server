@@ -1,11 +1,33 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { handleUIRequest, registerUIBridge, type BridgeOptions } from './bridge';
+import { handleUIRequest, prepareScreenshotDocument, registerUIBridge, type BridgeOptions } from './bridge';
 import type { RuntimeEvents } from './session';
 
 function options(): BridgeOptions { return { route: () => '/signin', navigate: vi.fn(), screenshot: async () => 'iVBORw0KGgo=' }; }
 describe('MCP UI bridge', () => {
+  it('keeps closed disclosures closed in snapshots and screenshot clones without mutating the live UI', async () => {
+    render(<details><summary data-testid="tools">More tools</summary><button data-testid="inside">Scheduled</button></details>);
+    const snapshot = await handleUIRequest({ id: 'snap', action: 'snapshot' }, options()) as { elements: { testId: string }[] };
+    expect(snapshot.elements.map(element => element.testId)).toEqual(['tools']);
+    await expect(handleUIRequest({ id: 'hidden', action: 'click', args: { testId: 'inside' } }, options())).rejects.toThrow('Expected one element');
+    const clone = document.implementation.createHTMLDocument(); clone.body.innerHTML = document.body.innerHTML;
+    prepareScreenshotDocument(clone);
+    expect(clone.querySelector('button')?.style.display).toBe('none');
+    expect(clone.querySelector('summary')?.textContent).toContain('▸');
+    expect(document.querySelector('button')?.style.display).toBe('');
+    expect(clone.querySelector('style')?.textContent).toContain('animation: none');
+  });
+  it('exposes tabs and excludes inactive compose panels from targets and snapshots', async () => {
+    const visible = vi.fn(); const hidden = vi.fn();
+    render(<><div hidden><button data-testid="compose-send" onClick={hidden}>Hidden send</button></div><button data-testid="compose-send" onClick={visible}>Visible send</button></>);
+    const config = { ...options(), tabs: () => [{ id: 'mail', active: false }, { id: 'compose-2', active: true }] };
+    expect(await handleUIRequest({ id: 'tabs', action: 'tabs' }, config)).toEqual(config.tabs());
+    const snapshot = await handleUIRequest({ id: 'snapshot', action: 'snapshot' }, config) as { elements: { text: string }[] };
+    expect(snapshot.elements.map(element => element.text)).toEqual(['Visible send']);
+    await handleUIRequest({ id: 'send', action: 'click', args: { testId: 'compose-send' } }, config);
+    expect(visible).toHaveBeenCalledOnce(); expect(hidden).not.toHaveBeenCalled();
+  });
   it('keeps generated IDs unique across repeated controls and snapshots', async () => {
     const click = vi.fn();
     render(<><button data-testid="control-inbox">Explicit Inbox</button><button onClick={click}>Inbox</button><button>Inbox</button></>);
@@ -65,6 +87,16 @@ describe('MCP UI bridge', () => {
     const close = registerUIBridge({ on: (_name, handler) => { listener = handler; return () => {}; }, emit }, { ...options(), screenshot: async () => { throw new Error('Canvas export blocked by origin policy'); } });
     await listener({ id: 'capture', action: 'screenshot' });
     expect(emit).toHaveBeenCalledWith('mcp:ui:response', { id: 'capture', ok: false, error: 'Canvas export blocked by origin policy' });
+    close();
+  });
+  it('responds only from the window targeted by MCP', async () => {
+    let listener: (data: unknown) => unknown = () => {};
+    const emit = vi.fn();
+    const close = registerUIBridge({ on: (_name, handler) => { listener = handler; return () => {}; }, emit }, { ...options(), windowName: 'main' });
+    await listener({ id: 'other', window: 'other', action: 'snapshot' });
+    expect(emit).not.toHaveBeenCalled();
+    await listener({ id: 'main', window: 'main', action: 'snapshot' });
+    expect(emit).toHaveBeenCalledWith('mcp:ui:response', expect.objectContaining({ id: 'main', ok: true }));
     close();
   });
 });

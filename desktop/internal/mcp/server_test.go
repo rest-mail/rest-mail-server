@@ -147,7 +147,7 @@ func TestToolListComplete(t *testing.T) {
 	for _, test := range domainCases {
 		expected = append(expected, test.name)
 	}
-	expected = append(expected, "add_imap_account", "list_accounts", "remove_imap_account", "ui_snapshot", "ui_click", "ui_type", "ui_navigate", "ui_read_text", "ui_screenshot", "app_info", "app_logs")
+	expected = append(expected, "add_imap_account", "list_accounts", "remove_imap_account", "ui_snapshot", "ui_menu", "ui_tabs", "ui_drop_files", "ui_click", "ui_type", "ui_navigate", "ui_read_text", "ui_screenshot", "app_info", "app_logs")
 	var actual []string
 	for _, tool := range list.Tools {
 		actual = append(actual, tool.Name)
@@ -232,6 +232,10 @@ func TestUIBridgeRoundTripAndTimeout(t *testing.T) {
 		action string
 	}{
 		{"ui_snapshot", map[string]any{}, "snapshot"},
+		{"ui_menu", map[string]any{"id": "reply", "window": "main"}, "menu"},
+		{"ui_tabs", map[string]any{}, "tabs"},
+		{"ui_drop_files", map[string]any{"paths": []any{"/tmp/test-attachment.txt"}}, "dropFiles"},
+		{"ui_type", map[string]any{"window": "main", "testId": "subject", "text": "active tab"}, "type"},
 		{"ui_click", map[string]any{"testId": "compose"}, "click"},
 		{"ui_type", map[string]any{"testId": "subject", "text": "hello"}, "type"},
 		{"ui_navigate", map[string]any{"route": "/drafts"}, "navigate"},

@@ -13,7 +13,18 @@ import (
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
 )
 
-type EmptyArgs struct{}
+type EmptyArgs struct {
+	Window string `json:"window,omitempty"`
+}
+
+type MenuArgs struct {
+	ID     string `json:"id"`
+	Window string `json:"window,omitempty"`
+}
+
+type DropFilesArgs struct {
+	Paths []string `json:"paths"`
+}
 
 type AccountArgs struct {
 	AccountID uint `json:"account_id,omitempty"`
@@ -68,14 +79,17 @@ type DeleteArgs struct {
 	IDs []string `json:"ids"`
 }
 type ElementArgs struct {
+	Window string `json:"window,omitempty"`
 	TestID string `json:"testId"`
 }
 type TypeArgs struct {
+	Window string `json:"window,omitempty"`
 	TestID string `json:"testId"`
 	Text   string `json:"text"`
 }
 type NavigateArgs struct {
-	Route string `json:"route"`
+	Window string `json:"window,omitempty"`
+	Route  string `json:"route"`
 }
 type LogsArgs struct {
 	Lines int `json:"lines,omitempty"`
@@ -181,6 +195,9 @@ func (server *Server) registerTools() {
 	domainTool[MoveArgs](server, "move_messages", "Move messages to a folder")
 	domainTool[DeleteArgs](server, "delete_messages", "Delete the supplied messages")
 	uiTool[EmptyArgs](server, "ui_snapshot", "snapshot")
+	uiTool[MenuArgs](server, "ui_menu", "menu")
+	uiTool[EmptyArgs](server, "ui_tabs", "tabs")
+	uiTool[DropFilesArgs](server, "ui_drop_files", "dropFiles")
 	uiTool[ElementArgs](server, "ui_click", "click")
 	uiTool[TypeArgs](server, "ui_type", "type")
 	uiTool[NavigateArgs](server, "ui_navigate", "navigate")

@@ -8,6 +8,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiproxy"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -29,6 +30,7 @@ func init() {
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
 func main() {
+	nativeUI := newNative()
 
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
@@ -39,6 +41,7 @@ func main() {
 		Name:        "REST Mail",
 		Description: "REST Mail desktop client",
 		Services: []application.Service{
+			application.NewService(nativeUI),
 			application.NewService(&AppInfo{}),
 			// BEGIN UI native file service
 			application.NewService(&Files{}),
@@ -50,6 +53,7 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		ShouldQuit: nativeUI.shouldQuit,
 	}
 
 	// Desktop core: share this manager and client with native integrations, including MCP.
@@ -62,9 +66,10 @@ func main() {
 	// End desktop core.
 	app := application.New(options)
 	app.OnShutdown(sessionManager.Close)
+	nativeUI.install(app)
 
 	// Embedded MCP service registration.
-	stopMCP := startMCP(app, sessionManager, mailClient)
+	stopMCP := startMCP(app, sessionManager, mailClient, nativeUI)
 	app.OnShutdown(stopMCP)
 	defer stopMCP()
 	// End embedded MCP service registration.
@@ -74,8 +79,10 @@ func main() {
 	// 'Mac' options tailor the window when running on macOS.
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "REST Mail " + version,
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:           "main",
+		EnableFileDrop: true,
+		Title:          "REST Mail " + version,
 		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
 		Width:  1000,
 		Height: 618,
@@ -86,6 +93,17 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
+	})
+	mainWindow.OnWindowEvent(events.Common.WindowFocus, func(*application.WindowEvent) { nativeUI.updateMenu() })
+	mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if !nativeUI.shouldQuit() {
+			event.Cancel()
+		}
+	})
+	mainWindow.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		if _, err := nativeUI.DropFiles(event.Context().DroppedFiles()); err != nil {
+			app.Event.Emit("native:drop-error", err.Error())
+		}
 	})
 
 	// Run the application. This blocks until the application has been exited.

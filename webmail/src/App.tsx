@@ -54,6 +54,7 @@ function App({ loginPage }: { loginPage?: React.ReactNode }) {
 
   // SSE event handler
   const handleSSEEvent = useCallback((event: SSEEvent) => {
+    mailPlatform().onMailEvent?.(event);
     if (event.type === 'stream_ready') {
       refresh();
     } else if (event.type === 'new_message') {
@@ -85,6 +86,7 @@ function App({ loginPage }: { loginPage?: React.ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated || setupRequired.length) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (mailPlatform().mailboxActive?.() === false) return;
       // Ignore shortcuts when typing in inputs
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable) return;

@@ -183,6 +183,50 @@ the bridge's `screenshot` action (`{data: base64PNG}`). Other platforms use the
 bridge. Screen Recording permission may be required for native capture.
 `app_logs` returns up to 500 recent redacted lines, including tool failure reasons.
 
+## Native macOS controls
+
+The application menu exposes the same message actions as the reader buttons.
+Message shortcuts are disabled while typing or when no applicable message is
+selected. Standard Edit commands use the webview's native responder chain.
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘N | New message tab |
+| ⌘R / ⇧⌘R / ⇧⌘F | Reply / Reply All / Forward |
+| ⌘⌫ / ⌃⌘A | Delete / Archive |
+| ⇧⌘U / ⇧⌘L | Toggle read / flag |
+| ⇧⌘N | Refresh, following macOS Mail's Get New Mail shortcut |
+| ↑ / ↓ / Return | Select / open message |
+| ⌘W | Close current draft tab, or the main window on the Mail tab |
+| ⌃Tab / ⌃⇧Tab | Next / previous tab, including Mail |
+
+Draft tabs retain independent editors while switching tabs. Closing a dirty tab
+or quitting asks to save it through the existing draft API. A failed save keeps
+the tab open. Send closes its tab and refreshes the mailbox. Reader and compose
+content use the full pane width; these layout changes are desktop-only.
+
+The Dock badge shows unread Inbox messages. New Inbox events use native macOS
+notifications after authorization; only sender and subject are included. Clicking
+a notification opens its message. The focused reader's current message is never
+notified, and browser notifications are disabled in the desktop app.
+
+Drop files anywhere in the signed-in window to attach them to the active compose
+tab, or create a new tab when Mail is active. The Attach picker follows the same
+path. Go retains the bytes in memory per draft; JavaScript receives only IDs,
+filenames and sizes. Directories and non-regular files are refused. Until the API
+exposes a message-size capability the total limit is 25 MiB per draft. A failed
+batch adds nothing. Removing a chip releases its bytes; closing a tab or signing
+out clears them. Held files do not survive quitting. Until #2212 provides outgoing
+uploads, attachments explicitly disable send, schedule and server draft save;
+the close dialog offers Cancel or Don't Save instead of silently losing files.
+
+MCP adds `ui_menu` (`id`, optional `window: "main"`), `ui_tabs`, and
+`ui_drop_files` (`paths`). Menu IDs are `new-message`, `close-window`, `refresh`,
+`reply`, `reply-all`, `forward`, `archive`, `delete`, `toggle-read`, `toggle-flag`.
+`ui_snapshot` exposes `tab-mail`, `tab-<id>`, `tab-close-<id>`, and visible compose
+controls. Inactive tab panels and closed disclosures are excluded from UI targets.
+No compose windows or `ui_windows` tool are created.
+
 ## Release cycle
 
 From the repository root, `chore desktop:dev` runs with live reload and
