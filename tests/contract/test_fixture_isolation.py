@@ -1,0 +1,105 @@
+"""Isolation selections fail on skipped work, stale caches and unreset counters."""
+
+import copy
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import fixture_isolation
+import test_hooks_own_data
+
+
+class FixtureIsolation(unittest.TestCase):
+    def test_own_data_isolated_schedule(self):
+        operations = fixture_isolation.DEFAULT_OPERATIONS
+        plan = fixture_isolation.schedule(operations)
+        self.assertEqual(plan[:3], [("alone", operation) for operation in operations])
+        for phase in ("shuffle-1", "shuffle-2"):
+            selected = [op for label, op in plan if label == phase]
+            self.assertCountEqual(selected, operations)
+            self.assertNotEqual(selected, list(operations))
+        self.assertEqual(plan, fixture_isolation.schedule(operations))
+        for ops, repeats in (((), 2), ((operations[0],) * 2, 2), (("unknown",), 2), (operations, 1)):
+            with self.subTest(operations=ops, repeats=repeats), self.assertRaises(ValueError):
+                fixture_isolation.schedule(ops, repeats=repeats)
+
+    def test_isolation_receipt_requires_a_reset_for_every_passing_exchange_on_one_server(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report, trace = Path(directory) / "report.xml", Path(directory) / "trace.jsonl"
+            report.write_text('<testsuite><testcase name="found"/></testsuite>')
+            trace.write_text(json.dumps({"name": "found", "origin": "http://api:8080"}) + "\n")
+            self.assertEqual(fixture_isolation.observations(report, trace, "http://api:8080"), 1)
+            for xml, resets in (
+                ('<testsuite/>', trace.read_text()),
+                ('<testsuite><testcase name="found"><skipped/></testcase></testsuite>', trace.read_text()),
+                ('<testsuite><testcase name="found"><failure/></testcase></testsuite>', trace.read_text()),
+                ('<testsuite><testcase name="found"><error/></testcase></testsuite>', trace.read_text()),
+                ('<testsuite><testcase name="found"/></testsuite>', ''),
+                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"another","origin":"http://api:8080"}\n'),
+                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"found","origin":"http://other:8080"}\n'),
+            ):
+                report.write_text(xml)
+                trace.write_text(resets)
+                with self.subTest(xml=xml, resets=resets), self.assertRaises(RuntimeError):
+                    fixture_isolation.observations(report, trace, "http://api:8080")
+
+    def test_stale_cache_and_counter_control_turns_isolation_red(self):
+        fixture = test_hooks_own_data.OwnDataHooks()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.clean_starts_on()
+        transaction = fixture.transaction(200, "/api/v1/admin/domains/1")
+        origin = fixture.hooks.origin_of(transaction)
+        stale = {"sender_mailboxes": {origin: {"stale": 999}}, "budget_used": 1}
+        fixture.stub.stash.update(copy.deepcopy(stale))
+        # Simulate a server-side counter alongside the real HTTP reset/seed
+        # calls of the unit fixture. Only reset is allowed to clear it.
+        counter = {"used": 1}
+        original = fixture.hooks.reset_seed.reset_and_seed
+
+        def resetting(*args, **kwargs):
+            result = original(*args, **kwargs)
+            counter["used"] = 0
+            return result
+
+        def assert_clean():
+            self.assertNotIn("sender_mailboxes", fixture.stub.stash)
+            self.assertNotIn("budget_used", fixture.stub.stash)
+            self.assertEqual(counter["used"], 0)
+
+        with patch.object(fixture.hooks.reset_seed, "reset_and_seed", side_effect=resetting):
+            fixture.hooks.start_clean(transaction)
+        assert_clean()
+        self.assertEqual([call[1] for call in fixture.server.calls], ["/api/v1/admin/test/reset", "/api/v1/admin/test/seed"])
+        # Deliberate breaks: skip the server reset, then retain the stale cache.
+        counter["used"] = 1
+        with patch.object(fixture.hooks.reset_seed, "reset_and_seed"):
+            fixture.hooks.start_clean(transaction)
+        with self.assertRaises(AssertionError):
+            assert_clean()
+        counter["used"] = 0
+        fixture.stub.stash.update(stale)
+        with self.assertRaises(AssertionError):
+            assert_clean()
+
+    def test_isolation_runs_the_ordinary_phase_without_restarting_the_server(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"CONTRACT_ENDPOINT": "http://api:8080"}), \
+                patch.object(fixture_isolation.subprocess, "run") as run, \
+                patch.object(fixture_isolation.shutil, "copyfile"), \
+                patch.object(fixture_isolation, "observations", return_value=4) as observe:
+            self.assertEqual(fixture_isolation.run(output=Path(directory)), 0)
+            self.assertEqual(run.call_count, 9)
+            for call in run.call_args_list:
+                self.assertEqual(call.args[0][:4], ["bash", "tests/contract/run.sh", "own-data", "--operation-id"])
+                self.assertEqual(call.kwargs["env"]["CONTRACT_ENDPOINT"], "http://api:8080")
+                self.assertTrue(call.kwargs["check"])
+            self.assertEqual(observe.call_count, 9)
+            self.assertEqual(len(json.loads((Path(directory) / "receipt.json").read_text())["runs"]), 9)
+            self.assertEqual(json.loads((Path(directory) / "receipt.json").read_text())["status"], "passed")
+
+
+if __name__ == "__main__":
+    unittest.main()

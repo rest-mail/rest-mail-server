@@ -1116,6 +1116,11 @@ tasks:
       - |
         set -eu
         code=0
+        # Alone, shuffled and repeated selections use this same API and the
+        # ordinary per-exchange reset/seed hooks. Keep the full report last.
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh own-data --isolation
+        fi
         CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh own-data {{.CLI_ARGS}} || code=$?
         python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes ownership-messages own-data
         exit "$code"

@@ -173,6 +173,10 @@ def start_clean(transaction):
     reset_seed.reset_and_seed(origin, admin_token(origin), fixtures=())
     for key in [k for k in hooks.stash if k not in SURVIVES_A_RESET]:
         del hooks.stash[key]
+    trace = os.environ.get("CONTRACT_ISOLATION_TRACE")
+    if trace:
+        with open(trace, "a") as stream:
+            stream.write(json.dumps({"name": transaction.get("name"), "origin": origin}) + "\n")
 
 
 OWN_DOMAIN = "contract-own-domain.test"

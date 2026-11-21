@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,15 @@ import (
 )
 
 func TestForwardSuccessRetainsIndependentRequirementsWithVertrag(t *testing.T) {
+	pairs := publishedContractPairs(t)["forwardMessage"]
+	success := pairs["example"]
+	if success.Response.Status != http.StatusCreated || success.Request.Invalid || len(success.Requires) != 0 {
+		t.Fatal("forwardMessage/example must be an ordinary 201 pair with no prerequisites")
+	}
+	fault := pairs["attachment_write_failed"]
+	if fault.Response.Status != http.StatusInternalServerError || fault.Request.Invalid || len(fault.Requires) != 1 || fault.Requires["fault"] != "database" {
+		t.Fatal("forwardMessage/attachment_write_failed must be a valid request paired with 500 and require only fault=database")
+	}
 	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
 	if binary == "" {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY for named example requirement checks")
