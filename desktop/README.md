@@ -100,8 +100,11 @@ operate through the same Go session as the UI. `list_messages.page` is a one-bas
 page number (default 1, maximum 100), with 50 messages per page; later pages follow
 the server's opaque pagination cursors. UI tools
 require the frontend's `mcp:ui:request` / `mcp:ui:response` bridge and time out after
-10 seconds if it is not ready. `ui_screenshot` returns a PNG from its `screenshot`
-action (`{data: base64PNG}`). `app_logs` returns up to 500 recent redacted lines.
+10 seconds if it is not ready. On macOS, `ui_screenshot` first captures this
+process's visible window using CoreGraphics and `screencapture`; it falls back to
+the bridge's `screenshot` action (`{data: base64PNG}`). Other platforms use the
+bridge. Screen Recording permission may be required for native capture.
+`app_logs` returns up to 500 recent redacted lines, including tool failure reasons.
 
 ## Release cycle
 
