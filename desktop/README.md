@@ -98,3 +98,43 @@ running. Domain tools operate through the same Go session as the UI. UI tools
 require the frontend's `mcp:ui:request` / `mcp:ui:response` bridge and time out after
 10 seconds if it is not ready. `ui_screenshot` returns a PNG from its `screenshot`
 action (`{data: base64PNG}`). `app_logs` returns up to 500 recent redacted lines.
+
+## Release cycle
+
+From the repository root, `chore desktop:dev` runs with live reload and
+`chore desktop:build` creates `desktop/bin/RESTMail.app` without installing it.
+`chore desktop:release:notes` lists desktop and webmail commits since the commit
+in the installed app's `Contents/Resources/release.json`.
+`chore desktop:release` prints those notes, builds, installs into `~/Applications`,
+and prints the version, commit and UTC build time. `chore desktop:info` prints
+the installed build's metadata. `chore desktop:latest` uses authenticated `gh`
+to download and install the newest published `desktop-v*` release (Apple Silicon
+Macs only). These helpers require Python 3; builds also require Go, Node/npm and
+the pinned Wails CLI, which the local build task installs when missing.
+Override the installation destination for testing, for example
+`DESKTOP_INSTALL_DIR=/tmp/restmail-desktop chore desktop:release`.
+
+Versions are `$(cat desktop/VERSION).$(git rev-list --count HEAD)`, currently
+`0.1.<repository commit count>`. New commits on the same history increase the
+number. Uncommitted changes, including untracked desktop or webmail files, add
+`-dirty` to local versions and commits. The binary and `release.json` include
+the version, full commit and build timestamp; the macOS bundle also records the
+numeric version in its plist. Metadata is embedded before ad-hoc signing.
+
+After building and testing locally, run `chore desktop:publish` to zip the last
+local `desktop/bin/RESTMail.app` with `ditto` and publish it with `release.json`.
+The tag is `desktop-v<build version>`, its target is the build's recorded commit,
+and its title is `REST Mail desktop <version>`. Notes list commits touching
+`desktop/` or `webmail/` since the previous desktop tag, through the built commit.
+Publishing refuses dirty builds, commits absent from all remote branches, and
+existing releases. It fetches remote refs and prints a `git push` command when
+needed, but never pushes. Authenticated `gh` is required. `chore desktop:ship`
+runs `desktop:release` followed by `desktop:publish`; neither waits for CI.
+
+The path-filtered Desktop workflow builds macOS arm64 (`.app.zip`), Windows
+amd64 (`.exe.zip`) and Linux amd64 (`.tar.gz`) for pull requests, pushes to main,
+and manual dispatches. Download archives from the workflow's artifacts; CI never
+publishes a GitHub release and has read-only contents permissions. Linux uses
+its own runner gate and requires GTK 4 and WebKitGTK 6.0 at runtime. Only the
+native macOS and Windows build jobs use fixed GitHub-hosted runners. macOS
+builds are ad-hoc signed, not notarized; Windows executables are unsigned.

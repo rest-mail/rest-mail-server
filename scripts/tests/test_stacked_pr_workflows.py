@@ -92,9 +92,11 @@ class StackedPRWorkflows(unittest.TestCase):
                 continue
             cls.workflows[path.name] = source
             cls.jobs[path.name] = blocks(blocks(source, 0)["jobs"], 2)
-        cls.full = {name: source for name, source in cls.workflows.items() if name not in {"ci-labels.yml", "ci-retarget.yml"}}
+        cls.full = {name: source for name, source in cls.workflows.items() if name not in {"ci-labels.yml", "ci-retarget.yml", "desktop.yml"}}
 
     def test_every_pr_workflow_is_covered_and_keeps_its_existing_events(self):
+        self.assertEqual(set(self.workflows) - set(self.full), {"ci-labels.yml", "ci-retarget.yml", "desktop.yml"})
+        self.assertEqual(set(self.jobs["desktop.yml"]), {"macos", "windows", "linux-gate", "linux"})
         self.assertEqual(set(self.full), {
             "ci.yml", "e2e.yml", "email-explained.yml", "pulumi.yml", "release-cli.yml",
         })

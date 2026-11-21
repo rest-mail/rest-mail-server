@@ -31,9 +31,9 @@ vars:
   APP_VERSION:
     sh: 'echo "$(tr -d "[:space:]" < desktop/VERSION).$(git rev-list --count HEAD)"'
   APP_COMMIT:
-    sh: 'git rev-parse --short=12 HEAD'
+    sh: 'git rev-parse HEAD'
   APP_DIRTY:
-    sh: 'git diff --quiet HEAD -- desktop webmail 2>/dev/null && echo "" || echo "-dirty"'
+    sh: 'test -z "$(git status --porcelain --untracked-files=all -- desktop webmail)" && echo "" || echo "-dirty"'
 
 tasks:
   tool:
@@ -61,22 +61,42 @@ tasks:
       - 'env -u OUTPUT -u VERBOSE "{{.WAILS3}}" task darwin:package APP_VERSION={{.APP_VERSION}}{{.APP_DIRTY}} APP_COMMIT={{.APP_COMMIT}}{{.APP_DIRTY}} APP_BUILT={{.APP_BUILT}}'
       - /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
       - /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
+      - python3 scripts/release.py stamp --version "{{.APP_VERSION}}{{.APP_DIRTY}}" --commit "{{.APP_COMMIT}}{{.APP_DIRTY}}" --built "{{.APP_BUILT}}" --output bin/release.json
+      - cp bin/release.json "bin/{{.APP_NAME}}.app/Contents/Resources/release.json"
       - codesign --force --deep --sign - "bin/{{.APP_NAME}}.app"
-      - |
-        cat > bin/release.json <<JSON
-        {"app":"REST Mail","version":"{{.APP_VERSION}}{{.APP_DIRTY}}","commit":"{{.APP_COMMIT}}{{.APP_DIRTY}}","builtAt":"{{.APP_BUILT}}","bundle":"{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app"}
-        JSON
+      - codesign --verify --deep --strict "bin/{{.APP_NAME}}.app"
 
   release:
     desc: Build, install into ~/Applications and print the release info
     cmds:
+      - task: release:notes
       - task: build
       - mkdir -p "{{.INSTALL_DIR}}"
-      - osascript -e 'tell application "REST Mail" to quit' >/dev/null 2>&1 || true
+      - '[ "{{.INSTALL_DIR}}" != "$HOME/Applications" ] || osascript -e ''tell application "REST Mail" to quit'' >/dev/null 2>&1 || true'
       - rm -rf "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
       - cp -R "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app" "{{.INSTALL_DIR}}/"
-      - cp "{{.DESKTOP_DIR}}/bin/release.json" "{{.INSTALL_DIR}}/{{.APP_NAME}}.app/Contents/Resources/release.json"
       - task: info
+
+  release:notes:
+    desc: Print desktop and webmail commits since the installed release
+    cmds:
+      - python3 "{{.DESKTOP_DIR}}/scripts/release.py" installed-notes --install-dir "{{.INSTALL_DIR}}"
+
+  publish:
+    desc: Publish the last clean local build to GitHub without rebuilding or pushing
+    cmds:
+      - python3 "{{.DESKTOP_DIR}}/scripts/release.py" publish --build-dir "{{.DESKTOP_DIR}}/bin"
+
+  ship:
+    desc: Build, install, and publish a desktop release
+    cmds:
+      - task: release
+      - task: publish
+
+  latest:
+    desc: Download and install the newest published desktop release for this Mac
+    cmds:
+      - python3 "{{.DESKTOP_DIR}}/scripts/release.py" latest --install-dir "{{.INSTALL_DIR}}"
 
   info:
     desc: Print the installed build's release info
