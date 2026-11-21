@@ -6,6 +6,8 @@ version: "3"
 #   chore desktop:build     build RESTMail.app for this Mac
 #   chore desktop:release   build, install into ~/Applications, print the release info
 #   chore desktop:info      print the installed build's release info
+#   chore desktop:notarize  notarize and staple the last build (Developer ID builds only)
+#   chore desktop:ship      release, notarize and publish to GitHub
 #
 # A release's version is desktop/VERSION plus the repository's commit count, so every
 # build from a new commit has a higher number: 0.1.<n>. The commit and build time are
@@ -63,8 +65,7 @@ tasks:
       - /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
       - python3 scripts/release.py stamp --version "{{.APP_VERSION}}{{.APP_DIRTY}}" --commit "{{.APP_COMMIT}}{{.APP_DIRTY}}" --built "{{.APP_BUILT}}" --output bin/release.json
       - cp bin/release.json "bin/{{.APP_NAME}}.app/Contents/Resources/release.json"
-      - codesign --force --deep --sign - "bin/{{.APP_NAME}}.app"
-      - codesign --verify --deep --strict "bin/{{.APP_NAME}}.app"
+      - sh scripts/sign.sh "bin/{{.APP_NAME}}.app"
 
   release:
     desc: Build, install into ~/Applications and print the release info
@@ -87,10 +88,18 @@ tasks:
     cmds:
       - python3 "{{.DESKTOP_DIR}}/scripts/release.py" publish --build-dir "{{.DESKTOP_DIR}}/bin"
 
+  notarize:
+    desc: Notarize and staple the last build, then reinstall it (only published builds need this)
+    cmds:
+      - sh "{{.DESKTOP_DIR}}/scripts/sign.sh" --notarize "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app"
+      - rm -rf "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
+      - cp -R "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app" "{{.INSTALL_DIR}}/"
+
   ship:
-    desc: Build, install, and publish a desktop release
+    desc: Build, install, notarize where Apple allows it, and publish a desktop release
     cmds:
       - task: release
+      - task: notarize
       - task: publish
 
   latest:
