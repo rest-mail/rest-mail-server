@@ -84,6 +84,7 @@ tasks:
     dir: frontend
     sources:
       - "**/*"
+      - "../../webmail/src/**/*"
       - exclude: node_modules/**/*
     generates:
       - dist/**/*
