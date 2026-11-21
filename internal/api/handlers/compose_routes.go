@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -185,10 +186,20 @@ type updateDraftBody struct {
 // What a draft's addresses are held to, in the words of the operations that take them.
 // internal/api/handlers/draft_fields_test.go holds these words to the handlers.
 const (
-	draftRecipientsDescription = "to and cc items are described as bare addresses, internationalized or not; the handler also accepts " +
+	composeAttachmentsRefusal     = "attachments cannot be sent through this route yet"
+	composeAttachmentsDescription = " An attachments field, including null or an empty list, is refused with 422 validation_failed: " + composeAttachmentsRefusal + "."
+	draftRecipientsDescription    = "to and cc items are described as bare addresses, internationalized or not; the handler also accepts " +
 		"whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. "
 	draftSenderDescription = "any other from must be the exact address of a mailbox the caller may write to, or the answer is 403."
 )
+
+func refuseComposeAttachments(_ *http.Request, err error) error {
+	var refusal *endpoint.Error
+	if errors.As(err, &refusal) && refusal.Code == "validation_failed" && refusal.Fields["attachments"] == "not allowed" {
+		refusal.Fields["attachments"] = composeAttachmentsRefusal
+	}
+	return err
+}
 
 // RegisterCompose mounts the drafts, the scheduled sends, the calendar invitations and the
 // replies to them.
@@ -207,13 +218,15 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 	}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft",
 		OperationID: "saveDraft", Summary: "Save a new draft", Tags: []string{"Drafts"}, Status: http.StatusCreated,
+		RefuseBinding: refuseComposeAttachments,
 		Description: "Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden. " +
-			draftRecipientsDescription + "An empty from, like none, keeps the draft in the caller's own mailbox with no sender; " + draftSenderDescription,
+			draftRecipientsDescription + "An empty from, like none, keeps the draft in the caller's own mailbox with no sender; " + draftSenderDescription + composeAttachmentsDescription,
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden}, Security: writes}, h.saveDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/messages/draft/{id}",
 		OperationID: "updateDraft", Summary: "Update an existing draft", Tags: []string{"Drafts"},
+		RefuseBinding: refuseComposeAttachments,
 		Description: "Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation. " +
-			draftRecipientsDescription + "An omitted to or cc stays as it is, and an empty list clears it. An empty from clears the sender and leaves the draft in its mailbox; " + draftSenderDescription,
+			draftRecipientsDescription + "An omitted to or cc stays as it is, and an empty list clears it. An empty from clears the sender and leaves the draft in its mailbox; " + draftSenderDescription + composeAttachmentsDescription,
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
 	// Seeing or cancelling a scheduled send needs its selected sending capability.
 	sends := delegatedSendSecurity()
@@ -233,10 +246,11 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/send",
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
 		DescribedRequest: sendMessageDescription{},
+		RefuseBinding:    refuseComposeAttachments,
 		Description: "Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may " +
 			"discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, " +
 			"internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute " +
-			"ahead and within a year; null or omitted sends at once. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription,
+			"ahead and within a year; null or omitted sends at once. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription + composeAttachmentsDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
 		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "validation_failed with details.fields for binding, sender policy or scheduling rules", Type: oapifly.TypeOf[respond.ValidationErrorResponse]()}),
 		Errors:    idempotentSendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)

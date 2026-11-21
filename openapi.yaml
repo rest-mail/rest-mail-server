@@ -7440,6 +7440,8 @@ paths:
         and RFC 5322 Sender is the authenticated account’s stored address.
         Read access grants neither mode. Both modes audit the actual account,
         credential, represented mailbox and sending mode.
+        Any `attachments` field, including null or an empty list, is refused
+        with 422 `validation_failed` on `attachments`: attachments cannot be sent through this route yet.
         The sender domain's `sending_policy` decides whether the message
         carries `list_unsubscribe`: a `bulk` domain's message without it is
         refused with 422 `validation_failed` on `list_unsubscribe`, and a
@@ -7478,6 +7480,11 @@ paths:
                   to: [admin@restmail.test, someone@imap.restmail.test]
                   subject: Hello
                   body_text: Sent through the REST API.
+              attachments_not_supported:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  attachments: [{filename: report.txt, content: aGVsbG8=}]
               # No from: refused before the sender is looked up.
               from_missing:
                 value:
@@ -7649,6 +7656,14 @@ paths:
                       details:
                         fields:
                           list_unsubscribe: 'The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe'
+                attachments_not_supported:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          attachments: attachments cannot be sent through this route yet
                 from_missing:
                   value:
                     error:
@@ -8477,6 +8492,8 @@ paths:
         the signed-in account's mailbox with an empty sender. When `from` is
         supplied, the caller needs mail:write on that mailbox.
         Sender lookup and storage follow request cancellation; dependency failures return 500 rather than forbidden.
+        Any `attachments` field, including null or an empty list, is refused with 422
+        `validation_failed` on `attachments`: attachments cannot be sent through this route yet.
       requestBody:
         required: true
         content:
@@ -8493,7 +8510,36 @@ paths:
               empty:
                 summary: Start an empty draft in the signed-in account
                 value: {}
+              attachments_not_supported:
+                value:
+                  attachments: [{filename: report.txt, content: aGVsbG8=}]
       responses:
+        "422":
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                attachments_not_supported:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          attachments: attachments cannot be sent through this route yet
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
         "201":
           description: Draft saved
           content:
@@ -8562,6 +8608,8 @@ paths:
       operationId: updateDraft
       description: >-
         Update and reload commit together; a failed write/reload returns 500 and rolls back. An absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted, with omitted/null fields unchanged. Lookup/access errors remain distinct from denial and follow request cancellation.
+        Any `attachments` field, including null or an empty list, is refused with 422
+        `validation_failed` on `attachments`: attachments cannot be sent through this route yet.
       tags: [Drafts]
       security:
         - CookieAuth: [mail:write]
@@ -8575,12 +8623,43 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateDraftRequest"
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test]
-              subject: Draft, edited
-              body_text: Ready to send.
+            examples:
+              example:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  subject: Draft, edited
+                  body_text: Ready to send.
+              attachments_not_supported:
+                value:
+                  attachments: [{filename: report.txt, content: aGVsbG8=}]
       responses:
+        "422":
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                attachments_not_supported:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          attachments: attachments cannot be sent through this route yet
+          headers:
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
         "200":
           description: Draft updated
           content:
@@ -28502,6 +28581,7 @@ components:
 
     SendMessageRequest:
       type: object
+      additionalProperties: false
       # No subject is a message with an empty Subject, as the handler sends it.
       required: [from, to]
       properties:
@@ -28659,6 +28739,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     DraftRequest:
       type: object
+      additionalProperties: false
       properties:
         from:
           type: string
@@ -28690,6 +28771,7 @@ components:
 
     UpdateDraftRequest:
       type: object
+      additionalProperties: false
       properties:
         from:
           type: [string, 'null']
