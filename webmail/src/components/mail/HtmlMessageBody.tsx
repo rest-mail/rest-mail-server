@@ -129,6 +129,14 @@ export function HtmlMessageBody({ html }: { html: string }) {
   const desktop = mailPlatform().desktop;
   // Subscribing to the theme re-renders (and recomputes the palette) on switch.
   const frame = useUIStore((s) => getThemePack(s.theme).frame);
+  const [dark, setDark] = useState(() => !!window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+  useEffect(() => {
+    if (!desktop || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = () => setDark(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [desktop]);
 
   const [allowRemote, setAllowRemote] = useState(false);
   const [approvedHtml, setApprovedHtml] = useState('');
@@ -144,8 +152,8 @@ export function HtmlMessageBody({ html }: { html: string }) {
   const sanitized = useMemo(() => sanitize(html), [html]);
   const remotePresent = useMemo(() => hasRemoteResources(sanitized), [sanitized]);
   const srcDoc = useMemo(
-    () => buildSrcDoc(sanitized, remoteAllowed, frame),
-    [sanitized, remoteAllowed, frame],
+    () => buildSrcDoc(sanitized, remoteAllowed, desktop ? { scheme: dark ? 'dark' : 'light', bg: dark ? '#1b2944' : '#ffffff', fg: dark ? '#e6ebf3' : '#1a2a4a', link: dark ? '#b8c4d9' : '#2c4373', border: dark ? '#35445e' : '#e3e7ef', muted: dark ? '#b8c4d9' : '#5b6782', font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif' } : frame),
+    [sanitized, remoteAllowed, frame, desktop, dark],
   );
 
   // Auto-size the frame to its content. `allow-same-origin` (granted without
@@ -188,13 +196,13 @@ export function HtmlMessageBody({ html }: { html: string }) {
       {remotePresent && !remoteAllowed && (
         <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-2xl bg-secondary text-muted-foreground font-mono text-xs">
           <ImageOff className="w-3.5 h-3.5 shrink-0" />
-          <span className="flex-1">// remote content blocked to protect your privacy</span>
+          <span className="flex-1">{desktop ? 'Images from senders are hidden.' : '// remote content blocked to protect your privacy'}</span>
           <button
             data-testid="reader-load-images"
             onClick={() => { setApprovedHtml(html); setAllowRemote(true); }}
             className="text-primary hover:underline font-medium shrink-0"
           >
-            [load_remote_content]
+            {desktop ? 'Show images' : '[load_remote_content]'}
           </button>
         </div>
       )}

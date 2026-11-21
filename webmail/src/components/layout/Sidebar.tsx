@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal, Settings2 } from 'lucide-react';
+import { Menu, X, MoreHorizontal, Settings2, Inbox, Send, FileText, Archive, Trash2, Folder, ShieldAlert, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
@@ -29,6 +29,7 @@ function Indicator({ active }: { active: boolean }) {
 }
 
 export function Sidebar() {
+  const desktop = mailPlatform().desktop;
   const { user } = useAuthStore();
   const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, selectFolder } = useMailStore();
   const { sidebarCollapsed, toggleAccountCollapsed, setView, setSelectedAccountId, startCompose } = useUIStore();
@@ -120,7 +121,10 @@ export function Sidebar() {
   const sidebarContent = (
     <>
       {/* Logo area */}
-      <div className="h-12 flex items-center justify-between px-4 shrink-0">
+      {desktop ? <>
+        <div className="desktop-drag-region" />
+        <div className="desktop-account"><strong>{mailPlatform().serverHost?.() || 'Mail server'}</strong><span>{user?.email}</span></div>
+      </> : <div className="h-12 flex items-center justify-between px-4 shrink-0">
         <h1 className="flex items-center gap-2 font-heading-oswald text-lg font-semibold text-primary tracking-wider">
           <img
             src={mailPlatform().desktop ? '/rest-mail-icon.svg' : `${import.meta.env.BASE_URL}favicon.svg`}
@@ -137,7 +141,7 @@ export function Sidebar() {
         >
           <X className="w-4 h-4" />
         </Button>
-      </div>
+      </div>}
 
       {/* Compose button */}
       <div className="flex justify-center px-3 pb-2 shrink-0">
@@ -146,8 +150,8 @@ export function Sidebar() {
           onClick={() => startCompose()}
           className="w-[200px] h-8 rounded-2xl bg-primary flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
-          <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>
-          <span className="font-mono text-xs font-semibold text-primary-foreground">compose</span>
+          {!desktop && <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>}
+          <span className="font-mono text-xs font-semibold text-primary-foreground">{desktop ? 'New message' : 'compose'}</span>
         </button>
       </div>
 
@@ -224,6 +228,8 @@ export function Sidebar() {
                             ) : (
                               <button
                                 data-testid={`folder-${account.id}-${f.name}`}
+                                aria-current={desktop && isActive ? 'page' : undefined}
+                                data-inbox={desktop && f.name === 'INBOX' ? 'true' : undefined}
                                 onClick={() => handleFolderClick(f.name)}
                                 className={cn(
                                   "flex-1 text-left px-2.5 h-8 flex items-center gap-2 rounded-2xl transition-all duration-150 font-mono text-[13px]",
@@ -232,8 +238,8 @@ export function Sidebar() {
                                     : "text-muted-foreground hover:bg-secondary/50"
                                 )}
                               >
-                                <Indicator active={isActive} />
-                                <span className="flex-1 truncate lowercase">{f.name}</span>
+                                {desktop ? (() => { const Icon = ({ INBOX: Inbox, Sent: Send, Drafts: FileText, Archive, Trash: Trash2, Junk: ShieldAlert } as Record<string, typeof Folder>)[f.name] || Folder; return <Icon className="desktop-folder-icon" />; })() : <Indicator active={isActive} />}
+                                <span className={cn('flex-1 truncate', !desktop && 'lowercase')}>{desktop && f.name === 'INBOX' ? 'Inbox' : f.name}</span>
                                 {f.unread > 0 && (
                                   <span className="h-4 min-w-[22px] px-1.5 rounded-2xl bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center badge-glow">
                                     {f.unread}
@@ -292,7 +298,7 @@ export function Sidebar() {
                           onClick={() => setCreatingFolder(true)}
                           className="w-full text-left px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          [+ new_folder]
+                          {desktop ? 'New folder' : '[+ new_folder]'}
                         </button>
                       )}
                     </>
@@ -308,6 +314,8 @@ export function Sidebar() {
       <div className="h-px bg-border shrink-0" />
 
       {/* Bottom nav — settings shortcuts */}
+      <details open={desktop ? undefined : true} className={desktop ? 'desktop-sidebar-tools' : 'contents'}>
+      {desktop && <summary data-testid="sidebar-tools">More tools</summary>}
       <div className="px-1.5 py-1.5 space-y-px shrink-0">
         {([
           { view: 'scheduled' as const, label: 'scheduled' },
@@ -323,10 +331,11 @@ export function Sidebar() {
             className="w-full text-left px-2.5 h-[30px] flex items-center gap-2 rounded-2xl font-mono text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"
           >
             <Indicator active={false} />
-            {item.label}
+            {desktop ? item.label.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase()) : item.label}
           </button>
         ))}
       </div>
+      </details>
 
       {/* Divider */}
       <div className="h-px bg-border shrink-0" />
@@ -337,9 +346,10 @@ export function Sidebar() {
           onClick={() => { setView('addAccount'); setMobileOpen(false); }}
           className="w-full h-[30px] flex items-center justify-center rounded-2xl font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
-          [+ add_account]
+          {desktop ? 'Add account' : '[+ add_account]'}
         </button>
       </div>
+      {desktop && <button data-testid="session-signout" className="desktop-signout" onClick={() => void useAuthStore.getState().logout()}><LogOut size={16} />Sign out</button>}
     </>
   );
 
@@ -366,6 +376,7 @@ export function Sidebar() {
       {/* Sidebar panel */}
       <div
         className={cn(
+          desktop && 'desktop-sidebar',
           "h-full flex flex-col border-r bg-sidebar w-60 min-w-60",
           "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-lg max-md:transition-transform max-md:duration-200",
           mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
