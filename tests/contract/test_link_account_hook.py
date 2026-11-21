@@ -7,6 +7,8 @@ import json
 import sys
 import types
 import unittest
+
+import fixture_command
 import urllib.error
 from pathlib import Path
 from unittest.mock import patch
@@ -131,7 +133,10 @@ class ContractLinkAccountHookTests(unittest.TestCase):
             ["chore", "test:contract-link-fixture"],
             check=True,
             capture_output=True,
-            timeout=20,
+            # The bound is fixture_command's, so a cold compile on a loaded
+            # runner is a slow fixture rather than an exchange error.
+            timeout=fixture_command.TIMEOUT_SECONDS,
+            text=True,
         )
 
     def test_unlinked_fixture_is_ready_for_its_first_proof(self):
