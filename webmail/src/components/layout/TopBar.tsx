@@ -74,6 +74,7 @@ export function TopBar() {
         <div className="relative flex items-center h-8 rounded-2xl bg-background px-3 gap-2">
           <span className="text-muted-foreground text-[13px] shrink-0">🔍</span>
           <input
+            data-testid="search-input"
             ref={inputRef}
             type="text"
             placeholder="search_emails..."
