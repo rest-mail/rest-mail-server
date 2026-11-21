@@ -1,62 +1,52 @@
-# Welcome to Your New Wails3 Project!
+# REST Mail desktop
 
-Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
+The Wails application reuses `../webmail/src` through Vite and TypeScript aliases.
+Go owns authentication, the OS keychain and the relative API proxy. JavaScript
+receives identity and setup state, never access or refresh tokens.
 
-## Getting Started
+## Build and run
 
-1. Navigate to your project directory in the terminal.
+Use Node 22, pnpm, Go and the pinned Wails CLI. Node 23 is unsupported by shared
+webmail dependencies. Chore prefers Homebrew's `node@22` when installed; otherwise
+put a supported Node version first on `PATH`.
 
-2. To run your application in development mode, use the following command:
+From the repository root:
 
-   ```
-   wails3 dev
-   ```
+```sh
+chore desktop:dev
+chore desktop:build
+```
 
-   This will start your application and enable hot-reloading for both frontend and backend changes.
+Development runs with live reload. The macOS build is written to
+`desktop/bin/RESTMail.app`; building does not install or release it. Sign in with
+the server URL and account credentials. First-run accounts complete required
+password changes and authenticator enrollment before mail opens.
 
-3. To build your application for production, use:
+For fixture-only UI development without a server or keychain:
 
-   ```
-   wails3 build
-   ```
+```sh
+DESKTOP_MOCK=1 chore desktop:dev
+```
 
-   This will create a production-ready executable in the `build` directory.
+The mock is enabled only by Vite's development server and excluded from production
+builds. It does not test native authentication or setup. Wails tasks install
+frontend dependencies with pnpm.
 
-## Exploring Wails3 Features
+## Frontend validation
 
-Now that you have your project set up, it's time to explore the features that Wails3 offers:
+```sh
+pnpm --dir desktop/frontend test
+pnpm --dir desktop/frontend build
+pnpm --dir webmail test
+pnpm --dir webmail build
+cd desktop && go test ./...
+```
 
-1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
+Regenerate TypeScript bindings after changing a registered Go service:
 
-2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
-
-   ```
-   go run .
-   ```
-
-   Note: Some examples may be under development during the alpha phase.
-
-3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
-
-4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
-
-## Project Structure
-
-Take a moment to familiarize yourself with your project structure:
-
-- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
-- `main.go`: The entry point of your Go backend
-- `app.go`: Define your application structure and methods here
-- `wails.json`: Configuration file for your Wails project
-
-## Next Steps
-
-1. Modify the frontend in the `frontend/` directory to create your desired UI.
-2. Add backend functionality in `main.go`.
-3. Use `wails3 dev` to see your changes in real-time.
-4. When ready, build your application with `wails3 build`.
-
-Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+```sh
+cd desktop && wails3 generate bindings -clean=true -ts -i
+```
 
 ## Desktop automation (MCP)
 
@@ -136,7 +126,7 @@ in the installed app's `Contents/Resources/release.json`.
 and prints the version, commit and UTC build time. `chore desktop:info` prints
 the installed build's metadata. `chore desktop:latest` uses authenticated `gh`
 to download and install the newest published `desktop-v*` release (Apple Silicon
-Macs only). These helpers require Python 3; builds also require Go, Node/npm and
+Macs only). These helpers require Python 3; builds also require Go, Node/pnpm and
 the pinned Wails CLI, which the local build task installs when missing.
 Override the installation destination for testing, for example
 `DESKTOP_INSTALL_DIR=/tmp/restmail-desktop chore desktop:release`.
