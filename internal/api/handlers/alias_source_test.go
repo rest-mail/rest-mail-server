@@ -60,15 +60,19 @@ func aliasSourceValidation(fields map[string]interface{}) map[string]interface{}
 // source_address format: email, and a "@" alone let these through.
 func TestAliasCreate_MalformedSourceRefused(t *testing.T) {
 	for name, source := range map[string]string{
-		"no local part":      "@restmail.test",
-		"no domain":          "sales@",
-		"two addresses":      "sales@restmail.test, eve@restmail.test",
-		"CRLF header inject": "sales@restmail.test\r\nBcc: eve@restmail.test",
-		"LF header inject":   "sales@restmail.test\nBcc: eve@restmail.test",
-		"CR only":            "sales@restmail.test\rBcc: eve@restmail.test",
-		"invalid IDN label":  "sales@bad_domain.test",
-		"leading hyphen":     "sales@-bad.test",
-		"trailing root dot":  "münchen+shop@städte.test.",
+		"no local part":       "@restmail.test",
+		"no domain":           "sales@",
+		"two addresses":       "sales@restmail.test, eve@restmail.test",
+		"CRLF header inject":  "sales@restmail.test\r\nBcc: eve@restmail.test",
+		"LF header inject":    "sales@restmail.test\nBcc: eve@restmail.test",
+		"CR only":             "sales@restmail.test\rBcc: eve@restmail.test",
+		"invalid IDN label":   "sales@bad_domain.test",
+		"leading hyphen":      "sales@-bad.test",
+		"two ASCII root dots": "münchen+shop@städte.test..",
+		"mapped empty label":  "münchen+shop@städte.test。。",
+		"dot outside address": "Sales <sales@restmail.test>.",
+		"dot after comment":   "sales@restmail.test (Sales).",
+		"CRLF with root dot":  "\r\nsales@restmail.test.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			assertAliasSourceAnswer(t,
@@ -140,6 +144,8 @@ func TestAliasCreate_WellFormedSourceReachesLookup(t *testing.T) {
 		"subdomain and dots":  "first.last@mail.restmail.test",
 		"literal star local":  "*@restmail.test",
 		"display name parsed": "Sales <sales@restmail.test>",
+		"trailing root dot":   "münchen+shop@städte.test.",
+		"named root dot":      `Sales <"sales team"@restmail.test.>`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			raw := mustJSON(map[string]string{"source_address": source, "destination_address": "admin@restmail.test"})

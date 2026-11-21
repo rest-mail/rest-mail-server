@@ -94,6 +94,14 @@ export const useDomainStore = create<DomainState>((set, get) => ({
         method: "POST",
         body: JSON.stringify(domain),
       });
+      if (response.status === 422) {
+        const validation: JsonResponse<"createDomain", 422> | null =
+          await response.clone().json().catch(() => null);
+        const nameError = validation?.error?.details?.fields?.name;
+        if (validation?.error?.code === "validation_failed" && nameError) {
+          throw new Error(nameError);
+        }
+      }
 
       const { data } = await readJSON<JsonResponse<"createDomain", 201>>(
         response,

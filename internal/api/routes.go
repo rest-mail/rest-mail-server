@@ -70,6 +70,7 @@ type Routers struct {
 	// can move their clocks instead of waiting an hour.
 	sendLimits      *sendlimits.Service
 	recoverFailures *middleware.FailureBudget
+	signInTarpit    *middleware.SignInTarpit
 }
 
 // Close releases background resources owned by the routers — currently the trace
@@ -866,7 +867,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	})
 
 	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH, Registry: registry,
-		sendLimits: sendLimits, recoverFailures: recoverFailures}
+		sendLimits: sendLimits, recoverFailures: recoverFailures, signInTarpit: signInTarpit}
 
 	// Dedicated internal mTLS handler. Only built when enabled; served on a
 	// separate listener whose TLS layer requires a verified gateway client

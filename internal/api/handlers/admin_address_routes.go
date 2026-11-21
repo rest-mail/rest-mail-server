@@ -159,7 +159,8 @@ func (h *AliasHandler) Register(rs endpoint.Routes, checks AliasRouteChecks) {
 		Errors:      []int{http.StatusNotFound, http.StatusConflict}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapAccountsDel)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/aliases",
 		OperationID: "createAlias", Summary: "Create a new alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusCreated,
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnList(middleware.CapAccountsWrite)}}, h.create)
+		Description: "The source address must name a hosted domain. Its domain is normalized as in domain creation: one trailing ASCII dot is removed and empty labels are refused with 422 validation_failed on source_address. The destination is not rewritten.",
+		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnList(middleware.CapAccountsWrite)}}, h.create)
 }
 
 // mailboxGrantError preserves the grant API's reachable deletion refusals.
