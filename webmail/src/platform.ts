@@ -1,5 +1,7 @@
 import type { User } from './types';
 import type { SetupStep } from './components/auth/AccountAccess';
+import type { ComposeState } from './stores/uiStore';
+import type { SSEEvent } from './lib/mailStream';
 
 export interface NativeAttachment {
   filename: string;
@@ -9,6 +11,7 @@ export interface NativeAttachment {
 
 export interface MailPlatform {
   desktop?: boolean;
+  mailboxActive?: () => boolean;
   fetch?: typeof fetch;
   streamURL?: (url: string) => string;
   serverHost?: () => string;
@@ -17,6 +20,10 @@ export interface MailPlatform {
   signOut?: () => Promise<void>;
   pickAttachments?: () => Promise<NativeAttachment[]>;
   saveAttachment?: (url: string, filename: string) => Promise<void>;
+  openCompose?: (state?: ComposeState) => void;
+  nativeNotifications?: boolean;
+  onMailEvent?: (event: SSEEvent) => void;
+  registerMessageAction?: (name: string, action: () => void) => () => void;
 }
 
 let platform: MailPlatform = {};

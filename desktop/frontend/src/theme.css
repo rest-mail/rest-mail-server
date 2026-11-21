@@ -128,7 +128,7 @@ html, body, #root, .desktop-shell { font-family: -apple-system, BlinkMacSystemFo
 .desktop-reader-toolbar { height: 52px; min-height: 52px; padding: 0 16px; background: var(--sheet); border-bottom: 1px solid var(--hair); --wails-draggable: drag; }
 .desktop-reader-toolbar button { width: 28px; height: 28px; background: transparent; color: var(--muted-foreground); --wails-draggable: no-drag; }
 .desktop-reader-toolbar button:hover { background: var(--well); color: var(--foreground); }
-.desktop-reader-content { padding: 24px; max-width: calc(72ch + 48px); margin: 0 auto; }
+.desktop-reader-content { padding: 24px; width: 100%; max-width: none; margin: 0; }
 .desktop-reader-content h2 { font-family: inherit; font-size: 20px; font-weight: 600; letter-spacing: normal; text-transform: none; line-height: 28px; }
 .desktop-reader-content .text-xs { font-size: 13px; }
 .desktop-reader-content .font-medium { font-weight: 600; }
@@ -152,3 +152,20 @@ html, body, #root, .desktop-shell { font-family: -apple-system, BlinkMacSystemFo
 /* A quiet secondary action under a sheet's primary button. */
 .desktop-text-button { display: block; margin: 16px auto 0; padding: 4px 8px; background: none; border: none; color: var(--deep); font-size: 13px; font-weight: 500; cursor: pointer; }
 .desktop-text-button:hover { text-decoration: underline; }
+.desktop-tabs { height: 100%; display: flex; flex-direction: column; }
+.desktop-tab-strip { display: flex; align-items: stretch; flex-shrink: 0; height: 42px; padding: 6px 8px 0 84px; gap: 4px; background: var(--well); border-bottom: 1px solid var(--hair); overflow-x: auto; --wails-draggable: drag; }
+.desktop-tab-strip button { --wails-draggable: no-drag; background: transparent; padding: 6px 14px; white-space: nowrap; color: var(--muted-foreground); }
+.desktop-tab-strip > [aria-selected="true"], .desktop-draft-tab[data-active="true"] { background: var(--sheet); color: var(--foreground); border-radius: 7px 7px 0 0; box-shadow: 0 0 0 1px var(--hair); }
+.desktop-draft-tab { display: flex; min-width: 120px; max-width: 250px; align-items: center; }
+.desktop-draft-tab > [role="tab"] { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.desktop-draft-tab > button:last-child { padding: 2px 9px; margin-right: 4px; font-size: 18px; }
+.desktop-tab-panel { flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+.desktop-tab-panel[hidden] { display: none; }
+.desktop-tab-panel > .desktop-compose { height: 100%; width: 100%; }
+.desktop-compose .ProseMirror { max-width: none; width: 100%; }
+.desktop-tabs.file-drop-target-active { outline: 3px solid var(--signal); outline-offset: -5px; }
+.desktop-tabs.file-drop-target-active::after { content: 'Drop files to attach'; position: absolute; z-index: 100; inset: 50% auto auto 50%; transform: translate(-50%, -50%); padding: 20px 32px; border: 2px dashed var(--deep); border-radius: 12px; background: var(--well); color: var(--ink); box-shadow: 0 8px 32px #1a2a4a30; pointer-events: none; }
+.desktop-attachment-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.desktop-attachment-chip { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: var(--well); border: 1px solid var(--hair); border-radius: 16px; }
+.desktop-attachment-chip small { color: var(--muted-foreground); }
+.desktop-attachment-chip button { padding: 0 4px; font-size: 17px; }

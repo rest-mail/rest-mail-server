@@ -17,7 +17,7 @@ func TestMCPConfigurationFailureDoesNotExitApp(t *testing.T) {
 	os.Args = []string{"RESTMail", "--mcp", "--mcp-port=invalid"}
 	var output bytes.Buffer
 	log.SetOutput(&output)
-	stop := startMCP(nil, nil, nil)
+	stop := startMCP(nil, nil, nil, nil)
 	stop()
 	if !strings.Contains(output.String(), "continuing without MCP") {
 		t.Fatalf("startup failure not logged: %s", output.String())
