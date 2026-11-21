@@ -23,6 +23,7 @@ Usage: own_data.py <vertrag-run.yml> <out.yml>
        own_data.py --endpoint <vertrag-own-data.yml>
 """
 
+import argparse
 import sys
 import xml.etree.ElementTree as ET
 
@@ -363,11 +364,16 @@ MOVED = (
 # literal stream the live server never sends, compared byte for byte (#1385).
 # disposable_data is resetTestData's and restoreTestSnapshot's: what each wipes
 # was made for it by its own reset, and no exchange after it needs that.
-PROVIDES = {"state": ["calendar_invitation", "disposable_data"]}
+PROVIDES = {"state": ["calendar_invitation", "disposable_data", "held_message"]}
 
 
-def configure(config):
-    config["operation-id"] = list(MOVED)
+def configure(config, operations=None):
+    if operations is not None and (not operations or set(operations) - set(MOVED)):
+        raise ValueError("select at least one operation from the own-data phase")
+    # Vertrag unions CLI operation IDs with these configured ones, so keeping
+    # all of MOVED here would silently undo an explicit alone selection.
+    config["operation-id"] = [operation for operation in MOVED
+                              if operations is None or operation in operations]
     config.pop("surface", None)
     provides = config.get("provides") or {}
     for key, values in PROVIDES.items():
@@ -398,16 +404,19 @@ def main(argv):
         with open(argv[1]) as stream:
             print(yaml.safe_load(stream)["endpoint"])
         return 0
-    if len(argv) != 2:
+    if len(argv) < 2:
         sys.exit(
             "usage: own_data.py <vertrag-run.yml> <out.yml> | --check <own-data.xml>"
             " | --endpoint <vertrag-own-data.yml>"
         )
-    source, out = argv
+    source, out = argv[:2]
+    selection = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    selection.add_argument("--operation-id", "-operation-id", action="append")
+    selected = selection.parse_args(argv[2:])
     with open(source) as stream:
         config = yaml.safe_load(stream)
     with open(out, "w") as stream:
-        yaml.safe_dump(configure(config), stream, sort_keys=False, allow_unicode=True)
+        yaml.safe_dump(configure(config, selected.operation_id), stream, sort_keys=False, allow_unicode=True)
     return 0
 
 

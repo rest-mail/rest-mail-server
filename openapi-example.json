@@ -15043,6 +15043,90 @@
         "mediaType": "application/json"
       }
     },
+    "empty_note_only": {
+      "summary": "An empty note does not supply a sender or recipients",
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "body_text": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required",
+                "to": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty_recipients_only": {
+      "summary": "An empty recipient list supplies neither a sender nor a recipient",
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "to": []
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required",
+                "to": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty_sender_only": {
+      "summary": "An empty sender supplies neither a sender nor a recipient",
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required",
+                "to": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "example": {
       "summary": "The operation's example",
       "request": {
@@ -15232,6 +15316,32 @@
         "mediaType": "application/json"
       }
     },
+    "missing_all": {
+      "summary": "Forwarding requires a sender and at least one recipient",
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required",
+                "to": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "not_authorized": {
       "requires": {
         "principal": "without_capability"
@@ -15255,6 +15365,62 @@
           "error": {
             "code": "message_not_found",
             "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "on_behalf_false_only": {
+      "summary": "Disabling delegation does not supply a sender or recipients",
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "on_behalf": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required",
+                "to": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "on_behalf_true_only": {
+      "summary": "Requesting delegation does not supply a sender or recipients",
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "on_behalf": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required",
+                "to": "required"
+              }
+            }
           }
         },
         "mediaType": "application/json"

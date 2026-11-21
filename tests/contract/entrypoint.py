@@ -48,6 +48,8 @@ contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])
 postmaster = runpy.run_path(str(directory / "postmaster_hooks.py"))
 postmaster["register_postmaster_hooks"](shared["mfa_admin_token"])
+held_release = runpy.run_path(str(directory / "held_release_hooks.py"))
+held_release["register_held_release_hooks"](shared)
 # Last, so that it sees the body every hook above leaves.
 lost = runpy.run_path(str(directory / "lost_probes.py"))
 lost["register_lost_probe_count"]()

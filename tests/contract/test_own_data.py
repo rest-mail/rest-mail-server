@@ -326,6 +326,30 @@ def description_operations(description):
 
 
 class Selection(unittest.TestCase):
+    def test_explicit_operation_selection_really_runs_alone(self):
+        # Vertrag unions CLI operation IDs with the configured IDs. A full
+        # MOVED list here would silently undo the caller's alone selection.
+        self.assertEqual(own_data.configure({}, ["getDomain"])["operation-id"], ["getDomain"])
+        self.assertEqual(
+            set(own_data.configure({}, ["createFolder", "releaseHeldMessage"])["operation-id"]),
+            {"createFolder", "releaseHeldMessage"},
+        )
+        with self.assertRaises(ValueError):
+            own_data.configure({}, ["notAnOwnDataOperation"])
+        with self.assertRaises(ValueError):
+            own_data.configure({}, [])
+
+    def test_cli_keeps_explicit_selection_and_rejects_unknown_extra_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, out = Path(directory) / "source.yml", Path(directory) / "out.yml"
+            source.write_text("{}")
+            for option in (["--operation-id", "getDomain"], ["--operation-id=getDomain"],
+                           ["-operation-id", "getDomain"]):
+                self.assertEqual(own_data.main([str(source), str(out), *option]), 0)
+                self.assertEqual(yaml.safe_load(out.read_text())["operation-id"], ["getDomain"])
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                own_data.main([str(source), str(out), "--unknown-option"])
+
     def test_the_run_is_narrowed_to_these_operations(self):
         config = {
             "exclude-operation-id": [],
@@ -347,11 +371,11 @@ class Selection(unittest.TestCase):
         out = own_data.configure({"provides": {"principal": ["anonymous"], "state": ["x"]}})
         self.assertEqual(
             out["provides"],
-            {"principal": ["anonymous"], "state": ["calendar_invitation", "disposable_data", "x"]},
+            {"principal": ["anonymous"], "state": ["calendar_invitation", "disposable_data", "held_message", "x"]},
         )
         self.assertEqual(
             own_data.configure({"provides": {}})["provides"],
-            {"state": ["calendar_invitation", "disposable_data"]},
+            {"state": ["calendar_invitation", "disposable_data", "held_message"]},
         )
 
     def test_each_provided_state_is_only_the_moved_examples_its_hooks_make(self):
@@ -370,6 +394,7 @@ class Selection(unittest.TestCase):
             {
                 ("respondToCalendar", "accepted"),
                 ("respondToCalendar", "foreign_sender"),
+                ("releaseHeldMessage", "released"),
                 ("resetTestData", "admin"),
                 ("restoreTestSnapshot", "admin"),
                 ("restoreTestSnapshot", "unknown_field"),

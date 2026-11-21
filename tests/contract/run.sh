@@ -36,6 +36,9 @@ gate | authorization | ownership | fuzz | own-data)
   ;;
 esac
 select=("$@")
+if [ "$phase" = own-data ] && [ "${select[0]:-}" = --isolation ]; then
+  exec python3 -B tests/contract/fixture_isolation.py "${select[@]:1}"
+fi
 narrowed=()
 if [ ${#select[@]} -gt 0 ]; then
   narrowed=(--narrowed)
@@ -239,7 +242,19 @@ ownership)
   exit "$code"
   ;;
 own-data)
-  python3 -B tests/contract/own_data.py "$out/vertrag-run.yml" "$out/vertrag-own-data.yml"
+  # Vertrag unions operation IDs from flags and configuration. Restrict the
+  # configuration first, or an "alone" selection still sends all of MOVED.
+  own_select=()
+  for ((i = 0; i < ${#select[@]}; i++)); do
+    case "${select[$i]}" in
+    --operation-id | -operation-id)
+      own_select+=("${select[$i]}" "${select[$((i + 1))]:?operation-id needs a value}")
+      i=$((i + 1))
+      ;;
+    --operation-id=* | -operation-id=*) own_select+=("${select[$i]}") ;;
+    esac
+  done
+  python3 -B tests/contract/own_data.py "$out/vertrag-run.yml" "$out/vertrag-own-data.yml" "${own_select[@]}"
   python3 -B tests/contract/reports.py "$out/vertrag-own-data.yml" "$out/vertrag-own-data.yml" "$out/own-data" --narrowed
   code=0
   # The hooks reset and make their data on the run's endpoint, also for the
