@@ -14125,6 +14125,7 @@ paths:
         - BearerAuth: [accounts:write]
         - APIKeyAuth: [accounts:write]
       summary: Create a new alias
+      description: The source address must name a hosted domain. Its domain is normalized as in domain creation; one trailing ASCII dot is removed and empty labels return 422 validation_failed on source_address. The destination is not rewritten.
       requestBody:
         required: true
         content:

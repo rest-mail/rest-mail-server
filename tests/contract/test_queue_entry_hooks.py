@@ -8,6 +8,8 @@ import subprocess
 import sys
 import types
 import unittest
+
+import fixture_command
 from pathlib import Path
 from unittest.mock import patch
 
@@ -104,7 +106,7 @@ class QueueEntryHooks(unittest.TestCase):
             ["chore", "test:contract-queue-entry-fixture"],
             check=True,
             capture_output=True,
-            timeout=20,
+            timeout=fixture_command.TIMEOUT_SECONDS,
             text=True,
         )
 

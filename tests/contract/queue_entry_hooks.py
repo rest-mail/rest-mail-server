@@ -2,21 +2,15 @@
 
 import json
 import re
-import subprocess
 
+import fixture_command
 import vertrag_hooks as hooks
 from coverage_target_hooks import coverage_placeholder, replace_path
 
 
 def a_disposable_queue_entry():
     """The id of a new held entry, made without changing any other fixture."""
-    completed = subprocess.run(
-        ["chore", "test:contract-queue-entry-fixture"],
-        check=True,
-        capture_output=True,
-        timeout=20,
-        text=True,
-    )
+    completed = fixture_command.run("test:contract-queue-entry-fixture")
     for line in completed.stdout.splitlines():
         if not line.startswith("QUEUE_ENTRY_FIXTURE="):
             continue

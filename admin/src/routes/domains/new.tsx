@@ -17,35 +17,12 @@ function NewDomainPage() {
     name: "",
     server_type: "traditional",
   });
-  const [validationError, setValidationError] = useState("");
-
-  const validateDomainName = (domain: string): boolean => {
-    // Basic domain validation
-    const domainRegex =
-      /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i;
-    return domainRegex.test(domain);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    setValidationError("");
 
     if (!isAuthenticated || !accessToken) {
       navigate({ to: "/login" });
-      return;
-    }
-
-    // Validate domain name
-    if (!formData.name.trim()) {
-      setValidationError("Domain name is required");
-      return;
-    }
-
-    if (!validateDomainName(formData.name)) {
-      setValidationError(
-        "Please enter a valid domain name (e.g., example.com)",
-      );
       return;
     }
 
@@ -74,7 +51,7 @@ function NewDomainPage() {
       </div>
 
       {/* Error Message */}
-      {(error || validationError) && (
+      {error && (
         <div className="mb-6">
           <div
             className="p-4 border flex items-center justify-between"
@@ -84,12 +61,9 @@ function NewDomainPage() {
               color: "#DC2626",
             }}
           >
-            <span className="text-sm">{error || validationError}</span>
+            <span className="text-sm">{error}</span>
             <button
-              onClick={() => {
-                clearError();
-                setValidationError("");
-              }}
+              onClick={clearError}
               className="text-sm font-medium"
               style={{ color: "#DC2626" }}
             >
@@ -124,18 +98,17 @@ function NewDomainPage() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      name: e.target.value.toLowerCase(),
+                      name: e.target.value,
                     })
                   }
                   placeholder="example.com"
-                  required
                   className="w-full outline-none text-sm"
                   style={{ color: "var(--black-soft)" }}
                 />
               </div>
               <p className="text-xs" style={{ color: "var(--gray-secondary)" }}>
-                Enter the domain name you want to use for email (e.g.,
-                example.com)
+                Enter a fully qualified domain name (e.g., example.com). One
+                trailing dot is allowed.
               </p>
             </div>
 

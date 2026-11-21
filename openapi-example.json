@@ -5889,7 +5889,7 @@
     "domain_missing": {
       "request": {
         "body": {
-          "source_address": "sales@missing.test",
+          "source_address": "sales@missing.test.",
           "destination_address": "new@destination.test"
         }
       },
@@ -5923,10 +5923,10 @@
       }
     },
     "found": {
-      "description": "Production registration, JWT/scoped-key checks, current holder grants and CSRF precede mutation. The source domain is the authority boundary; mailbox and destination-domain grants cannot configure an alias. Loaded domain fields additionally require domains:read; creation has no loaded association. Controlled SQL proves wiring, not PostgreSQL uniqueness/durability or mail routing.",
+      "description": "Production registration, JWT/scoped-key checks, current holder grants and CSRF precede mutation. The source domain is the authority boundary; a trailing root dot is removed before the authority check and lookup. Mailbox and destination-domain grants cannot configure an alias. Loaded domain fields additionally require domains:read; creation has no loaded association. Controlled SQL proves wiring, not PostgreSQL uniqueness/durability or mail routing.",
       "request": {
         "body": {
-          "source_address": "sales@restmail.test",
+          "source_address": "sales@restmail.test.",
           "destination_address": "new@destination.test"
         }
       },

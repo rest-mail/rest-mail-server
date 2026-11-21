@@ -89,7 +89,8 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 	// The source must be one mail address, including internationalized identities,
 	// before its domain is looked up (#388): an "@" alone let "@domain",
 	// "local@", two addresses and CR/LF-injected values through.
-	if rmail.ValidateAddress(req.SourceAddress) != nil {
+	parsed, domainName, err := parseAliasSource(req.SourceAddress)
+	if err != nil {
 		return Alias{}, endpoint.Invalid(map[string]string{"source_address": "must be a valid email address"})
 	}
 
@@ -97,13 +98,7 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 	// display names and normalize the local identity before storing it so the
 	// recipient checks can find aliases submitted in an equivalent spelling.
 	// Destinations are remote addresses and must retain their original spelling.
-	parsed, _ := mail.ParseAddress(req.SourceAddress) // validated above
 	at := strings.LastIndexByte(parsed.Address, '@')
-	domainName, err := rmail.DomainASCII(parsed.Address[at+1:])
-	if err != nil {
-		return Alias{}, endpoint.Invalid(map[string]string{"source_address": "must be a valid email address"})
-	}
-	domainName = strings.TrimSuffix(domainName, ".")
 	parsed.Name = ""
 	parsed.Address = norm.NFC.String(strings.ToLower(parsed.Address[:at])) + "@" + domainName
 	// Address.String preserves quoting where the parsed local part needs it.
@@ -135,6 +130,38 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 	}
 
 	return aliasOf(alias), nil
+}
+
+func parseAliasSource(source string) (*mail.Address, string, error) {
+	dotlessEnd := ""
+	if err := rmail.ValidateAddress(source); err != nil {
+		candidate := strings.TrimRight(source, " ")
+		if bare, found := strings.CutSuffix(candidate, ".>"); found {
+			dotlessEnd = bare
+			source = bare + ">"
+		} else if bare, found := strings.CutSuffix(candidate, "."); found {
+			dotlessEnd = bare
+			source = bare
+		} else {
+			return nil, "", err
+		}
+		if err := rmail.ValidateAddress(source); err != nil {
+			return nil, "", err
+		}
+	}
+	parsed, err := mail.ParseAddress(source)
+	if err != nil {
+		return nil, "", err
+	}
+	name := parsed.Address[strings.LastIndexByte(parsed.Address, '@')+1:]
+	if dotlessEnd != "" {
+		if !strings.HasSuffix(dotlessEnd, name) {
+			return nil, "", errors.New("root dot must follow the source domain")
+		}
+		name += "."
+	}
+	domain, err := validateDomainName(name)
+	return parsed, domain, err
 }
 
 func (h *AliasHandler) get(r *http.Request, in adminAddressPath) (Alias, error) {

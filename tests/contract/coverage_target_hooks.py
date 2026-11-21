@@ -5,13 +5,13 @@ Only paths change: rewriting a generated body would discard its probe.
 
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
+import fixture_command
 import vertrag_hooks as hooks
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -183,13 +183,7 @@ def register_coverage_target_hooks(shared):
         replace_path(transaction, "/api/v1/admin/certificates/" + str(created["id"]))
 
     def replenish_held_mail():
-        completed = subprocess.run(
-            ["chore", "test:contract-held-mail-fixture"],
-            check=True,
-            capture_output=True,
-            timeout=20,
-            text=True,
-        )
+        completed = fixture_command.run("test:contract-held-mail-fixture")
         for line in completed.stdout.splitlines():
             if line.startswith("HELD_MAIL_FIXTURE="):
                 targets = json.loads(line.partition("=")[2])

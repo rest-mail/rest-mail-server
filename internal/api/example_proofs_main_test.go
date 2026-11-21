@@ -16,14 +16,14 @@ import (
 // and drops the migrated template database the scratch databases copy. Routers
 // built here keep their push routes but start no dispatcher; internal/push tests
 // the dispatcher itself. Fixtures hash at the lowest bcrypt cost: nothing here
-// depends on the cost, internal/auth proves the production one, and at that cost
-// the session fixtures alone took a shard past its timeout (#1942).
+// depends on the cost except the credential-hardening subprocess, and at the
+// production cost the session fixtures alone took a shard past its timeout (#1942).
 func TestMain(m *testing.M) {
-	auth.UseMinimumHashCostInTests()
+	if os.Getenv(credentialHardeningBcryptEnv) != "1" {
+		auth.UseMinimumHashCostInTests()
+		auth.LowerPasswordCostForTests(bcrypt.MinCost)
+	}
 	startPushDispatcher = func(*push.Dispatcher) {}
-	// Sign-ins here upgrade their fixtures' cheap hashes unless this binary's
-	// cost is as low; the race detector makes the real cost far too slow.
-	auth.LowerPasswordCostForTests(bcrypt.MinCost)
 	code := m.Run()
 	dropMigratedTemplate()
 	if err := examplepairs.WriteProofs(); err != nil {

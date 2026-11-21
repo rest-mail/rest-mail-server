@@ -3,6 +3,8 @@
 import copy
 import subprocess
 import unittest
+
+import fixture_command
 from unittest.mock import call, patch
 
 from test_hooks_example_state import load_hooks
@@ -26,11 +28,9 @@ class QueueRetryHookTests(unittest.TestCase):
         with patch.object(self.hooks, "fixture_call", side_effect=[
             {"recipient": self.recipient, "status": "bounced"},
             {"items": [{"id": 42}]},
-        ]) as api, patch.object(self.hooks.subprocess, "run") as prepare:
+        ]) as api, patch.object(self.hooks.fixture_command, "run") as prepare:
             self.hooks.retry_a_held_entry_after_bulk_examples(transaction)
-        prepare.assert_called_once_with(
-            ["chore", "test:contract-retry-fixture"], check=True, capture_output=True, timeout=20,
-        )
+        prepare.assert_called_once_with("test:contract-retry-fixture")
         self.assertEqual(api.call_args_list, [
             call(transaction, "GET", "/api/v1/admin/queue/10", expect=(404, 422)),
             call(transaction, "GET", "/api/v1/admin/queue?recipient=contract-retry%40retry.invalid&status=deferred"),
