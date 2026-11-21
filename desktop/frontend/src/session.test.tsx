@@ -5,10 +5,12 @@ import { Call } from '@wailsio/runtime';
 import { session, type SessionBinding } from './session';
 import { SignIn } from './SignIn';
 import { useAuthStore } from '@webmail/stores/authStore';
+const setupMethods = { ChangePassword: vi.fn(), EnrollTwoFactor: vi.fn(), ConfirmTwoFactor: vi.fn() };
 
 describe('native Session integration', () => {
   it('adds HTTPS for a bare server host and reports credential errors inline', async () => {
     const binding: SessionBinding = {
+      ...setupMethods,
       SignIn: vi.fn().mockRejectedValue(new Error('401 Unauthorized')), SubmitTOTP: vi.fn(), Status: vi.fn(), SignOut: vi.fn(),
     };
     render(<SignIn session={binding} />);
@@ -25,10 +27,14 @@ describe('native Session integration', () => {
     await session.SubmitTOTP('123456'); expect(Call.ByName).toHaveBeenCalledWith('main.Session.SubmitTOTP', '123456');
     await session.Status(); expect(Call.ByName).toHaveBeenCalledWith('main.Session.Status');
     await session.SignOut(); expect(Call.ByName).toHaveBeenCalledWith('main.Session.SignOut');
+    await session.ChangePassword('old password', 'new password'); expect(Call.ByName).toHaveBeenCalledWith('main.Session.ChangePassword', 'old password', 'new password');
+    await session.EnrollTwoFactor(); expect(Call.ByName).toHaveBeenCalledWith('main.Session.EnrollTwoFactor');
+    await session.ConfirmTwoFactor('123456'); expect(Call.ByName).toHaveBeenCalledWith('main.Session.ConfirmTwoFactor', '123456');
   });
   it('shows the TOTP challenge and accepts the native identity, never a token', async () => {
     useAuthStore.setState({ user: null, isAuthenticated: false });
     const binding: SessionBinding = {
+      ...setupMethods,
       SignIn: vi.fn().mockResolvedValue({ NeedsTOTP: true }), SubmitTOTP: vi.fn().mockResolvedValue(undefined),
       Status: vi.fn().mockResolvedValue({ SignedIn: true, Server: 'https://mail.test', Email: 'chris@test.invalid' }), SignOut: vi.fn(),
     };

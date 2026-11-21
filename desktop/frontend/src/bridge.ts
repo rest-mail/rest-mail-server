@@ -6,15 +6,16 @@ export interface BridgeOptions {
   navigate: (route: string) => void | Promise<void>;
   screenshot: () => Promise<string>;
 }
-const interactive = 'button, input, select, textarea, a[href], [contenteditable="true"], [role="button"], [role="menuitem"], [role="checkbox"], [tabindex="0"]';
+const interactive = 'button, input, select, textarea, summary, a[href], [contenteditable="true"], [role="button"], [role="menuitem"], [role="checkbox"], [tabindex="0"]';
 const slug = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+const sensitive = (element: HTMLElement) => !!element.closest('[data-ui-sensitive]') || !!element.querySelector('[data-ui-sensitive]') || element instanceof HTMLInputElement && element.type === 'password';
 
 export function tagInteractiveElements(root: Document = document) {
   const counts = new Map<string, number>();
   const used = new Set([...root.querySelectorAll<HTMLElement>('[data-testid]')].map(element => element.dataset.testid));
   for (const element of root.querySelectorAll<HTMLElement>(interactive)) {
     if (element.dataset.testid) continue;
-    const label = element.getAttribute('aria-label') || element.getAttribute('title') || element.getAttribute('name') || element.getAttribute('placeholder') || element.textContent || element.tagName;
+    const label = element.getAttribute('aria-label') || element.getAttribute('title') || element.getAttribute('name') || element.getAttribute('placeholder') || (sensitive(element) ? 'protected control' : element.textContent) || element.tagName;
     const base = `control-${slug(label) || element.tagName.toLowerCase()}`;
     let count = (counts.get(base) ?? 0) + 1;
     while (used.has(count === 1 ? base : `${base}-${count}`)) count++;
@@ -41,7 +42,7 @@ export async function handleUIRequest(request: UIRequest, options: BridgeOptions
       route: options.route(), title: document.title,
       elements: [...document.querySelectorAll<HTMLElement>('[data-testid]')].map(element => ({
         testId: element.dataset.testid, role: element.getAttribute('role') || element.tagName.toLowerCase(),
-        text: element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 250) || element.getAttribute('placeholder') || '',
+        text: sensitive(element) ? '[redacted]' : element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 250) || element.getAttribute('placeholder') || '',
         enabled: !element.matches(':disabled, [aria-disabled="true"]'),
       })),
     };
@@ -66,7 +67,7 @@ export async function handleUIRequest(request: UIRequest, options: BridgeOptions
       await options.navigate(args.route); return { route: options.route() };
     case 'readText': {
       const element = target(args.testId);
-      return { text: element instanceof HTMLInputElement && element.type !== 'password' ? element.value : element.textContent?.trim() || '' };
+      return { text: sensitive(element) ? '[redacted]' : element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement ? element.value : element.textContent?.trim() || '' };
     }
     case 'screenshot': return { data: await options.screenshot() };
     default: throw new Error(`Unsupported UI action: ${request.action}`);
