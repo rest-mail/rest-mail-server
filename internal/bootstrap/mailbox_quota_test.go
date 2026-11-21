@@ -39,12 +39,12 @@ func TestBootstrapQuotaFailureRollsBackMailbox(t *testing.T) {
 	const callback = "test:reject-bootstrap-quota"
 	if err := database.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
 		if tx.Statement.Table == "quota_usage" {
-			tx.AddError(errors.New("quota storage unavailable"))
+			_ = tx.AddError(errors.New("quota storage unavailable"))
 		}
 	}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Callback().Create().Remove(callback) })
+	t.Cleanup(func() { _ = database.Callback().Create().Remove(callback) })
 	if _, err := EnsureFirstAdmin(database, "postmaster@example.com", strongPassword, true, t0); err == nil || !strings.Contains(err.Error(), "quota storage unavailable") {
 		t.Fatalf("bootstrap must refuse a failed quota insert: %v", err)
 	}
