@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"strings"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -41,6 +42,30 @@ func TestScreenshotFallsBackToBridgeAndLogsReason(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(server.logs.Recent(10), "\n"), "screen recording permission denied") {
 		t.Fatal("native failure reason missing from app_logs")
+	}
+}
+
+// TestScreenshotFallbackGetsItsOwnDeadline covers a native capture that uses
+// up its whole deadline: the bridge fallback must still get a live one.
+func TestScreenshotFallbackGetsItsOwnDeadline(t *testing.T) {
+	var buffer bytes.Buffer
+	png.Encode(&buffer, image.NewRGBA(image.Rect(0, 0, 4, 3)))
+	bridge := NewBridge(func(UIRequest) {})
+	// The webview answers on its own schedule, as the real event round trip does.
+	bridge.emit = func(request UIRequest) {
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			bridge.Respond(UIResponse{ID: request.ID, OK: true, Result: map[string]any{"data": base64.StdEncoding.EncodeToString(buffer.Bytes())}})
+		}()
+	}
+	slowCapture := func(ctx context.Context) ([]byte, error) {
+		<-ctx.Done()
+		return nil, errors.New("native window capture failed: signal: killed")
+	}
+	_, discovery := startTestServer(t, Options{UI: bridge, Timeout: 300 * time.Millisecond, Screenshot: slowCapture})
+	result := call(t, connect(t, discovery), "ui_screenshot", map[string]any{})
+	if result.IsError {
+		t.Fatalf("fallback inherited the spent native deadline: %s", resultText(t, result))
 	}
 }
 
