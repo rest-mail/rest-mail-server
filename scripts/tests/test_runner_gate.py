@@ -30,7 +30,11 @@ POOL = "antimatter-vps-linux-x64"
 HOSTED = "ubuntu-latest"
 # Where every gate job runs, and the workflows whose jobs ask it.
 GATE_LABEL = "antimatter-vps-gate"
-GATED_WORKFLOWS = {"ci.yml", "e2e.yml", "e2e-suite.yml"}
+GATED_WORKFLOWS = {"ci.yml", "e2e.yml", "e2e-suite.yml", "desktop.yml"}
+NATIVE_DESKTOP_HOSTED = {
+    ("desktop.yml", "macos"): "macos-latest",
+    ("desktop.yml", "windows"): "windows-latest",
+}
 # The class a gate asks for, by what the job ran on before it was gated.
 CLASSES = {
     "ubuntu-latest": "linux-x64", "ubuntu-24.04": "linux-x64", "ubuntu-24.04-arm": "linux-arm64",
@@ -286,7 +290,7 @@ class GateJobs(unittest.TestCase):
         for name, document in gated_workflows():
             jobs = document["jobs"]
             for job_id, job in jobs.items():
-                if is_gate(job) or "uses" in job:
+                if is_gate(job) or "uses" in job or (name, job_id) in NATIVE_DESKTOP_HOSTED:
                     continue
                 yield name, jobs, job_id, job, jobs.get(f"{job_id}-gate")
 
@@ -406,6 +410,9 @@ class GateJobs(unittest.TestCase):
                 with self.subTest(workflow=name, job=job_id):
                     if "uses" in job:
                         self.assertNotIn("runs-on", job)
+                    elif (name, job_id) in NATIVE_DESKTOP_HOSTED:
+                        self.assertEqual(job["runs-on"], NATIVE_DESKTOP_HOSTED[(name, job_id)],
+                                         "only native macOS and Windows desktop builds need hosted exceptions")
                     elif not is_gate(job):
                         self.assertIn(f"{job_id}-gate", job["runs-on"])
 
