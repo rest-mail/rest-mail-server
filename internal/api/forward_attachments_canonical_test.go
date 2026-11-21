@@ -82,6 +82,14 @@ func TestForwardAttachmentsCanonicalExamples(t *testing.T) {
 			if w.Code != tc.status {
 				t.Fatalf("got%d want%d: %s", w.Code, tc.status, w.Body)
 			}
+			if tc.name == "attachment_write_failed" {
+				if !f.c.failed || len(f.c.state.messages) != 0 || len(f.c.attachments) != 0 || len(f.c.queue) != 0 || f.c.state.quota != 0 {
+					t.Fatal("attachment write fault was not reached or left partial forward state")
+				}
+				if control := newForwardFixture(t, "").request(t); control.Code != 201 {
+					t.Fatalf("the same attachment forward without a database fault returned %d: %s", control.Code, control.Body)
+				}
+			}
 			response := normalizeForwardExample(t, f, w.Code, w.Body.Bytes())
 			pair := oapifly.ExamplePair{Request: oapifly.ExampleRequest{Path: map[string]any{"id": 7}, Body: forwardExampleRequest, MediaType: "application/json"}, Response: oapifly.ExampleResponse{Status: w.Code, Body: response, MediaType: "application/json"}}
 			recorded["forwardMessage"][tc.name] = pair

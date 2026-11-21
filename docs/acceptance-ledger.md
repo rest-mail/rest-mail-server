@@ -177,12 +177,18 @@ that moves the count. The rest need harnesses and decisions first.
 | AC02 conventions decided and enforced | R | decision matrix + tests |
 | AC03 named pairs, including deliberate schema violations | **P** | strict areas for all 234 operations |
 | AC04 examples depend on the state they claim | R | setup + setup-removed controls |
-| AC05 audit and forward successes survive full compilation | H | needs a real audit chain |
+| AC05 audit and forward successes survive full compilation | R + H | **Proven locally by this car:** both descriptions compile the audit reads and forward refusals; the ordinary forward is selected without a fault and persists through the production router and PostgreSQL. The live audit chain and scoped fresh-MFA topology exchange were not rerun here. |
 | AC06 final proof records exact executed coverage | **P** | `coverage()` counts each population |
 | AC01 each exchange isolated prerequisites | H | per-exchange reset on one server |
 | AC02 setup preserves identity, scopes, MFA | H | real sessions |
 | AC03 held-message release is a persisted transition | H | real budget exhaustion |
 | AC04 pacing covers minute/hour and session lifetime | H | deterministic clocks on a live server |
+
+**AC05 local evidence (#2084, #2085, #2086).** `TestAuditVerificationCompilesSuccessWithVertrag` pins `verifyAuditLog/found` (200), `verifyAuditLog/invalid_anchor` (422), and `listAuditEntries/available` (200) in the untouched full production and test descriptions. Removing the historical valid-anchor illustration reproduces `OK=0, invalid anchor Unprocessable Entity=1`; restoring the illustration returns one of each. Removing the named ordinary forward path reproduces `ordinary forward success incorrectly requires map[fault:database]` and selects zero 201s on Vertrag 0.45.0. `TestForwardSuccessRetainsIndependentRequirementsWithVertrag` selects one 201 with the current path on both 0.45.0 and the 0.47.0 pin; `TestComposeNamedExamples/forwardMessage/example` sends it to the published source ID and checks persisted Sent/queue results.
+
+- `TestForwardRequestSchemaMatchesRequiredEnvelope` and `TestForwardHistoricalExamplesCompileWithVertrag` pin the six 422 pairs by name, request body, and status. Removing the description-only forward request override reproduces `forward schema accepts …: got true, want false` for all six in both registrations. The repaired description rejects all six via `required`, also `minItems` for an empty recipient list and `format: idn-email` for an empty sender (`minLength: 1` is declared and checked separately).
+- `TestForwardRequiredEnvelopePreservesSourceAuthorizationOrder` sends the actual pair bodies without schema prevalidation: anonymous 401, inaccessible source 404, accessible source 422 `validation_failed` with both `details.fields.from` and `details.fields.to` equal to `required`, and no forward side effects. Removing the handler rule changes all six accessible-source responses to a downstream sender-only error while retaining status 422; the response assertions catch it. The historical defect was schema acceptance, not a handler that forwarded those requests.
+- `TestForwardAttachmentsCanonicalExamples/attachment_write_failed` reaches an injected attachment-write error and requires a 500 `internal_error` with no committed Sent, attachment, queue or quota state. The same valid request returns 201 without injection. `TestForwardSuccessRetainsIndependentRequirementsWithVertrag` pins `fault: database` to the 500, not to the ordinary 201 or the six 422s.
 | AC05 the ordinary contract genuinely executes | H | isolated Linux/mTLS topology |
 
 ## #2098 — identity and domains
