@@ -477,7 +477,9 @@ jobs:
     name: JS filter isolation
     if: inputs.contract-phases == 'gate'
     runs-on: ${{ needs.js-filter-isolation-gate.outputs.runner }}
-    timeout-minutes: 30
+    # 45, not 30: on the self-hosted pool one `chore instance:up` took 21 minutes
+    # (rest-mail-server#2218, 2026-11-21), and this job starts two.
+    timeout-minutes: 45
     env:
       RESTMAIL_SKIP_FRONTENDS: "true"
       RESTMAIL_DEV_GOCACHE_VOLUME: rest-mail-dev-gocache
