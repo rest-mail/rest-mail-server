@@ -93,7 +93,7 @@ func TestSignInWithoutTOTPStoresOnlyRefreshCredential(t *testing.T) {
 	if !status.SignedIn || status.AccountID != 42 || status.Server != fixture.server || len(statuses) != 1 {
 		t.Fatalf("unexpected status/event: %+v / %+v", status, statuses)
 	}
-	stored, err := keyring.Get(KeychainService, fixture.server+"\nadmin@example.test")
+	stored, err := keyring.Get(KeychainService, "admin@example.test at "+fixture.server)
 	if err != nil || !strings.Contains(stored, "refresh-secret-0") || strings.Contains(stored, "access-secret") || strings.Contains(stored, "password") {
 		t.Fatalf("wrong persisted credential: %s, %v", stored, err)
 	}
@@ -129,7 +129,7 @@ func TestRefreshBeforeExpiryRotatesKeychain(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	stored, err := keyring.Get(KeychainService, fixture.server+"\nadmin@example.test")
+	stored, err := keyring.Get(KeychainService, "admin@example.test at "+fixture.server)
 	if err != nil || !strings.Contains(stored, "refresh-secret-1") || manager.access != "access-secret-1" {
 		t.Fatalf("refresh did not rotate credential: %s / %v", stored, err)
 	}
@@ -163,7 +163,7 @@ func TestSignOutWipesKeychainAndPendingPassword(t *testing.T) {
 	if err := manager.SignOut(); err != nil {
 		t.Fatal(err)
 	}
-	for _, account := range []string{fixture.server + "\nadmin@example.test", activeAccount} {
+	for _, account := range []string{"admin@example.test at " + fixture.server, activeAccount} {
 		if _, err := keyring.Get(KeychainService, account); !errors.Is(err, keyring.ErrNotFound) {
 			t.Fatalf("credential still present for %s", account)
 		}
@@ -236,5 +236,17 @@ func TestBackgroundRefreshStopsOnCancellation(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("refresh worker did not stop")
+	}
+}
+
+func TestAccountKeyHasNoControlCharacters(t *testing.T) {
+	key := accountKey(credential{Server: "https://mail.example.test", Email: "admin@example.test"})
+	for _, r := range key {
+		if r < 0x20 || r == 0x7f {
+			t.Fatalf("account key %q holds control character %U, which breaks the macOS keychain", key, r)
+		}
+	}
+	if key != "admin@example.test at https://mail.example.test" {
+		t.Fatalf("account key = %q", key)
 	}
 }
