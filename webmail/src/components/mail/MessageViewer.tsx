@@ -44,6 +44,7 @@ function attachmentIcon(contentType: string) {
 
 /** Compact icon-only action button matching the design (28x28 rounded) */
 function ActionBtn({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
+  useEffect(() => mailPlatform().registerMessageAction?.(title, onClick), [title, onClick]);
   return (
     <button
       data-testid={`reader-${title.toLowerCase().replace(/\s+/g, '-')}`}

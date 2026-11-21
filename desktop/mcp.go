@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-func startMCP(app *application.App, manager *mailbackend.Manager, client *apiclient.Client) func() {
+func startMCP(app *application.App, manager *mailbackend.Manager, client *apiclient.Client, nativeUI *Native) func() {
 	launch, err := desktopmcp.ParseLaunch(os.Args[1:], os.Getenv)
 	if err != nil {
 		log.Printf("Desktop MCP configuration invalid; continuing without MCP: %v", err)
@@ -21,13 +22,23 @@ func startMCP(app *application.App, manager *mailbackend.Manager, client *apicli
 	if !launch.Enabled {
 		return func() {}
 	}
-	bridge := desktopmcp.NewBridge(func(request desktopmcp.UIRequest) { app.Event.Emit("mcp:ui:request", request) })
+	bridge := desktopmcp.NewBridge(func(request desktopmcp.UIRequest) {
+		args, _ := json.Marshal(request.Args)
+		var target struct {
+			Window string `json:"window"`
+		}
+		_ = json.Unmarshal(args, &target)
+		if target.Window == "" {
+			target.Window = "main"
+		}
+		app.Event.Emit("mcp:ui:request", map[string]any{"id": request.ID, "action": request.Action, "args": request.Args, "window": target.Window})
+	})
 	unsubscribe := app.Event.On("mcp:ui:response", func(event *application.CustomEvent) { bridge.Respond(event.Data) })
 	server, err := desktopmcp.New(desktopmcp.Options{
 		Port:          launch.Port,
 		DiscoveryPath: launch.DiscoveryPath,
 		Info:          desktopmcp.Info{Version: version, Commit: commit, BuiltAt: builtAt},
-		UI:            bridge,
+		UI:            &nativeMCP{native: nativeUI, bridge: bridge},
 		Domain:        desktopmcp.NewDomain(manager, client),
 		Secrets:       manager.SensitiveValues,
 	})

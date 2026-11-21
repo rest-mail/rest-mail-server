@@ -1,7 +1,9 @@
 import type { RuntimeEvents } from './session';
 
-export interface UIRequest { id: string; action: string; args?: Record<string, unknown> }
+export interface UIRequest { id: string; action: string; args?: Record<string, unknown>; window?: string }
 export interface BridgeOptions {
+  tabs?: () => unknown;
+  windowName?: string;
   route: () => string;
   navigate: (route: string) => void | Promise<void>;
   screenshot: () => Promise<string>;
@@ -9,6 +11,22 @@ export interface BridgeOptions {
 const interactive = 'button, input, select, textarea, summary, a[href], [contenteditable="true"], [role="button"], [role="menuitem"], [role="checkbox"], [tabindex="0"]';
 const slug = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
 const sensitive = (element: HTMLElement) => !!element.closest('[data-ui-sensitive]') || !!element.querySelector('[data-ui-sensitive]') || element instanceof HTMLInputElement && element.type === 'password';
+const visible = (element: HTMLElement) => {
+  if (element.closest('[hidden]')) return false;
+  const collapsed = element.closest('details:not([open])');
+  return !collapsed || !!collapsed.querySelector(':scope > summary')?.contains(element);
+};
+
+export function prepareScreenshotDocument(clone: Document) {
+  const style = clone.createElement('style');
+  style.textContent = '* { animation: none !important; transition: none !important; } summary { list-style: none !important; }';
+  clone.head.append(style);
+  for (const details of clone.querySelectorAll('details')) {
+    const summary = details.querySelector(':scope > summary');
+    if (summary) summary.prepend(details.hasAttribute('open') ? '▾ ' : '▸ ');
+    if (!details.hasAttribute('open')) for (const child of details.children) if (child !== summary) (child as HTMLElement).style.display = 'none';
+  }
+}
 
 export function tagInteractiveElements(root: Document = document) {
   const counts = new Map<string, number>();
@@ -27,7 +45,7 @@ export function tagInteractiveElements(root: Document = document) {
 
 function target(testId: unknown) {
   if (typeof testId !== 'string') throw new Error('testId is required');
-  const matches = [...document.querySelectorAll<HTMLElement>('[data-testid]')].filter(element => element.dataset.testid === testId);
+  const matches = [...document.querySelectorAll<HTMLElement>('[data-testid]')].filter(element => element.dataset.testid === testId && visible(element));
   if (matches.length !== 1) throw new Error(`Expected one element: ${testId}`);
   const element = matches[0];
   if (element.matches(':disabled, [aria-disabled="true"]')) throw new Error(`Element disabled: ${testId}`);
@@ -38,9 +56,10 @@ export async function handleUIRequest(request: UIRequest, options: BridgeOptions
   tagInteractiveElements();
   const args = request.args ?? {};
   switch (request.action) {
+    case 'tabs': return options.tabs?.() ?? [];
     case 'snapshot': return {
       route: options.route(), title: document.title,
-      elements: [...document.querySelectorAll<HTMLElement>('[data-testid]')].map(element => ({
+      elements: [...document.querySelectorAll<HTMLElement>('[data-testid]')].filter(visible).map(element => ({
         testId: element.dataset.testid, role: element.getAttribute('role') || element.tagName.toLowerCase(),
         text: sensitive(element) ? '[redacted]' : element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 250) || element.getAttribute('placeholder') || '',
         enabled: !element.matches(':disabled, [aria-disabled="true"]'),
@@ -77,6 +96,7 @@ export async function handleUIRequest(request: UIRequest, options: BridgeOptions
 export function registerUIBridge(events: RuntimeEvents, options: BridgeOptions) {
   const stop = events.on('mcp:ui:request', async (data) => {
     const request = data as UIRequest;
+    if (request.window && request.window !== (options.windowName ?? 'main')) return;
     try {
       const result = await handleUIRequest(request, options);
       events.emit('mcp:ui:response', { id: request.id, ok: true, result });
