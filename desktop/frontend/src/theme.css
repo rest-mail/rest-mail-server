@@ -1,0 +1,50 @@
+:root {
+  --ink: #1a2a4a;
+  --deep: #2c4373;
+  --signal: #ffcc00;
+  --mist: #b8c4d9;
+  --go: #1e8a50;
+  --sheet: #ffffff;
+  --well: #f4f6fa;
+  --hair: #e3e7ef;
+  --foreground: var(--ink);
+  --background: var(--sheet);
+  --card: var(--sheet);
+  --card-foreground: var(--ink);
+  --primary: var(--deep);
+  --primary-foreground: #ffffff;
+  --border: var(--hair);
+  --muted: var(--well);
+  --muted-foreground: #5b6782;
+  --ring: var(--signal);
+  --radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+}
+body, button, input, textarea, select { font-family: inherit; }
+button, input, textarea, select { border-radius: 6px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(255 204 0 / 55%); }
+.desktop-signin { height: 100%; display: grid; place-items: center; background: var(--ink); overflow: auto; position: relative; padding: 24px; }
+.desktop-brace { position: fixed; top: 50%; transform: translateY(-55%); color: var(--deep); font-size: 70vh; font-weight: 300; line-height: 1; pointer-events: none; user-select: none; }
+.desktop-brace-left { left: -6vw; }
+.desktop-brace-right { right: -6vw; }
+.desktop-signin-sheet { z-index: 1; width: 400px; max-width: 100%; padding: 40px; border-radius: 12px; background: #ffffff; color: var(--ink); box-shadow: 0 24px 64px rgb(10 18 36 / 35%); }
+.desktop-signin-sheet img { display: block; margin: 0 auto 16px; width: 64px; height: 64px; }
+.desktop-signin-sheet h1 { margin: 0; text-align: center; font-size: 28px; font-weight: 600; line-height: 36px; }
+.desktop-signin-description { margin: 8px 0 28px; color: #5b6782; text-align: center; font-size: 13px; }
+.desktop-signin-sheet label { display: block; margin: 0 0 20px; font-size: 12px; font-weight: 600; }
+.desktop-input { display: block; box-sizing: border-box; width: 100%; height: 40px; margin-top: 8px; padding: 0 12px; border: 1px solid var(--hair); border-radius: 6px; background: #ffffff; color: var(--ink); font-size: 13px; font-weight: 400; }
+.desktop-input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgb(255 204 0 / 55%); }
+.desktop-primary { height: 40px; background: var(--signal); color: var(--ink); border: none; border-radius: 6px; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.desktop-signin-sheet .desktop-primary { width: 100%; margin-top: 8px; }
+.desktop-primary:disabled { opacity: .65; }
+.desktop-signin-error { margin: 12px 0 0; color: #b42318; font-size: 13px; }
+.desktop-signin-back { display: block; margin: 16px auto 0; color: var(--deep); font-size: 13px; }
+.desktop-input.desktop-totp { font-family: ui-monospace, monospace; font-size: 28px; text-align: center; letter-spacing: 8px; height: 56px; }
+.desktop-spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: desktop-spin .8s linear infinite; }
+@keyframes desktop-spin { to { transform: rotate(360deg); } }
+@media (prefers-color-scheme: dark) {
+  :root { --sheet: #1b2944; --well: #16223a; --hair: #35445e; --foreground: #e6ebf3; --card-foreground: #e6ebf3; --muted-foreground: #b8c4d9; --secondary: #263956; --accent: #2c4373; --accent-foreground: #e6ebf3; }
+  body { color: #e6ebf3; }
+}

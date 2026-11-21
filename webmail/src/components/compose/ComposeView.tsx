@@ -78,7 +78,7 @@ export function ComposeView() {
   });
 
   const handleSaveDraft = async (silent = false) => {
-    if (attachmentsBlocked) {
+    if (attachmentsBlocked || composeState?.forwardMessageId) {
       if (!silent) toast.error("Attachments can't be sent or saved yet (#2212). Remove the selected files first.");
       return;
     }
@@ -348,6 +348,7 @@ export function ComposeView() {
           />
         ) : (
           <textarea
+            data-testid="compose-body-plain"
             value={plainText}
             onChange={e => setPlainText(e.target.value)}
             className="w-full h-full resize-none p-4 text-sm font-mono bg-background text-foreground outline-none"

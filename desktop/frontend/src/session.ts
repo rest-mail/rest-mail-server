@@ -9,7 +9,7 @@ export interface SessionBinding {
   SignOut(): Promise<void>;
   Status(): Promise<SessionStatus>;
 }
-const service = 'github.com/rest-mail/rest-mail-server/desktop.';
+const service = 'main.';
 const invoke = <T,>(name: string, ...args: unknown[]) => Call.ByName(service + name, ...args) as Promise<T>;
 export const session: SessionBinding = {
   SignIn: (server, email, password) => invoke('Session.SignIn', server, email, password),
