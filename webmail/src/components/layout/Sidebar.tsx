@@ -1,4 +1,5 @@
 import { displayAddress } from '@/lib/addressDisplay';
+import { mailPlatform } from '@/platform';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useMailStore } from '@/stores/mailStore';
@@ -122,7 +123,7 @@ export function Sidebar() {
       <div className="h-12 flex items-center justify-between px-4 shrink-0">
         <h1 className="flex items-center gap-2 font-heading-oswald text-lg font-semibold text-primary tracking-wider">
           <img
-            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            src={mailPlatform().desktop ? '/rest-mail-icon.svg' : `${import.meta.env.BASE_URL}favicon.svg`}
             alt=""
             className="w-6 h-6"
           />
@@ -141,6 +142,7 @@ export function Sidebar() {
       {/* Compose button */}
       <div className="flex justify-center px-3 pb-2 shrink-0">
         <button
+          data-testid="compose-open"
           onClick={() => startCompose()}
           className="w-[200px] h-8 rounded-2xl bg-primary flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { API_BASE } from '../api/base';
+import { mailPlatform } from '../platform';
 import { openMailStream, type SSEEvent } from '../lib/mailStream';
 export type { SSEEvent } from '../lib/mailStream';
 
@@ -13,7 +14,7 @@ export type { SSEEvent } from '../lib/mailStream';
  */
 function openStream(accountId: number, onEvent: (e: SSEEvent) => void): () => void {
   const url = `${API_BASE}/accounts/${accountId}/events`;
-  return openMailStream(url, onEvent);
+  return openMailStream(mailPlatform().streamURL?.(url) ?? url, onEvent);
 }
 
 /**

@@ -15,28 +15,35 @@ export function SignIn({ session }: { session: SessionBinding }) {
     try {
       if (challenge) await session.SubmitTOTP(totp);
       else {
-        const result = await session.SignIn(server, email, password);
+        const normalizedServer = /^[a-z][a-z\d+.-]*:\/\//i.test(server) ? server : `https://${server}`;
+        const result = await session.SignIn(normalizedServer, email, password);
         setPassword('');
         if (result.NeedsTOTP) { setChallenge(true); return; }
       }
       const user = identity(await session.Status());
       useAuthStore.setState({ user, isAuthenticated: !!user, sessionChecked: true });
-    } catch (err) { setError(err instanceof Error ? err.message : 'Sign-in failed'); }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      const host = server.replace(/^https?:\/\//, '').split('/')[0];
+      setError(challenge ? 'That code did not work. Try again.' : /401|credential|password|unauthor/i.test(message) ? 'Wrong email or password.' : `Can't reach ${host}.`);
+    }
     finally { setBusy(false); }
   }
-  return <main className="h-full flex items-center justify-center bg-background">
-    <form onSubmit={submit} className="w-96 p-8 space-y-5 rounded-2xl border border-border bg-card">
-      <img src="/rest-mail-icon.svg" alt="" width="56" height="56" />
-      <h1 className="text-2xl font-semibold">REST Mail</h1>
-      <p className="text-sm text-muted-foreground">{challenge ? 'Enter your authenticator code' : 'Sign in to your mail server'}</p>
-      {challenge ? <label className="block">Authenticator code<input data-testid="signin-totp" aria-label="Authenticator code" className="desktop-input" autoComplete="one-time-code" inputMode="numeric" value={totp} onChange={event => setTotp(event.target.value)} required autoFocus /></label> : <>
-        <label className="block">Server URL<input data-testid="signin-server" aria-label="Server URL" className="desktop-input" type="url" placeholder="https://mail.example.com" value={server} onChange={event => setServer(event.target.value)} required /></label>
+  return <main className="desktop-signin">
+    <span aria-hidden="true" className="desktop-brace desktop-brace-left">{'{'}</span>
+    <span aria-hidden="true" className="desktop-brace desktop-brace-right">{'}'}</span>
+    <form onSubmit={submit} className="desktop-signin-sheet">
+      <img src="/rest-mail-icon.svg" alt="" width="64" height="64" />
+      <h1>REST Mail</h1>
+      <p className="desktop-signin-description">{challenge ? 'Enter your authenticator code' : 'Sign in to your mail server'}</p>
+      {challenge ? <label>Authenticator code<input data-testid="signin-totp" aria-label="Authenticator code" className="desktop-input desktop-totp" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={totp} onChange={event => setTotp(event.target.value)} required autoFocus /></label> : <>
+        <label>Server<input data-testid="signin-server" aria-label="Server URL" className="desktop-input" type="text" inputMode="url" placeholder="mail.example.com" value={server} onChange={event => setServer(event.target.value)} required /></label>
         <label className="block">Email<input data-testid="signin-email" aria-label="Email" className="desktop-input" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required /></label>
         <label className="block">Password<input data-testid="signin-password" aria-label="Password" className="desktop-input" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
       </>}
-      {error && <p role="alert" className="text-destructive">{error}</p>}
-      <button data-testid="signin-submit" className="w-full rounded-xl bg-primary text-primary-foreground p-3" disabled={busy}>{busy ? 'Signing in…' : challenge ? 'Verify code' : 'Sign in'}</button>
-      {challenge && <button type="button" data-testid="signin-back" onClick={() => { setChallenge(false); setTotp(''); }}>Back to sign in</button>}
+      <button data-testid="signin-submit" className="desktop-primary" disabled={busy}>{busy && <span className="desktop-spinner" aria-hidden="true" />}{busy ? 'Signing in…' : challenge ? 'Verify' : 'Sign in'}</button>
+      {error && <p role="alert" className="desktop-signin-error">{error}</p>}
+      {challenge && <button type="button" className="desktop-signin-back" data-testid="signin-back" onClick={() => { setChallenge(false); setTotp(''); }}>Back to sign in</button>}
     </form>
   </main>;
 }
