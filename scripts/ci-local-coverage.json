@@ -47,10 +47,6 @@
     "Run golangci-lint on the IMAP module": {
       "sha256": "340819d98eba1263143df8cc523500885480b88710e40675669ce93a6b1e33b0",
       "local": "IMAP module"
-    },
-    "Pick runners (antimatter-vps runners while free, else GitHub's)": {
-      "sha256": "ff4b38514588d6288ee07f499af2a8b28dc24367bac373aa1d25023f99dc1cc1",
-      "exception": "Asks the runner gate where CI's next job runs; a local gate runs every job here."
     }
   },
   "constellation": {

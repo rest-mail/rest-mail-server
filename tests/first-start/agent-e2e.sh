@@ -45,9 +45,23 @@ ssh-keygen -q -t ed25519 -N '' -C stranger@e2e -f "$KEYS/stranger"
 ok "the deployment will list the agent's as an owner key, and the deployer's as a status key"
 
 docker network create "$NET" >/dev/null
-docker run -d --name e2e-pg --network "$NET" -e POSTGRES_USER=restmail -e POSTGRES_PASSWORD=restmail \
+# --oom-score-adj 1000 is not tuning: on the ARC pool the docker API runs inside a
+# user namespace, so it cannot lower a process's oom_score_adj, and every `docker exec`
+# into a container that did not ask for the maximum is refused. Without it this loop
+# never ends - it hung for an hour on the pool before anyone noticed.
+docker run -d --name e2e-pg --oom-score-adj 1000 --network "$NET" \
+  -e POSTGRES_USER=restmail -e POSTGRES_PASSWORD=restmail \
   -e POSTGRES_DB=restmail postgres:16-alpine >/dev/null
-until docker exec e2e-pg pg_isready -U restmail >/dev/null 2>&1; do sleep 1; done
+ready=false
+for _ in $(seq 1 60); do
+  if docker exec e2e-pg pg_isready -U restmail >/dev/null 2>&1; then ready=true; break; fi
+  sleep 1
+done
+if [ "$ready" != true ]; then
+  echo "::error::postgres did not accept connections within 60s" >&2
+  docker logs e2e-pg 2>&1 | tail -20 >&2
+  exit 1
+fi
 
 # api [extra docker run flags...] starts the API on a fresh container.
 api() {

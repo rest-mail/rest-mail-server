@@ -1,0 +1,5 @@
+# The runner label actionlint cannot know: the antimatter-vps pool's gate, which
+# every pooled job's <job>-gate runs on.
+self-hosted-runner:
+  labels:
+    - antimatter-vps-gate

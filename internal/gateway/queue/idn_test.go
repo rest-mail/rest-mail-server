@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,8 +71,12 @@ func TestDeliverIDNMXLookup(t *testing.T) {
 	}
 	select {
 	case name := <-questions:
-		if name != "xn--r8jz45g.jp." {
-			t.Fatalf("DNS queried %q, want ASCII domain", name)
+		// The property is that the ASCII form is queried, never the IDN. The resolver
+		// may append a search domain before trying the name bare - on an ARC runner pod
+		// that is <namespace>.svc.cluster.local - so compare the name it starts with
+		// rather than the whole string. The suffix is the host's, not ours.
+		if !strings.HasPrefix(name, "xn--r8jz45g.jp.") || strings.Contains(name, "例え") {
+			t.Fatalf("DNS queried %q, want the ASCII domain (a search suffix may follow)", name)
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("no MX query received")

@@ -44,13 +44,23 @@ permissions:
   contents: read
 
 jobs:
+  # Each job that can run on the antimatter-vps pool has a `<job>-gate` job just before
+  # it, with the same needs and condition. The gate answers with a runner label for the
+  # job's class: a pool runner while one is free, otherwise GitHub's. A job that runs
+  # after failures falls back to ubuntu-24.04 when its gate gave no answer.
+  preflight-gate:
+    if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   preflight:
+    needs: preflight-gate
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.preflight-gate.outputs.runner }}
     timeout-minutes: 5
-    outputs:
-      runners: ${{ steps.runners.outputs.runners || '{}' }}
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
         if: github.event_name == 'pull_request'
@@ -81,58 +91,21 @@ jobs:
           echo "$message" >&2
           exit 1
 
-      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
-        id: runners
-        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
-        # while one is free and every identity on this run is christhomas, otherwise
-        # ubuntu-24.04, the Ubuntu those runners run; any error is ubuntu-24.04 too.
-        # Its /status page shows the pool.
-        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
-        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
-        # It is the last step of its job, so it asks only once the run is known to go on.
-        env:
-          ORG: ${{ github.repository_owner }}
-          ACTOR: ${{ github.triggering_actor }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          SENDER: ${{ github.event.sender.login }}
-          GH_ACTOR: ${{ github.actor }}
-          JOBS: >-
-            ${{ github.event_name == 'push' && 'seed-caches' || '' }}
-            ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.pull-request != '')) && 'contract-diff' || '' }}
-            test-api.1 test-api.2 test-api.3 test-api.4
-            test-handlers.1 test-handlers.2 test-handlers.3 test-handlers.4
-            test test-contract lint js-filter first-start
-            webapp-images.webmail webapp-images.admin
-            constellation contract-tooling attachments-s3 helm webmail admin guide
-        run: |
-          set -euo pipefail
-          ours=true
-          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
-            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
-          done
-          pick() {
-            $ours || { echo ubuntu-24.04; return; }
-            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
-                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
-                  --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
-                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
-                  --data-urlencode "job=$1") || r=ubuntu-24.04
-            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
-          }
-          runners='{}'
-          for entry in $JOBS; do
-            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
-          done
-          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+  seed-caches-gate:
+    needs: preflight
+    if: github.event_name == 'push'
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
 
   seed-caches:
-    needs: preflight
+    needs: [preflight, seed-caches-gate]
     name: Keep main's build caches warm
     # A cache made on main is the one every branch can read, and the runs above no longer
     # write them on a merge. Mostly this finds nothing to do, and takes about a minute.
     if: github.event_name == 'push'
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['seed-caches'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.seed-caches-gate.outputs.runner }}
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -232,11 +205,19 @@ jobs:
           args: --timeout=5m
           verify: false
 
-  contract-diff:
+  contract-diff-gate:
     needs: preflight
+    if: (github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) || (github.event_name == 'workflow_dispatch' && inputs.pull-request != '')
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  contract-diff:
+    needs: [preflight, contract-diff-gate]
     name: API contract changes
     if: (github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) || (github.event_name == 'workflow_dispatch' && inputs.pull-request != '')
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['contract-diff'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.contract-diff-gate.outputs.runner }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -409,11 +390,19 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  constellation:
+  constellation-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  constellation:
+    needs: [preflight, constellation-gate]
     name: Check constellation inventory
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['constellation'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.constellation-gate.outputs.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -424,11 +413,19 @@ jobs:
       - name: Check constellation inventory
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
-  contract-tooling:
+  contract-tooling-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  contract-tooling:
+    needs: [preflight, contract-tooling-gate]
     name: Test contract tooling
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['contract-tooling'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.contract-tooling-gate.outputs.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -441,13 +438,20 @@ jobs:
           python3 -m pip install --quiet 'jsonschema[format]'
           python3 -m unittest discover -s tests/contract -p 'test_*.py'
 
-  lint:
+  lint-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  lint:
+    needs: [preflight, lint-gate]
     name: Lint
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['lint'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.lint-gate.outputs.runner }}
     outputs:
-      runners: ${{ steps.runners.outputs.runners || '{}' }}
       go_imap_changed: ${{ steps.go-imap.outputs.go_imap_changed }}
     steps:
       - name: Checkout code
@@ -524,51 +528,19 @@ jobs:
           args: --timeout=5m --no-config
           verify: false
 
-      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
-        id: runners
-        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
-        # while one is free and every identity on this run is christhomas, otherwise
-        # ubuntu-24.04, the Ubuntu those runners run; any error is ubuntu-24.04 too.
-        # Its /status page shows the pool.
-        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
-        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
-        # It is the last step of its job, so it asks only once the run is known to go on.
-        # Test IMAP module waits for this job, so it picks here: Preflight's answer would
-        # be minutes old, past the gate's 120 s reservation, by the time that job starts.
-        env:
-          ORG: ${{ github.repository_owner }}
-          ACTOR: ${{ github.triggering_actor }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          SENDER: ${{ github.event.sender.login }}
-          GH_ACTOR: ${{ github.actor }}
-          JOBS: test-imap
-        run: |
-          set -euo pipefail
-          ours=true
-          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
-            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
-          done
-          pick() {
-            $ours || { echo ubuntu-24.04; return; }
-            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
-                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
-                  --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
-                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
-                  --data-urlencode "job=$1") || r=ubuntu-24.04
-            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
-          }
-          runners='{}'
-          for entry in $JOBS; do
-            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
-          done
-          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "runners=$runners" >> "$GITHUB_OUTPUT"
+  test-gate:
+    needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
 
   test:
-    needs: preflight
+    needs: [preflight, test-gate]
     name: Test
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['test'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.test-gate.outputs.runner }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -727,11 +699,19 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-  test-contract:
+  test-contract-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  test-contract:
+    needs: [preflight, test-contract-gate]
     name: Test contract fixtures and faults
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['test-contract'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.test-contract-gate.outputs.runner }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -818,15 +798,24 @@ jobs:
           go vet -tags "$tags" ./cmd/api ./internal/faultinject
           go test -timeout=2h -race -count=1 -tags "$tags" ./internal/faultinject
 
+  test-imap-gate:
+    needs: [preflight, lint]
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) && !cancelled() && needs.preflight.result == 'success'
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   test-imap:
     name: Test IMAP module
-    # Waits for Lint, which picks this job's runner and says whether the module's gates
-    # run, but a failed Lint does not skip it: one run reports both failures (#2153), and
-    # Build and Test report, which need this job, still run. A Lint that stopped before
-    # answering leaves both answers empty, so the gates run, on ubuntu-24.04.
+    # Waits for Lint, which says whether the module's gates run, but a failed Lint does
+    # not skip it: one run reports both failures (#2153), and Build and Test report, which
+    # need this job, still run. Its runner gate has the same condition, so it picks after a
+    # failed Lint too; with no answer from it, the job runs on ubuntu-24.04. A Lint that
+    # stopped before answering leaves its answer empty, so the module's gates run.
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')) && !cancelled() && needs.preflight.result == 'success'
-    runs-on: ${{ fromJSON(needs.lint.outputs.runners || '{}')['test-imap'] || 'ubuntu-24.04' }}
-    needs: [preflight, lint]
+    runs-on: ${{ needs.test-imap-gate.outputs.runner || 'ubuntu-24.04' }}
+    needs: [preflight, lint, test-imap-gate]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -906,11 +895,21 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
-  test-handlers:
+  # One gate for every leg of test-handlers's matrix: the legs share the class linux-x64,
+  # so each leg runs on the label this gate answers.
+  test-handlers-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  test-handlers:
+    needs: [preflight, test-handlers-gate]
     name: Test internal/api/handlers (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')[format('test-handlers.{0}', matrix.shard)] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.test-handlers-gate.outputs.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -1051,15 +1050,25 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-  test-api:
+  # One gate for every leg of test-api's matrix: the legs share the class linux-x64,
+  # so each leg runs on the label this gate answers.
+  test-api-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  test-api:
+    needs: [preflight, test-api-gate]
     name: Test internal/api (${{ matrix.shard }} of 4)
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # internal/api is the slowest package by far: nearly 1000 s under the race
     # detector, most of it in PostgreSQL fixtures, which once ran against a 20 minute limit per
     # package (#1307); the limit is now a 2 hour hang guard. Each shard runs every fourth of its top-level tests, by
     # name, against a database of its own, beside the Test job.
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')[format('test-api.{0}', matrix.shard)] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.test-api-gate.outputs.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -1201,15 +1210,21 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+  test-report-gate:
+    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   test-report:
     name: Test report
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Joins what Test and both API matrices wrote: the example
     # proofs, judged as one set, and the coverage, as one profile.
-    # Waits for every test job, which end minutes apart: no job before it can pick
-    # within the gate's 120 s reservation, so it stays on GitHub's runners.
-    runs-on: ubuntu-latest
-    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
+    runs-on: ${{ needs.test-report-gate.outputs.runner }}
+    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap, test-report-gate]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1277,11 +1292,19 @@ jobs:
           path: coverage.out
           retention-days: 7
 
-  attachments-s3:
+  attachments-s3-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  attachments-s3:
+    needs: [preflight, attachments-s3-gate]
     name: Garage attachment storage
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['attachments-s3'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.attachments-s3-gate.outputs.runner }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1296,13 +1319,19 @@ jobs:
       - name: Verify private attachments against Garage
         run: python3 scripts/garage-attachment-test.py
 
+  build-gate:
+    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   build:
     name: Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    # Waits for every test job, which end minutes apart: no job before it can pick
-    # within the gate's 120 s reservation, so it stays on GitHub's runners.
-    runs-on: ubuntu-latest
-    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap]
+    runs-on: ${{ needs.build-gate.outputs.runner }}
+    needs: [preflight, test, test-api, test-handlers, test-contract, test-imap, build-gate]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1331,11 +1360,19 @@ jobs:
       - name: Build every command
         run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/commands/" ./cmd/api ./cmd/smtp-gateway ./cmd/imap-gateway ./cmd/pop3-gateway ./cmd/console ./cmd/migrate ./cmd/seed
 
-  helm:
+  helm-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  helm:
+    needs: [preflight, helm-gate]
     name: Helm Chart
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['helm'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.helm-gate.outputs.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1368,11 +1405,19 @@ jobs:
       - name: Exercise the optional DANE resolver image
         run: bash helm/restmail/tests/dane-resolver-test.sh
 
-  webmail:
+  webmail-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  webmail:
+    needs: [preflight, webmail-gate]
     name: Webmail Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['webmail'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.webmail-gate.outputs.runner }}
     defaults:
       run:
         working-directory: webmail
@@ -1422,11 +1467,19 @@ jobs:
       - name: Build
         run: pnpm run build
 
-  admin:
+  admin-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  admin:
+    needs: [preflight, admin-gate]
     name: Admin Build
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['admin'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.admin-gate.outputs.runner }}
     defaults:
       run:
         working-directory: admin
@@ -1489,13 +1542,21 @@ jobs:
   # This job always runs and fails only if a job that actually ran did not
   # succeed, so a skipped job is not a block. Requiring it — and nothing else
   # from this workflow — makes the job names above free to change.
-  js-filter:
+  js-filter-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  js-filter:
+    needs: [preflight, js-filter-gate]
     name: JS Filter
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The sidecar that runs javascript filters: its own tests (the sandbox
     # escapes of #160 among them), then the API's filter against it, end to end.
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['js-filter'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.js-filter-gate.outputs.runner }}
     defaults:
       run:
         working-directory: projects/js-filter-sidecar
@@ -1581,8 +1642,16 @@ jobs:
             exit 1
           fi
 
-  first-start:
+  first-start-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  first-start:
+    needs: [preflight, first-start-gate]
     name: First start
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # Proves, against the real image, the path a fresh install takes: the
@@ -1592,7 +1661,7 @@ jobs:
     # the public API with an owner key (no platform assumed) -- after which
     # nothing the first holder had works, an unexpired access token included.
     # tests/first-start/agent-e2e.sh.
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['first-start'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.first-start-gate.outputs.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1626,11 +1695,21 @@ jobs:
           EXPECT_VERSION: 0.0.0-first-start
         run: tests/first-start/agent-e2e.sh
 
-  webapp-images:
+  # One gate for every leg of webapp-images's matrix: the legs share the class linux-x64,
+  # so each leg runs on the label this gate answers.
+  webapp-images-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  webapp-images:
+    needs: [preflight, webapp-images-gate]
     name: Web app image (${{ matrix.app }})
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')[format('webapp-images.{0}', matrix.app)] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.webapp-images-gate.outputs.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -1714,15 +1793,23 @@ jobs:
             exit 1
           fi
 
-  guide:
+  guide-gate:
     needs: preflight
+    if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  guide:
+    needs: [preflight, guide-gate]
     name: Email, explained
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     # The guide is checked where it is written, so a broken link, an unsourced
     # chapter or a diagram Archify refuses fails the pull request that broke it
     # (docs/design/email-explained-website.md). Outside links change on other
     # sites' schedules, so scheduled.yml checks those daily.
-    runs-on: ${{ fromJSON(needs.preflight.outputs.runners || '{}')['guide'] || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.guide-gate.outputs.runner }}
     defaults:
       run:
         working-directory: scripts/email-explained
@@ -1755,36 +1842,66 @@ jobs:
       - name: Build the bundle the website renders
         run: node bundle.mjs --archify "$ARCHIFY" --out "$RUNNER_TEMP/email-explained"
 
+  ci-gate:
+    needs: [preflight-gate, preflight, seed-caches-gate, seed-caches, contract-diff-gate, contract-diff, constellation-gate, constellation, contract-tooling-gate, contract-tooling, lint-gate, lint, test-gate, test, test-contract-gate, test-contract, test-imap-gate, test-imap, test-handlers-gate, test-handlers, test-api-gate, test-api, test-report-gate, test-report, attachments-s3-gate, attachments-s3, build-gate, build, helm-gate, helm, webmail-gate, webmail, admin-gate, admin, js-filter-gate, js-filter, first-start-gate, first-start, webapp-images-gate, webapp-images, guide-gate, guide]
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   ci:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'CI (ignored edit)' || 'CI' }}
-    needs: [preflight, seed-caches, contract-diff, lint, constellation, contract-tooling, test, test-api, test-handlers, test-contract, test-imap, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
+    needs: [preflight-gate, preflight, seed-caches-gate, seed-caches, contract-diff-gate, contract-diff, constellation-gate, constellation, contract-tooling-gate, contract-tooling, lint-gate, lint, test-gate, test, test-contract-gate, test-contract, test-imap-gate, test-imap, test-handlers-gate, test-handlers, test-api-gate, test-api, test-report-gate, test-report, attachments-s3-gate, attachments-s3, build-gate, build, helm-gate, helm, webmail-gate, webmail, admin-gate, admin, js-filter-gate, js-filter, first-start-gate, first-start, webapp-images-gate, webapp-images, guide-gate, guide, ci-gate]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.ci-gate.outputs.runner || 'ubuntu-24.04' }}
     steps:
       - name: Verdict
         env:
           RESULTS: |
+            preflight-gate=${{ needs.preflight-gate.result }}
             preflight=${{ needs.preflight.result }}
+            seed-caches-gate=${{ needs.seed-caches-gate.result }}
             seed-caches=${{ needs.seed-caches.result }}
+            contract-diff-gate=${{ needs.contract-diff-gate.result }}
             contract-diff=${{ needs.contract-diff.result }}
-            lint=${{ needs.lint.result }}
+            constellation-gate=${{ needs.constellation-gate.result }}
             constellation=${{ needs.constellation.result }}
+            contract-tooling-gate=${{ needs.contract-tooling-gate.result }}
             contract-tooling=${{ needs.contract-tooling.result }}
+            lint-gate=${{ needs.lint-gate.result }}
+            lint=${{ needs.lint.result }}
+            test-gate=${{ needs.test-gate.result }}
             test=${{ needs.test.result }}
-            test-api=${{ needs.test-api.result }}
-            test-handlers=${{ needs.test-handlers.result }}
+            test-contract-gate=${{ needs.test-contract-gate.result }}
             test-contract=${{ needs.test-contract.result }}
+            test-imap-gate=${{ needs.test-imap-gate.result }}
             test-imap=${{ needs.test-imap.result }}
+            test-handlers-gate=${{ needs.test-handlers-gate.result }}
+            test-handlers=${{ needs.test-handlers.result }}
+            test-api-gate=${{ needs.test-api-gate.result }}
+            test-api=${{ needs.test-api.result }}
+            test-report-gate=${{ needs.test-report-gate.result }}
             test-report=${{ needs.test-report.result }}
+            attachments-s3-gate=${{ needs.attachments-s3-gate.result }}
             attachments-s3=${{ needs.attachments-s3.result }}
+            build-gate=${{ needs.build-gate.result }}
             build=${{ needs.build.result }}
+            helm-gate=${{ needs.helm-gate.result }}
             helm=${{ needs.helm.result }}
+            webmail-gate=${{ needs.webmail-gate.result }}
             webmail=${{ needs.webmail.result }}
+            admin-gate=${{ needs.admin-gate.result }}
             admin=${{ needs.admin.result }}
+            js-filter-gate=${{ needs.js-filter-gate.result }}
             js-filter=${{ needs.js-filter.result }}
+            first-start-gate=${{ needs.first-start-gate.result }}
             first-start=${{ needs.first-start.result }}
+            webapp-images-gate=${{ needs.webapp-images-gate.result }}
             webapp-images=${{ needs.webapp-images.result }}
+            guide-gate=${{ needs.guide-gate.result }}
             guide=${{ needs.guide.result }}
+            ci-gate=${{ needs.ci-gate.result }}
         run: |
           set -euo pipefail
           # `needs.test-api.result` covers the whole matrix: it is `success` only

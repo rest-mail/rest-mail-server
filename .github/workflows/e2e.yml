@@ -59,10 +59,22 @@ permissions:
   packages: read
 
 jobs:
+  # Each job that can run on the antimatter-vps pool has a `<job>-gate` job just before
+  # it, with the same needs and condition. The gate answers with a runner label for the
+  # job's class: a pool runner while one is free, otherwise GitHub's. A job that runs
+  # after failures falls back to ubuntu-24.04 when its gate gave no answer.
+  preflight-gate:
+    if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   preflight:
+    needs: preflight-gate
     name: 'Preflight: branch is up to date'
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.preflight-gate.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Checkout the pull request head, not GitHub's merge commit
@@ -94,14 +106,21 @@ jobs:
           echo "$message" >&2
           exit 1
 
-  changes:
+  changes-gate:
     needs: preflight
+    if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  changes:
+    needs: [preflight, changes-gate]
     name: Classify changed paths
     if: github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != '')
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.changes-gate.outputs.runner }}
     timeout-minutes: 5
     outputs:
-      runners: ${{ steps.runners.outputs.runners || '{}' }}
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
       run_delta: ${{ steps.classify.outputs.run_delta }}
     steps:
@@ -192,57 +211,12 @@ jobs:
             decide true false
           fi
 
-      - name: Pick runners (antimatter-vps runners while free, else GitHub's)
-        id: runners
-        # runner-gate.antimatter-studios.com answers once per job: an antimatter-vps runner
-        # while one is free and every identity on this run is christhomas, otherwise
-        # ubuntu-24.04, the Ubuntu those runners run; any error is ubuntu-24.04 too.
-        # Its /status page shows the pool.
-        # JOBS has one entry per gated job, and one per matrix leg or reusable-workflow call:
-        # the gate is asked for the job id before any ".", and the whole entry keys the answer.
-        # It is the last step of its job, so it asks only once the run is known to go on.
-        # The suite's jobs are asked for by their ids inside e2e-suite.yml (suite,
-        # js-filter-isolation), which are the GITHUB_JOB names the runner hook sees.
-        # The merge queue's delta check is one more call of the suite's job.
-        env:
-          ORG: ${{ github.repository_owner }}
-          ACTOR: ${{ github.triggering_actor }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          SENDER: ${{ github.event.sender.login }}
-          GH_ACTOR: ${{ github.actor }}
-          JOBS: >-
-            ${{ steps.classify.outputs.run_e2e == 'true' && 'suite.run js-filter-isolation.run suite.pairs suite.reports suite.live' || '' }}
-            ${{ steps.classify.outputs.run_delta == 'true' && 'suite.delta' || '' }}
-        run: |
-          set -euo pipefail
-          ours=true
-          for who in "$ACTOR" "$GH_ACTOR" "$SENDER" "$AUTHOR"; do
-            [ -z "$who" ] || [ "$who" = christhomas ] || ours=false
-          done
-          pick() {
-            $ours || { echo ubuntu-24.04; return; }
-            r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
-                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
-                  --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
-                  --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
-                  --data-urlencode "job=$1") || r=ubuntu-24.04
-            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
-          }
-          runners='{}'
-          for entry in $JOBS; do
-            runners=$(jq -c --arg j "$entry" --arg r "$(pick "${entry%%.*}")" '. + {($j): $r}' <<<"$runners")
-          done
-          echo "$runners" | jq . | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "runners=$runners" >> "$GITHUB_OUTPUT"
-
   e2e-run:
     name: E2E (run full suite)
     needs: [preflight, changes]
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.run'] || 'ubuntu-24.04' }}
-      isolation-runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['js-filter-isolation.run'] || 'ubuntu-24.04' }}
       contract-phases: gate
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -256,7 +230,6 @@ jobs:
     if: needs.changes.outputs.run_delta == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.delta'] || 'ubuntu-24.04' }}
       contract-phases: none
       stages: Stage1_Infrastructure Stage2_TraditionalMail Stage3_GatewayInbound Stage4_GatewayOutbound
       description-mode: ${{ inputs.description-mode || 'saved' }}
@@ -267,7 +240,6 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.pairs'] || 'ubuntu-24.04' }}
       contract-phases: pairs
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -277,7 +249,6 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.reports'] || 'ubuntu-24.04' }}
       contract-phases: reports
       description-mode: ${{ inputs.description-mode || 'saved' }}
 
@@ -287,9 +258,16 @@ jobs:
     if: needs.changes.outputs.run_e2e == 'true' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      runner: ${{ fromJSON(needs.changes.outputs.runners || '{}')['suite.live'] || 'ubuntu-24.04' }}
       contract-phases: live
       description-mode: ${{ inputs.description-mode || 'saved' }}
+
+  e2e-proofs-gate:
+    needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-live]
+    if: always() && needs.preflight.result == 'success' && needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
 
   e2e-proofs:
     # The whole proof union (#1237): CI's in-process proofs and the live proofs of the
@@ -297,11 +275,9 @@ jobs:
     # Test report does. The live runners can only add to it: what they failed at, or
     # never wrote, counts for nothing. A dispatched run has no CI run to join.
     name: E2E (every example is proven)
-    needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-live]
+    needs: [preflight, changes, e2e-run, e2e-contract-pairs, e2e-live, e2e-proofs-gate]
     if: always() && needs.preflight.result == 'success' && needs.changes.outputs.run_e2e == 'true' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    # Waits for the whole suite: no job before it can pick within the gate's 120 s
-    # reservation, so it stays on GitHub's runners.
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.e2e-proofs-gate.outputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 70
     permissions:
       contents: read
@@ -312,6 +288,10 @@ jobs:
 
       - name: Set up Python
         uses: ./.github/actions/setup-python
+
+      # scripts/ci_example_proofs.sh reads CI's run with gh, which a pool runner lacks.
+      - name: Set up the GitHub CLI
+        uses: ./.github/actions/setup-gh
 
       - name: Download the live proofs
         continue-on-error: true
@@ -338,6 +318,14 @@ jobs:
           python3 scripts/example_proofs.py --live "$RUNNER_TEMP/live-proofs" openapi-example.json "${proofs[@]}" \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
+  e2e-gate:
+    needs: [preflight, changes, e2e-run, e2e-delta, e2e-contract-pairs, e2e-proofs]
+    if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   e2e:
     # Required-check anchor. Branch protection requires the context
     # `E2E (full topology)`, which is THIS job's name except on ignored edits.
@@ -347,9 +335,9 @@ jobs:
     # This is what keeps a docs-only PR from being stranded on a never-reported
     # required check.
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'E2E (ignored edit)' || 'E2E (full topology)' }}
-    needs: [preflight, changes, e2e-run, e2e-delta, e2e-contract-pairs, e2e-proofs]
+    needs: [preflight, changes, e2e-run, e2e-delta, e2e-contract-pairs, e2e-proofs, e2e-gate]
     if: always() && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.e2e-gate.outputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
       - name: Verify e2e outcome

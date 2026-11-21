@@ -19,6 +19,37 @@ done <<<"$PATH:"
 PATH=$kept
 export PATH
 
+# Every container this shim starts asks for the maximum oom_score_adj.
+#
+# On the ARC pool the docker API runs inside a user namespace, so it can never
+# hold CAP_SYS_RESOURCE in the initial one, and every `docker exec` into a
+# container that did not ask for 1000 is refused with
+# "crun: write to /proc/self/oom_score_adj: Permission denied". A container a
+# test execs into - for a health check, a psql, a readiness probe - therefore
+# has to ask for it, or the test hangs or fails on the pool while passing on
+# GitHub's runners. Four sites discovered that one at a time; this puts the flag
+# where all of them pass through, and keeps a caller's own choice if it made one.
+argv=()
+verb=0
+case "${1:-}" in
+  run | create) verb=1 ;;
+  container) case "${2:-}" in run | create) verb=2 ;; esac ;;
+esac
+has_oom=0
+for arg in "$@"; do
+  case "$arg" in --oom-score-adj | --oom-score-adj=*) has_oom=1 ;; esac
+done
+if [ "$verb" -gt 0 ] && [ "$has_oom" -eq 0 ]; then
+  index=0
+  for arg in "$@"; do
+    argv+=("$arg")
+    index=$((index + 1))
+    [ "$index" -eq "$verb" ] && argv+=(--oom-score-adj 1000)
+  done
+else
+  argv=("$@")
+fi
+
 # Commands that can pull. `docker run` exits 125 when the container never
 # started, so a container that prints the same words is not mistaken for a pull.
 pulls=
@@ -47,8 +78,8 @@ for arg in "$@"; do
   [ "$arg" = - ] && pulls=
 done
 
-[ -n "$pulls" ] || exec docker "$@"
-err_file=$(mktemp) || exec docker "$@"
+[ -n "$pulls" ] || exec docker "${argv[@]}"
+err_file=$(mktemp) || exec docker "${argv[@]}"
 trap 'rm -f "$err_file"' EXIT
 
 # The daemon's, the builder's or compose's own error line, naming a request that
@@ -61,7 +92,7 @@ server_failure='unexpected (HTTP )?status.*: 50[0234]( |$)'
 attempt=1
 for delay in ${DOCKER_RETRY_DELAYS:-5 15 30} ''; do
   # stderr goes through tee to be read below; stdout and stdin stay as they were.
-  { docker "$@" 2>&1 >&3 3>&- | tee "$err_file" >&2 3>&-; status=${PIPESTATUS[0]}; } 3>&1
+  { docker "${argv[@]}" 2>&1 >&3 3>&- | tee "$err_file" >&2 3>&-; status=${PIPESTATUS[0]}; } 3>&1
   [ "$status" -ne 0 ] || exit 0
   [ -n "$delay" ] || exit "$status"
   [ -z "$required_status" ] || [ "$status" -eq "$required_status" ] || exit "$status"

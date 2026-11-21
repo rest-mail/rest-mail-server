@@ -39,7 +39,9 @@ class PreflightWorkflows(unittest.TestCase):
         self.assertEqual(workflows - {"ci-labels.yml", "ci-retarget.yml"}, HEAVY_WORKFLOWS)
         for name, jobs in self.jobs.items():
             with self.subTest(workflow=name):
-                self.assertEqual(next(iter(jobs)), "preflight")
+                # Only Preflight's own runner gate, if it has one, comes before it.
+                first = [job for job in jobs if job != "preflight-gate"][0]
+                self.assertEqual(first, "preflight")
                 preflight = jobs["preflight"]
                 self.assertEqual(field(preflight, "name", 4), "'Preflight: branch is up to date'")
                 self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", preflight)
@@ -48,12 +50,17 @@ class PreflightWorkflows(unittest.TestCase):
                 self.assertIn("BASE_REF: ${{ github.event.pull_request.base.ref }}", preflight)
                 self.assertNotIn("pull_request.base.sha", preflight)
                 self.assertEqual(shell_of(preflight, STEP), self.script)
-                self.assertNotIn("needs:", preflight)
+                # It waits for nothing but its runner gate, which waits for nothing.
+                self.assertIn(field(preflight, "needs", 4), {"", "preflight-gate"})
+                if "preflight-gate" in jobs:
+                    self.assertEqual(list(jobs)[:2], ["preflight-gate", "preflight"])
+                    self.assertEqual(field(preflight, "needs", 4), "preflight-gate")
+                    self.assertNotIn("needs:", jobs["preflight-gate"])
 
     def test_every_other_job_needs_preflight_and_heavy_jobs_cannot_run_after_failure(self):
         for name, jobs in self.jobs.items():
             for job_name, job in jobs.items():
-                if job_name == "preflight":
+                if job_name in {"preflight", "preflight-gate"}:
                     continue
                 with self.subTest(workflow=name, job=job_name):
                     needs = field(job, "needs", 4).strip("[]").split(", ")
@@ -64,7 +71,8 @@ class PreflightWorkflows(unittest.TestCase):
                     if "always()" in condition or "cancelled()" in condition:
                         values = context()
                         values["needs"]["preflight"]["result"] = "failure"
-                        self.assertEqual(bool(evaluate(condition, values)), job_name in {"ci", "e2e"})
+                        # The required verdicts, and the runner gates they wait for.
+                        self.assertEqual(bool(evaluate(condition, values)), job_name.removesuffix("-gate") in {"ci", "e2e"})
 
     def test_failure_message_is_actionable_and_identifies_both_commits(self):
         for fragment in (

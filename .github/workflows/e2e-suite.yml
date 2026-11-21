@@ -10,18 +10,6 @@ name: E2E suite
 on:
   workflow_call:
     inputs:
-      runner:
-        description: >-
-          The runner label for the topology job (`suite`). The caller asks
-          runner-gate.antimatter-studios.com with job=suite, the id GitHub names this job by.
-        type: string
-        default: ubuntu-24.04
-      isolation-runner:
-        description: >-
-          The runner label for the JS filter isolation job (`js-filter-isolation`), which
-          runs only with contract-phases "gate". The caller asks the gate with job=js-filter-isolation.
-        type: string
-        default: ubuntu-24.04
       contract-phases:
         description: >-
           "gate" runs the examples and coverage gates; "pairs" runs the independent
@@ -52,9 +40,20 @@ permissions:
   packages: read
 
 jobs:
+  # Each job that can run on the antimatter-vps pool has a `<job>-gate` job just before
+  # it, with the same needs and condition. The gate answers with a runner label for the
+  # job's class: a pool runner while one is free, otherwise GitHub's. A job that runs
+  # after failures falls back to ubuntu-24.04 when its gate gave no answer.
+  suite-gate:
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   suite:
+    needs: suite-gate
     name: topology
-    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.suite-gate.outputs.runner }}
     # The suite took 52 minutes before the live proofs, which may take up to 25.
     timeout-minutes: 85
     env:
@@ -462,14 +461,22 @@ jobs:
         if: always()
         run: chore e2e:down
 
+  js-filter-isolation-gate:
+    if: inputs.contract-phases == 'gate'
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
   js-filter-isolation:
+    needs: js-filter-isolation-gate
     # The sandbox's own security proof, in a job of its own (#1979): it needs the
     # testbed and the two instances it starts, not the topology above, and it
     # shares no runner, container or data with it. It fails the suite as the
     # topology job does, so the required `E2E (full topology)` check waits for it.
     name: JS filter isolation
     if: inputs.contract-phases == 'gate'
-    runs-on: ${{ inputs.isolation-runner || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.js-filter-isolation-gate.outputs.runner }}
     timeout-minutes: 30
     env:
       RESTMAIL_SKIP_FRONTENDS: "true"

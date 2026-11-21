@@ -77,7 +77,9 @@ class DockerRetryTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0)
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[1], "run -d postgres:16-alpine")
+        # The shim also insists every container it starts asks for the maximum
+        # oom_score_adj, so a retried `run` carries the flag it inserted.
+        self.assertEqual(calls[1], "run --oom-score-adj 1000 -d postgres:16-alpine")
         self.assertIn(HUB_EOF, result.stderr)
         self.assertIn("transient registry failure", result.stderr)
         self.assertEqual(result.stdout, "stdout of call 1\nstdout of call 2\n")
