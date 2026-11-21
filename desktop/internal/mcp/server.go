@@ -11,8 +11,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,14 +41,15 @@ type Info struct {
 }
 
 type Options struct {
-	Port       int
-	ConfigDir  string
-	Info       Info
-	Domain     Domain
-	UI         UI
-	Secrets    func() []string
-	Timeout    time.Duration
-	Screenshot func(context.Context) ([]byte, error)
+	Port          int
+	ConfigDir     string
+	DiscoveryPath string
+	Info          Info
+	Domain        Domain
+	UI            UI
+	Secrets       func() []string
+	Timeout       time.Duration
+	Screenshot    func(context.Context) ([]byte, error)
 }
 
 type Discovery struct {
@@ -135,7 +134,7 @@ func (server *Server) StartHTTP(ctx context.Context) (stop func() error, startup
 	server.mutex.Lock()
 	server.url = "http://" + listener.Addr().String() + "/mcp"
 	server.mutex.Unlock()
-	path, err := server.writeDiscovery()
+	cleanupDiscovery, err := server.registerDiscovery()
 	if err != nil {
 		listener.Close()
 		return nil, err
@@ -152,14 +151,7 @@ func (server *Server) StartHTTP(ctx context.Context) (stop func() error, startup
 	closeServer := func() error {
 		once.Do(func() {
 			close(closed)
-			closeErr = httpServer.Close()
-			data, err := os.ReadFile(path)
-			var current Discovery
-			if err == nil && json.Unmarshal(data, &current) == nil && current.Token == server.token {
-				if err := os.Remove(path); closeErr == nil {
-					closeErr = err
-				}
-			}
+			closeErr = errors.Join(httpServer.Close(), cleanupDiscovery())
 		})
 		return closeErr
 	}
@@ -176,41 +168,6 @@ func (server *Server) StartHTTP(ctx context.Context) (stop func() error, startup
 
 func (server *Server) RunStdio(ctx context.Context, input io.ReadCloser, output io.WriteCloser) error {
 	return server.protocol.Run(ctx, &sdk.IOTransport{Reader: input, Writer: output})
-}
-
-func (server *Server) writeDiscovery() (string, error) {
-	root := server.options.ConfigDir
-	if root == "" {
-		var err error
-		root, err = os.UserConfigDir()
-		if err != nil {
-			return "", err
-		}
-	}
-	directory := filepath.Join(root, "REST Mail")
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return "", err
-	}
-	if err := os.Chmod(directory, 0700); err != nil {
-		return "", err
-	}
-	file, err := os.CreateTemp(directory, ".mcp-*.json")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(file.Name())
-	if err := json.NewEncoder(file).Encode(Discovery{URL: server.URL(), Token: server.token, PID: os.Getpid(), Version: server.options.Info.Version}); err != nil {
-		file.Close()
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	path := filepath.Join(directory, "mcp.json")
-	if err := os.Rename(file.Name(), path); err != nil {
-		return "", err
-	}
-	return path, nil
 }
 
 func (server *Server) redact(text string) string {
