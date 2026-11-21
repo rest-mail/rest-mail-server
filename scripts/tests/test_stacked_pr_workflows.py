@@ -96,7 +96,7 @@ class StackedPRWorkflows(unittest.TestCase):
 
     def test_every_pr_workflow_is_covered_and_keeps_its_existing_events(self):
         self.assertEqual(set(self.workflows) - set(self.full), {"ci-labels.yml", "ci-retarget.yml", "desktop.yml"})
-        self.assertEqual(set(self.jobs["desktop.yml"]), {"macos", "windows", "linux-gate", "linux"})
+        self.assertEqual(set(self.jobs["desktop.yml"]), {"preflight-gate", "preflight", "macos", "windows", "linux-gate", "linux"})
         self.assertEqual(set(self.full), {
             "ci.yml", "e2e.yml", "email-explained.yml", "pulumi.yml", "release-cli.yml",
         })
