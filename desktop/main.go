@@ -60,6 +60,11 @@ func main() {
 	// End desktop core.
 	app := application.New(options)
 
+	// Embedded MCP service registration.
+	stopMCP := startMCP(app)
+	defer stopMCP()
+	// End embedded MCP service registration.
+
 	// Create a new window with the necessary options.
 	// 'Title' is the title of the window.
 	// 'Mac' options tailor the window when running on macOS.
