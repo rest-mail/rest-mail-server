@@ -69,6 +69,13 @@ restmail_queue_held_by_destination
 A rise in the first two is saturation. A rise in the third alone is a
 destination held back.
 
+Set `smtpGateway.queueMaxPerDestination` in Helm to configure
+`QUEUE_MAX_PER_DESTINATION` (default `2`; `0` disables the cap). The cap applies
+per recipient domain across all gateway replicas sharing the database. Lowering
+it can reduce throughput to a busy domain; raising or disabling it lets a slow
+domain occupy more workers. Keep it below `smtpGateway.queueWorkers` if a single
+gateway must retain spare workers for other destinations.
+
 ## Confirm
 
 1. Count the queue by status. Admin webmail: Queue (`/queue`). Terminal:
