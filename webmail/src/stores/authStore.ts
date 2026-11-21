@@ -79,7 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       if (mailPlatform().restoreSession) {
         const user = await mailPlatform().restoreSession!();
-        set({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: [] });
+        set({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: user?.setup_required ?? [] });
         return;
       }
       const data = await api.refreshSession();

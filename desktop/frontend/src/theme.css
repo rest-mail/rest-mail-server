@@ -48,6 +48,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .desktop-signin-error { margin: 12px 0 0; color: #b42318; font-size: 13px; }
 .desktop-signin-back { display: block; margin: 16px auto 0; color: var(--deep); font-size: 13px; }
 .desktop-input.desktop-totp { font-family: ui-monospace, monospace; font-size: 28px; text-align: center; letter-spacing: 8px; height: 56px; }
+.desktop-setup-sheet { width: 480px; margin: auto; }
+.desktop-setup-sheet h1 { font-size: 20px; }
+.desktop-setup-intro { margin: 0 0 20px; font-size: 13px; color: #5b6782; }
+.desktop-setup-sheet [role="img"] { max-width: 100%; height: auto; margin-bottom: 20px; }
+.desktop-setup-sheet code, .desktop-recovery-codes { display: block; max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; padding: 12px; background: #f4f6fa; border: 1px solid #e3e7ef; border-radius: 6px; margin: 12px 0; }
+.desktop-setup-sheet .desktop-setup-check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.desktop-setup-check input { accent-color: var(--deep); }
 .desktop-spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: desktop-spin .8s linear infinite; }
 @keyframes desktop-spin { to { transform: rotate(360deg); } }
 @media (prefers-color-scheme: dark) {
