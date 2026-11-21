@@ -1640,6 +1640,12 @@ then in two reproducibly shuffled repetitions on the same running server. Its
 defaults are `getDomain`, `createFolder` and `releaseHeldMessage`; repeat
 `--operation-id NAME` to choose others, and use `--seed N` or `--repeats N` to
 replay another order. `CONTRACT_ENDPOINT` must name the disposable server.
+The configuration is intersected with explicit operation IDs before Vertrag
+runs: Vertrag unions configured and command-line IDs, so leaving all of MOVED
+configured would silently undo an alone selection. The named check
+`test_explicit_operation_selection_really_runs_alone` pins that restriction;
+the native compiler control changes from 627 transactions across 201 operations
+to three transactions for `getDomain` alone, using the same served description.
 Every invocation uses the ordinary full-description own-data path. The runner
 requires a passing, nonempty JUnit report, exactly one reset/seed trace per
 exchange, the same endpoint, and unchanged exchange counts across repetitions.
