@@ -144,6 +144,7 @@ func refusal(status int, payload []byte) error {
 		}
 		sort.Strings(problems)
 		message = strings.Join(problems, "; ")
+		message = strings.ToUpper(message[:1]) + message[1:]
 	}
 	if message == "" {
 		message = http.StatusText(status)
