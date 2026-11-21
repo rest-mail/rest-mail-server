@@ -47,7 +47,7 @@ export function SignIn({ session }: { session: SessionBinding }) {
       </>}
       <button data-testid="signin-submit" className="desktop-primary" disabled={busy}>{busy && <span className="desktop-spinner" aria-hidden="true" />}{busy ? 'Signing in…' : challenge ? 'Verify' : 'Sign in'}</button>
       {error && <p role="alert" className="desktop-signin-error">{error}</p>}
-      {!challenge && <button type="button" onClick={() => setIMAP(true)}>Use IMAP and SMTP instead</button>}
+      {!challenge && <button type="button" data-testid="signin-use-imap" className="desktop-text-button" onClick={() => setIMAP(true)}>Use an IMAP account instead</button>}
       {challenge && <button type="button" className="desktop-signin-back" data-testid="signin-back" onClick={() => { setChallenge(false); setTotp(''); }}>Back to sign in</button>}
     </form>
   </main>;
