@@ -96,7 +96,9 @@ func main() {
 		EnableFileDrop: true,
 		Title:          windowTitle("REST Mail "+version, currentInstance()),
 		Width:          1200,
-		Height:         742,
+		Height:         800,
+		MinWidth:       1000,
+		MinHeight:      720,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,

@@ -57,6 +57,7 @@ export function FirstRunSetup({ session, onFinished }: { session: SessionBinding
   }
 
   return <main className="desktop-signin">
+    <div className="desktop-braced-sheet">
     <Brace side="left" />
     <Brace side="right" />
     <section className="desktop-signin-sheet desktop-setup-sheet" aria-labelledby="setup-heading">
@@ -81,5 +82,6 @@ export function FirstRunSetup({ session, onFinished }: { session: SessionBinding
       {error && <p role="alert" className="desktop-signin-error">{error}</p>}
       <button data-testid="setup-signout" className="desktop-signin-back" disabled={busy} onClick={() => void run(async () => { await session.SignOut(); useAuthStore.setState({ user: null, isAuthenticated: false, setupRequired: [] }); onFinished(); })}>Back to sign in</button>
     </section>
+    </div>
   </main>;
 }
