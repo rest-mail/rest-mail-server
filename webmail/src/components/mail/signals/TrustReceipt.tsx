@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { trustFromHeaders, type AuthOutcome, type MailHeaders, type TrustVerdict } from '@/lib/mailTrust';
 import { TrustBadge } from './TrustBadge';
 import { SEAL_LABELS, type SealState } from '@/lib/messageSeal';
+import { mailPlatform } from '@/platform';
 
 function outcomeColor(result: AuthOutcome): string {
   if (result === 'pass') return 'var(--color-success)';
@@ -47,6 +48,7 @@ export function TrustReceipt({
 }: TrustReceiptProps) {
   const trust = verdict ?? trustFromHeaders(headers);
   const [open, setOpen] = useState(defaultOpen);
+  const desktop = mailPlatform().desktop;
 
   const currentSealState = sealState ?? (sealedHash ? 'checking' : undefined);
   const hasContent = trust.state !== 'unchecked' || Boolean(currentSealState) || remoteImagesBlocked > 0;
@@ -59,11 +61,12 @@ export function TrustReceipt({
     >
       <button
         type="button"
+        data-testid={desktop ? 'reader-sender-trust' : undefined}
         onClick={() => setOpen(value => !value)}
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-accent/60"
       >
-        <span className="font-mono text-[11px] text-muted-foreground">// trust</span>
+        <span className={desktop ? 'text-[13px] text-muted-foreground' : 'font-mono text-[11px] text-muted-foreground'}>{desktop ? 'Sender trust' : '// trust'}</span>
         <TrustBadge verdict={trust} compact />
         <span className="flex-1" />
         <ChevronDown
