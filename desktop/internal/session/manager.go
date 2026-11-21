@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,7 @@ type Manager struct {
 	current   credential
 	access    string
 	accountID uint
+	setup     []string
 	expires   time.Time
 	pending   pendingLogin
 	secrets   map[string]struct{}
@@ -91,7 +93,7 @@ func (manager *Manager) SetOnChange(callback func(SessionStatus)) {
 func (manager *Manager) notify() {
 	manager.mu.Lock()
 	status := manager.statusLocked()
-	changed := status != manager.lastState
+	changed := !sameStatus(status, manager.lastState)
 	manager.lastState = status
 	callback := manager.onChange
 	manager.mu.Unlock()
@@ -110,7 +112,12 @@ func (manager *Manager) statusLocked() SessionStatus {
 	if manager.access == "" {
 		return SessionStatus{}
 	}
-	return SessionStatus{SignedIn: true, Server: manager.current.Server, Email: manager.current.Email, AccountID: manager.accountID}
+	return SessionStatus{SignedIn: true, Server: manager.current.Server, Email: manager.current.Email, AccountID: manager.accountID, SetupRequired: slices.Clone(manager.setup)}
+}
+
+func sameStatus(left, right SessionStatus) bool {
+	return left.SignedIn == right.SignedIn && left.Server == right.Server && left.Email == right.Email &&
+		left.AccountID == right.AccountID && slices.Equal(left.SetupRequired, right.SetupRequired)
 }
 
 func (manager *Manager) SignIn(server, email, password string) (SignInResult, error) {
@@ -135,7 +142,10 @@ func (manager *Manager) SignIn(server, email, password string) (SignInResult, er
 		manager.pending = login
 		return SignInResult{NeedsTOTP: true}, nil
 	}
-	return SignInResult{}, err
+	if err != nil {
+		return SignInResult{}, err
+	}
+	return SignInResult{SetupRequired: slices.Clone(manager.setup)}, nil
 }
 
 func (manager *Manager) SubmitTOTP(code string) error {
@@ -194,6 +204,7 @@ func (manager *Manager) acceptLocked(saved credential, response apitypes.LoginRe
 	}
 	manager.current, manager.access = saved, response.AccessToken
 	manager.accountID = response.User.ID
+	manager.setup = slices.Clone(response.SetupRequired)
 	lifetime := time.Duration(response.ExpiresIn) * time.Second
 	manager.expires = time.Now().Add(lifetime - min(30*time.Second, lifetime/10))
 	return nil
@@ -306,6 +317,7 @@ func (manager *Manager) clearLocked() error {
 	saved := manager.current
 	manager.current, manager.access, manager.pending = credential{}, "", pendingLogin{}
 	manager.accountID = 0
+	manager.setup = nil
 	var failures []error
 	for _, account := range []string{accountKey(saved), activeAccount} {
 		if err := keyring.Delete(KeychainService, account); err != nil && !errors.Is(err, keyring.ErrNotFound) {
