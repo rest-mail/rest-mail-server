@@ -85,12 +85,20 @@ type migrationServer struct {
 
 func newMigrationServer(t *testing.T) *migrationServer {
 	t.Helper()
+	return newMigrationServerWithRouter(t, nil)
+}
+
+func newMigrationServerWithRouter(t *testing.T, configure func(*api.Routers)) *migrationServer {
+	t.Helper()
 	db := migrationDatabase(t)
 
 	jwt := auth.NewJWTService("migration-test-signing-key-of-no-value", 5*time.Minute, time.Hour)
 	routers := api.NewRouters(db, jwt, &config.Config{Environment: "test", SMTPMaxMessageSize: 1 << 20, APIMaxBodyBytes: 4 << 20,
 		InternalMTLSEnabled: true}, nil)
 	t.Cleanup(routers.Close)
+	if configure != nil {
+		configure(routers)
+	}
 	apiServer := httptest.NewServer(routers.Public)
 	t.Cleanup(apiServer.Close)
 
@@ -285,6 +293,7 @@ func startIMAPGateway(t *testing.T, apiURL string, internal http.Handler) (strin
 		apiclient.WithInternalMTLS(internalServer.URL, nil))
 	server := imapserver.New("imap."+migrationDomain, imapgw.NewBackend(client, limiter),
 		&tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}, limiter)
+	server.SetIdlePollInterval(100 * time.Millisecond)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
