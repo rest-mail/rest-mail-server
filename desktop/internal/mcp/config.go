@@ -7,13 +7,14 @@ import (
 )
 
 type Launch struct {
-	Enabled bool
-	Stdio   bool
-	Port    int
+	Enabled       bool
+	Stdio         bool
+	Port          int
+	DiscoveryPath string
 }
 
 func ParseLaunch(args []string, getenv func(string) string) (Launch, error) {
-	launch := Launch{Enabled: developmentBuild || getenv("RESTMAIL_DESKTOP_MCP") == "1"}
+	launch := Launch{Enabled: developmentBuild || getenv("RESTMAIL_DESKTOP_MCP") == "1", DiscoveryPath: getenv("RESTMAIL_DESKTOP_MCP_DISCOVERY")}
 	port := getenv("RESTMAIL_DESKTOP_MCP_PORT")
 	for index := 0; index < len(args); index++ {
 		switch argument := args[index]; {
@@ -30,6 +31,17 @@ func ParseLaunch(args []string, getenv func(string) string) (Launch, error) {
 			port = args[index]
 		case strings.HasPrefix(argument, "--mcp-port="):
 			port = strings.TrimPrefix(argument, "--mcp-port=")
+		case argument == "--mcp-discovery":
+			index++
+			if index == len(args) || args[index] == "" {
+				return launch, fmt.Errorf("--mcp-discovery requires a path")
+			}
+			launch.DiscoveryPath = args[index]
+		case strings.HasPrefix(argument, "--mcp-discovery="):
+			launch.DiscoveryPath = strings.TrimPrefix(argument, "--mcp-discovery=")
+			if launch.DiscoveryPath == "" {
+				return launch, fmt.Errorf("--mcp-discovery requires a path")
+			}
 		}
 	}
 	if port != "" {

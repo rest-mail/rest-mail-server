@@ -24,11 +24,12 @@ func startMCP(app *application.App, manager *session.Manager, client *apiclient.
 	bridge := desktopmcp.NewBridge(func(request desktopmcp.UIRequest) { app.Event.Emit("mcp:ui:request", request) })
 	unsubscribe := app.Event.On("mcp:ui:response", func(event *application.CustomEvent) { bridge.Respond(event.Data) })
 	server, err := desktopmcp.New(desktopmcp.Options{
-		Port:    launch.Port,
-		Info:    desktopmcp.Info{Version: version, Commit: commit, BuiltAt: builtAt},
-		UI:      bridge,
-		Domain:  desktopmcp.NewDomain(manager, client),
-		Secrets: manager.SensitiveValues,
+		Port:          launch.Port,
+		DiscoveryPath: launch.DiscoveryPath,
+		Info:          desktopmcp.Info{Version: version, Commit: commit, BuiltAt: builtAt},
+		UI:            bridge,
+		Domain:        desktopmcp.NewDomain(manager, client),
+		Secrets:       manager.SensitiveValues,
 	})
 	if err != nil {
 		unsubscribe()
