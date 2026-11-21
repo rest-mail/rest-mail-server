@@ -98,6 +98,9 @@ dotenv:
 # centralized vars block above so values stay in one place.
 # ════════════════════════════════════════════════════════
 includes:
+  desktop:
+    taskfile: ./tasks/desktop.yml
+
   # ── Local services (this repo) ──────────────────────────
   # Subproject includes (testbed, mailserver:*) come AFTER these. Task
   # processes includes in document order and each include's vars block
