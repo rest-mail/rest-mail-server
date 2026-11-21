@@ -41,3 +41,19 @@ a run complete. `list` and `clean --dry-run` never remove anything.
 The tests are in `scripts/tests/test_scratch_cleanup.py`. They use disposable fixtures
 and cover the shared root, siblings, traversal, symlinks, missing or wrong ownership and
 active runs of other workers.
+
+## Recovering a killed CI or topology run
+
+`scripts/scratch_run.py` registers the command's process-group leader and kernel
+start time before executing it. Its separate cleaner checks both before signalling
+the group. A missing or replaced leader is not ownership: the cleaner does not
+signal a group it cannot verify. To keep the process receipt, set
+`RESTMAIL_PROCESS_CLEANUP_RECEIPT` to a new file outside the run's scratch directory.
+The JSON records the PID, start time, and whether the group was signalled or skipped.
+
+On a shared daemon, give each run its own `RESTMAIL_LABEL=key=value`. Use that
+exact label with `chore clean`, or `chore topology:substrate:down TOPOLOGY=<run>`
+for the label assigned by the topology plan. `chore purge` uses the same label
+but removes only containers. The output records each removed container's full ID
+and label. A matching name prefix is never ownership. Inspect any unlabelled
+leftovers independently rather than sweeping them by name.

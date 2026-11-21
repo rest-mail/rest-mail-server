@@ -2555,12 +2555,6 @@ tasks:
       - python3 -B scripts/check_zone_years.py {{.CLI_ARGS}}
 
   purge:
-    desc: Remove all rest-mail-* containers (does not touch volumes — use instance:down + postgres:reset for data)
+    desc: Remove containers carrying RESTMAIL_LABEL (does not touch volumes or networks)
     cmds:
-      - |
-        ids=$(docker ps -aq --filter "name=^/{{.RESTMAIL_PROJECT}}-")
-        if [ -n "$ids" ]; then
-          docker rm -f $ids
-        else
-          echo "no rest-mail containers to remove"
-        fi
+      - CONTAINERS_ONLY=true sh tasks/clean.sh

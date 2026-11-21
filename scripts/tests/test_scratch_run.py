@@ -1,6 +1,7 @@
 """A test run removes its temporary directory, however it ends (#1963)."""
 
 import importlib.util
+import json
 import os
 import re
 import select
@@ -129,9 +130,11 @@ class ScratchRunTests(unittest.TestCase):
     def test_a_go_test_that_never_starts_is_reported_with_what_it_printed(self):
         process, log = self.started_with_log("print('still building', flush=True); import time; time.sleep(300)")
         self.assertTrue(wait_for(lambda: log.read_text()), "the command never printed")
-        with mock.patch(f"{__name__}.GO_TEST_STARTS_SECONDS", 1):
-            with self.assertRaises(self.failureException) as failed:
-                self.wait_for_go_test(process, log)
+        with (
+            mock.patch(f"{__name__}.GO_TEST_STARTS_SECONDS", 1),
+            self.assertRaises(self.failureException) as failed,
+        ):
+            self.wait_for_go_test(process, log)
         self.assertIn("go test never started", str(failed.exception))
         self.assertIn("exit code None", str(failed.exception))
         self.assertIn("still building", str(failed.exception))
@@ -216,12 +219,14 @@ class ScratchRunTests(unittest.TestCase):
         def popen(*args, **kwargs):
             child = real_popen(*args, **kwargs)
             ready = select.select([read_end], [], [], 0)[0]
-            named.append((child.pid, os.read(read_end, 64) if ready else b""))
+            named.append((child.pid, os.read(read_end, 128) if ready else b""))
             return child
 
         with mock.patch.object(scratch_run.subprocess, "Popen", popen):
             self.assertEqual(scratch_run.run(["true"], str(self.temp), write_end), 0)
-        self.assertEqual(named[0][1], str(named[0][0]).encode())
+        identity = json.loads(named[0][1])
+        self.assertEqual(identity["pid"], named[0][0])
+        self.assertTrue(identity["start"])
 
     def test_each_way_of_being_killed_leaves_nothing(self):
         for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGKILL):

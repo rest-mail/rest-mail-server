@@ -10,14 +10,26 @@
 set -u
 
 : "${RESTMAIL_LABEL:=rest-mail.run=local}"
+case "$RESTMAIL_LABEL" in
+  ?*=?*) ;;
+  *) echo 'cleanup requires a nonempty RESTMAIL_LABEL key=value' >&2; exit 2 ;;
+esac
 DATA_LABEL=rest-mail.data=true
 filter="label=$RESTMAIL_LABEL"
 left=0
 
-containers=$(docker ps -aq --filter "$filter")
-if [ -n "$containers" ]; then
-  # shellcheck disable=SC2086 # a list of ids
-  docker rm -fv $containers >/dev/null || left=1
+containers=$(docker ps -aq --no-trunc --filter "$filter") || exit 1
+flags=-fv
+[ "${CONTAINERS_ONLY:-}" != true ] || flags=-f
+for container in $containers; do
+  if docker rm "$flags" "$container" >/dev/null; then
+    printf 'cleanup: removed container %s (%s)\n' "$container" "$RESTMAIL_LABEL"
+  else
+    left=1
+  fi
+done
+if [ "${CONTAINERS_ONLY:-}" = true ]; then
+  exit "$left"
 fi
 
 for network in $(docker network ls -q --filter "$filter"); do
