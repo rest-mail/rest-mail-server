@@ -32,8 +32,11 @@ type pendingLogin struct {
 }
 
 type Manager struct {
-	mu        sync.Mutex
-	client    *http.Client
+	mu     sync.Mutex
+	client *http.Client
+	// streams carries event streams. It has no whole-response timeout, because an
+	// event stream stays open for the session; the caller's context ends it.
+	streams   *http.Client
 	current   credential
 	access    string
 	accountID uint
@@ -48,6 +51,16 @@ func New() *Manager {
 	return &Manager{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		streams: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: 30 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+			},
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -356,11 +369,20 @@ func (manager *Manager) DoRequest(ctx context.Context, incoming *http.Request) (
 	}
 	request.Header.Set("Accept-Encoding", "identity")
 	manager.mu.Unlock()
-	response, err := manager.client.Do(request)
+	client := manager.client
+	if IsEventStream(incoming.Header.Get("Accept")) {
+		client = manager.streams
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, errors.New("mail server unavailable")
 	}
 	return response, nil
+}
+
+// IsEventStream reports whether a media type names a server-sent event stream.
+func IsEventStream(mediaType string) bool {
+	return strings.Contains(strings.ToLower(mediaType), "text/event-stream")
 }
 
 func (manager *Manager) Redact(data []byte) []byte {
