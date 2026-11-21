@@ -17,6 +17,7 @@ export function devMock(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
         const url = new URL(request.url ?? '/', 'http://localhost');
+        url.pathname = url.pathname.replace(/^\/__desktop_mock(?=\/api\/)/, '');
         if (!url.pathname.startsWith('/api/')) return next();
         const route = url.pathname.slice('/api/v1'.length);
         let body = '';
