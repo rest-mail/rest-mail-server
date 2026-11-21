@@ -50,7 +50,8 @@ class DesktopWorkflowTests(unittest.TestCase):
         self.assertNotIn("release", self.workflow["jobs"])
         self.assertNotIn("gh release create", json.dumps(self.workflow))
         self.assertEqual(
-            set(self.workflow["jobs"]), {"macos", "windows", "linux-gate", "linux"}
+            set(self.workflow["jobs"]),
+            {"preflight-gate", "preflight", "macos", "windows", "linux-gate", "linux"},
         )
 
     def test_no_job_can_write_contents(self):
@@ -136,7 +137,7 @@ class DesktopWorkflowTests(unittest.TestCase):
         self.assertEqual(
             jobs["linux"]["runs-on"], "${{ needs.linux-gate.outputs.runner }}"
         )
-        self.assertEqual(jobs["linux"]["needs"], "linux-gate")
+        self.assertEqual(jobs["linux"]["needs"], ["preflight", "linux-gate"])
         self.assertEqual(
             jobs["linux-gate"]["steps"],
             [{"id": "pick", "run": "runner-gate pick linux-x64"}],
