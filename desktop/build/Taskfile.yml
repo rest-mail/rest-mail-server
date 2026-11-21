@@ -48,13 +48,16 @@ tasks:
     sources:
       - package.json
       - pnpm-lock.yaml
+      - ../../webmail/package.json
+      - ../../webmail/pnpm-lock.yaml
     generates:
       - node_modules
     preconditions:
       - sh: pnpm --version
         msg: "pnpm not found"
     cmds:
-      - pnpm install
+      - pnpm --dir ../../webmail install --frozen-lockfile
+      - pnpm install --frozen-lockfile
 
   install:frontend:deps:yarn:
     dir: frontend

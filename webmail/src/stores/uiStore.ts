@@ -14,6 +14,7 @@ interface ComposeState {
   bcc: string;
   subject: string;
   inReplyTo?: string;
+  forwardMessageId?: number;
   quoteHtml?: string;
   draftId?: number;
   bodyHtml?: string;

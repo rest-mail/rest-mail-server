@@ -13,9 +13,9 @@ const compiled = ts.transpileModule(source, {
 test('disabling vacation accepts 204 and absent 404 without parsing an empty body', async () => {
   for (const status of [204, 404]) {
     const exports: { disableVacation?: (account: number) => Promise<void> } = {};
-    runInNewContext(compiled, {
+    const context = {
       exports,
-      require: (moduleName: string) => moduleName === './apiError' ? { ApiError, apiErrorFromBody } : { API_BASE: '/api/v1' },
+      require: (moduleName: string): unknown => moduleName === './apiError' ? { ApiError, apiErrorFromBody } : moduleName === '../platform' ? { mailPlatform: () => ({}), mailFetch: (...args: [string, RequestInit]) => context.fetch(...args) } : { API_BASE: '/api/v1' },
       document: { cookie: 'restmail_csrf=vacation-token' },
       fetch: async (path: string, options: RequestInit) => {
         assert.equal(path, '/api/v1/accounts/7/vacation');
@@ -24,7 +24,8 @@ test('disabling vacation accepts 204 and absent 404 without parsing an empty bod
         assert.equal((options.headers as Record<string, string>)['X-CSRF-Token'], 'vacation-token');
         return new Response(status === 204 ? null : '{"error":{"code":"not_found","message":"Vacation reply not found"}}', { status });
       },
-    });
+    };
+    runInNewContext(compiled, context);
     await exports.disableVacation!(7);
   }
 });
@@ -32,15 +33,16 @@ test('disabling vacation accepts 204 and absent 404 without parsing an empty bod
 test('disabling vacation preserves authorization, server and network failures', async () => {
   for (const status of [401, 403, 500, 0]) {
     const exports: { disableVacation?: (account: number) => Promise<void> } = {};
-    runInNewContext(compiled, {
+    const context = {
       exports,
-      require: (moduleName: string) => moduleName === './apiError' ? { ApiError, apiErrorFromBody } : { API_BASE: '/api/v1' },
+      require: (moduleName: string): unknown => moduleName === './apiError' ? { ApiError, apiErrorFromBody } : moduleName === '../platform' ? { mailPlatform: () => ({}), mailFetch: () => context.fetch() } : { API_BASE: '/api/v1' },
       document: { cookie: '' },
       fetch: async () => {
         if (status === 0) throw new Error('offline');
         return new Response('{"error":{"code":"refused","message":"Not allowed"}}', { status });
       },
-    });
+    };
+    runInNewContext(compiled, context);
     await assert.rejects(exports.disableVacation!(7), status === 0 ? /offline/ : /Not allowed/);
   }
 });

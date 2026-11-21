@@ -221,6 +221,7 @@ export function Sidebar() {
                               />
                             ) : (
                               <button
+                                data-testid={`folder-${account.id}-${f.name}`}
                                 onClick={() => handleFolderClick(f.name)}
                                 className={cn(
                                   "flex-1 text-left px-2.5 h-8 flex items-center gap-2 rounded-2xl transition-all duration-150 font-mono text-[13px]",

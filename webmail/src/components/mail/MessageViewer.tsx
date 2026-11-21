@@ -1,4 +1,6 @@
 import { displayAddress } from '@/lib/addressDisplay';
+import { mailPlatform } from '@/platform';
+import { MessageActions } from './MessageActions';
 import { useState, useEffect } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -44,6 +46,7 @@ function attachmentIcon(contentType: string) {
 function ActionBtn({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
   return (
     <button
+      data-testid={`reader-${title.toLowerCase().replace(/\s+/g, '-')}`}
       onClick={onClick}
       title={title}
       className="w-7 h-7 rounded-2xl bg-background flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
@@ -63,6 +66,7 @@ function ActionWord({ k, label, style, onClick }: {
 }) {
   return (
     <button
+      data-testid={`reader-${label}`}
       onClick={onClick}
       className={cn(
         "h-7 px-2 flex items-center gap-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-colors shrink-0",
@@ -278,6 +282,7 @@ export function MessageViewer() {
       cc: '',
       bcc: '',
       subject: msg.subject.startsWith('Fwd:') ? msg.subject : `Fwd: ${msg.subject}`,
+      forwardMessageId: mailPlatform().desktop ? msg.id : undefined,
       quoteHtml: `<p><br></p><p>${fwdHeader.replace(/\n/g, '<br>')}</p>${msg.body_html || `<p>${msg.body_text}</p>`}`,
     });
   };
@@ -485,6 +490,12 @@ export function MessageViewer() {
                       target="_blank"
                       rel="noopener noreferrer"
                       download={att.filename}
+                      data-testid={`attachment-${att.id}`}
+                      onClick={event => {
+                        if (!mailPlatform().saveAttachment) return;
+                        event.preventDefault();
+                        void mailPlatform().saveAttachment!(api.getAttachmentUrl(att.id), att.filename).catch(error => toast.error(error instanceof Error ? error.message : 'Download failed'));
+                      }}
                       className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-2xl text-xs font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-colors", TYPEFACE_CLASS[v.readerType])}
                     >
                       {attachmentIcon(att.content_type || '')}
@@ -503,6 +514,7 @@ export function MessageViewer() {
             <CalendarInvite events={msg.calendar_events} messageId={msg.id} />
           )}
 
+          {mailPlatform().desktop && <MessageActions ids={[msg.id]} prefix="reader-message" />}
           {/* Body — untrusted HTML rendered in a sandboxed, CSP-locked iframe */}
           {msg.body_html ? (
             <HtmlMessageBody html={msg.body_html} />

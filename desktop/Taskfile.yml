@@ -6,7 +6,7 @@ vars:
   APP_VERSION: '{{.APP_VERSION | default "dev"}}'
   APP_COMMIT: '{{.APP_COMMIT | default "unknown"}}'
   APP_BUILT: '{{.APP_BUILT | default "unknown"}}'
-  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "pnpm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
   # Target OS for build/package/run. Defaults to the host OS, and is overridden
   # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
