@@ -149,3 +149,6 @@ html, body, #root, .desktop-shell { font-family: -apple-system, BlinkMacSystemFo
 .desktop-compose [data-testid="compose-body"] { padding: 24px; font-size: 15px; line-height: 1.6; }
 .desktop-shell:has(.desktop-compose) [data-testid="compose-open"] { background: rgb(255 255 255 / 12%); }
 .desktop-shell:has(.desktop-compose) [data-testid="compose-open"] span { color: white; }
+/* A quiet secondary action under a sheet's primary button. */
+.desktop-text-button { display: block; margin: 16px auto 0; padding: 4px 8px; background: none; border: none; color: var(--deep); font-size: 13px; font-weight: 500; cursor: pointer; }
+.desktop-text-button:hover { text-decoration: underline; }
