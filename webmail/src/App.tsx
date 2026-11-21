@@ -25,6 +25,7 @@ import { AccountSettingsView } from '@/components/account/AccountSettingsView';
 import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { handleThreadSnoozeEvent } from '@/lib/threadSnooze';
 import { useNotifications } from '@/hooks/useNotifications';
+import { mailPlatform } from '@/platform';
 
 function App({ loginPage }: { loginPage?: React.ReactNode }) {
   const { user, setupRequired, acceptSession, isAuthenticated, sessionChecked, checkSession, logout } = useAuthStore();
@@ -121,13 +122,13 @@ function MailApp() {
   const { view } = useUIStore();
   return (
     <>
-      <div className="h-full flex">
+      <div className={mailPlatform().desktop ? 'desktop-shell h-full flex' : 'h-full flex'}>
         {/* Left sidebar */}
         <Sidebar />
 
         {/* Right panel */}
         <div className="flex-1 flex flex-col min-w-0">
-          <TopBar />
+          {(!mailPlatform().desktop || view !== 'mail') && <TopBar />}
 
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
@@ -152,13 +153,14 @@ function MailApp() {
 
 function MailView() {
   return (
-    <div className="h-full flex flex-col lg:flex-row">
+    <div className={mailPlatform().desktop ? 'desktop-panes h-full flex' : 'h-full flex flex-col lg:flex-row'}>
       {/* Message list: top half on <lg, fixed 380px column on lg+ */}
-      <div className="h-1/2 lg:h-full lg:w-[380px] shrink-0 min-w-0 border-b lg:border-b-0 lg:border-r border-border overflow-hidden">
+      <div className={mailPlatform().desktop ? 'desktop-list-pane' : 'h-1/2 lg:h-full lg:w-[380px] shrink-0 min-w-0 border-b lg:border-b-0 lg:border-r border-border overflow-hidden'}>
+        {mailPlatform().desktop && <TopBar />}
         <MessageList />
       </div>
       {/* Message viewer: bottom half on <lg, flex remaining on lg+ */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className={mailPlatform().desktop ? 'desktop-reader-pane flex-1 min-h-0 min-w-0 overflow-hidden' : 'flex-1 min-h-0 min-w-0 overflow-hidden'}>
         <MessageViewer />
       </div>
     </div>

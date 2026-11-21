@@ -1,4 +1,5 @@
 import { displayAddress } from '@/lib/addressDisplay';
+import { mailPlatform } from '@/platform';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -15,7 +16,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { X, Loader2, Check, RefreshCw, Palette, Settings } from 'lucide-react';
+import { X, Loader2, Check, RefreshCw, Palette, Settings, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Returns 1-2 uppercase initials from an email address.
@@ -68,16 +69,16 @@ export function TopBar() {
   };
 
   return (
-    <div className="flex items-center gap-2 h-12 px-4 bg-secondary shrink-0">
+    <div className={cn('flex items-center gap-2 h-12 px-4 bg-secondary shrink-0', mailPlatform().desktop && 'desktop-search-header')}>
       {/* Search bar */}
       <div className="flex-1 min-w-0 hidden sm:block">
         <div className="relative flex items-center h-8 rounded-2xl bg-background px-3 gap-2">
-          <span className="text-muted-foreground text-[13px] shrink-0">🔍</span>
+          <span className="text-muted-foreground text-[13px] shrink-0">{mailPlatform().desktop ? <Search size={16} /> : '🔍'}</span>
           <input
             data-testid="search-input"
             ref={inputRef}
             type="text"
-            placeholder="search_emails..."
+            placeholder={mailPlatform().desktop ? 'Search mail' : 'search_emails...'}
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={e => e.key === 'Escape' && handleClearSearch()}

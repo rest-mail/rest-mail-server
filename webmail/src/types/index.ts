@@ -49,6 +49,7 @@ export interface MessageSummary {
   sender_name: string;
   recipients_to: string[] | null;
   subject: string;
+  body_text?: string;
   size_bytes: number;
   has_attachments: boolean;
   is_read: boolean;

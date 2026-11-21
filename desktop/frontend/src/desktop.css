@@ -2,4 +2,3 @@
 @import "./theme.css";
 @source ".";
 html, body, #root { height: 100%; margin: 0; }
-@media (min-width: 900px) { .lg\:flex-row { flex-direction: row; } .lg\:w-\[380px\] { width: 350px; height: 100%; } }
