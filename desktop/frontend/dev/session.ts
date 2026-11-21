@@ -24,6 +24,9 @@ export const session: SessionBinding = {
     if (code !== '123456') throw new Error('Use 123456 in the development fixture');
     status.SignedIn = true; events.emit('session:changed', status);
   },
+  async ChangePassword() { return { NeedsTOTP: false, SetupRequired: status.SetupRequired }; },
+  async EnrollTwoFactor() { throw new Error('Authenticator enrollment requires a real test server'); },
+  async ConfirmTwoFactor() { throw new Error('Authenticator enrollment requires a real test server'); },
   async SignOut() { status = { SignedIn: false, Server: '', Email: '' }; events.emit('session:changed', status); },
   async Status() { return status; },
 };

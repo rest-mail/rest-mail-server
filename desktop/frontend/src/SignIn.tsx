@@ -21,11 +21,11 @@ export function SignIn({ session }: { session: SessionBinding }) {
         if (result.NeedsTOTP) { setChallenge(true); return; }
       }
       const user = identity(await session.Status());
-      useAuthStore.setState({ user, isAuthenticated: !!user, sessionChecked: true });
+      useAuthStore.setState({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: user?.setup_required ?? [] });
     } catch (err) {
       const message = err instanceof Error ? err.message : '';
       const host = server.replace(/^https?:\/\//, '').split('/')[0];
-      setError(challenge ? 'That code did not work. Try again.' : /401|credential|password|unauthor/i.test(message) ? 'Wrong email or password.' : `Can't reach ${host}.`);
+      setError(/keychain/i.test(message) ? "Can't save your sign-in securely. Check access to the system keychain." : challenge ? 'That code did not work. Try again.' : /401|credential|password|unauthor/i.test(message) ? 'Wrong email or password.' : `Can't reach ${host}.`);
     }
     finally { setBusy(false); }
   }
