@@ -115,7 +115,13 @@ func (service *Native) install(app *application.App) {
 	}
 	for _, command := range native.Commands {
 		command := command
-		service.items[command.ID] = groups[command.Group].Add(command.Label).SetAccelerator(command.Accelerator).SetEnabled(command.ID == "close-window").OnClick(func(*application.Context) { _ = service.invokeMenu(command.ID) })
+		var item *application.MenuItem
+		if command.Checkable {
+			item = groups[command.Group].AddCheckbox(command.Label, false)
+		} else {
+			item = groups[command.Group].Add(command.Label)
+		}
+		service.items[command.ID] = item.SetAccelerator(command.Accelerator).SetEnabled(command.ID == "close-window").OnClick(func(*application.Context) { _ = service.invokeMenu(command.ID) })
 	}
 	menu.AddRole(application.WindowMenu)
 	menu.AddSubmenu("Help").Add("REST Mail Keyboard Shortcuts").OnClick(func(*application.Context) {
@@ -184,6 +190,9 @@ func (service *Native) updateMenu() {
 	service.mutex.Unlock()
 	for _, command := range native.Commands {
 		service.items[command.ID].SetEnabled(state.Allows(command, window.Name() == "main")).SetLabel(state.Label(command))
+		if command.Checkable {
+			service.items[command.ID].SetChecked(state.Checked(command.ID))
+		}
 	}
 	service.settings.SetEnabled(state.SignedIn && !state.Editing)
 }
