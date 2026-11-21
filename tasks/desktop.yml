@@ -73,7 +73,9 @@ tasks:
       - task: release:notes
       - task: build
       - mkdir -p "{{.INSTALL_DIR}}"
-      - '[ "{{.INSTALL_DIR}}" != "$HOME/Applications" ] || osascript -e ''tell application "REST Mail" to quit'' >/dev/null 2>&1 || true'
+      # Stop only the copy being replaced. Quitting "REST Mail" by name would also stop
+      # development builds and other checkouts' copies, which share its name and bundle id.
+      - sh "{{.DESKTOP_DIR}}/scripts/stop-installed.sh" "{{.INSTALL_DIR}}/{{.APP_NAME}}.app/Contents/MacOS/{{.APP_NAME}}"
       - rm -rf "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
       - cp -R "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app" "{{.INSTALL_DIR}}/"
       - task: info
