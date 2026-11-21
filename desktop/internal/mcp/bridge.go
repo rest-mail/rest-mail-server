@@ -69,7 +69,7 @@ func (bridge *Bridge) Call(ctx context.Context, action string, args any) (any, e
 		return nil, ctx.Err()
 	case response := <-channel:
 		if !response.OK {
-			return nil, errors.New("UI action failed")
+			return nil, errors.New("UI action failed: " + response.Error)
 		}
 		return response.Result, nil
 	}

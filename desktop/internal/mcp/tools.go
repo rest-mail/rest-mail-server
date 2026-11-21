@@ -76,19 +76,18 @@ type LogsArgs struct {
 func domainTool[Args any](server *Server, name, description string) {
 	sdk.AddTool(server.protocol, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, request *sdk.CallToolRequest, args Args) (*sdk.CallToolResult, any, error) {
 		if server.options.Domain == nil {
-			return toolError("domain_unavailable"), nil, nil
+			return server.toolFailure(name, "domain_unavailable", nil), nil, nil
 		}
 		data, err := json.Marshal(args)
 		if err != nil {
-			return toolError("invalid_arguments"), nil, nil
+			return server.toolFailure(name, "invalid_arguments", err), nil, nil
 		}
 		ctx, cancel := context.WithTimeout(ctx, server.options.Timeout)
 		defer cancel()
 		value, err := server.options.Domain.Call(ctx, name, data)
 		if err != nil {
 			code := domainErrorCode(err)
-			server.logs.Write([]byte(name + ": " + code + "\n"))
-			return toolError(code), nil, nil
+			return server.toolFailure(name, code, err), nil, nil
 		}
 		return server.result(value), nil, nil
 	})
@@ -96,21 +95,36 @@ func domainTool[Args any](server *Server, name, description string) {
 
 func uiTool[Args any](server *Server, name, action string) {
 	sdk.AddTool(server.protocol, &sdk.Tool{Name: name, Description: "Drive the desktop UI: " + action}, func(ctx context.Context, request *sdk.CallToolRequest, args Args) (*sdk.CallToolResult, any, error) {
-		if server.options.UI == nil {
-			return toolError("ui_unavailable"), nil, nil
-		}
 		ctx, cancel := context.WithTimeout(ctx, server.options.Timeout)
 		defer cancel()
+		if action == "screenshot" {
+			data, err := server.options.Screenshot(ctx)
+			if err == nil {
+				result := screenshotResult(map[string]any{"data": base64.StdEncoding.EncodeToString(data)})
+				if !result.IsError {
+					return result, nil, nil
+				}
+				err = errors.New("native capture returned invalid PNG")
+			}
+			server.logs.Write([]byte(name + ": native capture unavailable; trying UI bridge: " + err.Error() + "\n"))
+		}
+		if server.options.UI == nil {
+			return server.toolFailure(name, "ui_unavailable", nil), nil, nil
+		}
 		value, err := server.options.UI.Call(ctx, action, args)
 		if err != nil {
 			code := "ui_error"
 			if errors.Is(err, context.DeadlineExceeded) {
 				code = "ui_timeout"
 			}
-			return toolError(code), nil, nil
+			return server.toolFailure(name, code, err), nil, nil
 		}
 		if action == "screenshot" {
-			return screenshotResult(value), nil, nil
+			result := screenshotResult(value)
+			if result.IsError {
+				return server.toolFailure(name, "invalid_screenshot", errors.New("UI bridge returned invalid PNG")), nil, nil
+			}
+			return result, nil, nil
 		}
 		return server.result(value), nil, nil
 	})
