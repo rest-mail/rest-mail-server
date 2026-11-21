@@ -8,12 +8,17 @@ type Command struct {
 	Label       string `json:"label"`
 	Accelerator string `json:"accelerator"`
 	Message     bool   `json:"-"`
+	Checkable   bool   `json:"-"`
 }
 
 var Commands = []Command{
 	{ID: "new-message", Group: "File", Label: "New Message", Accelerator: "CmdOrCtrl+n"},
 	{ID: "close-window", Group: "File", Label: "Close Window", Accelerator: "CmdOrCtrl+w"},
 	{ID: "refresh", Group: "View", Label: "Refresh", Accelerator: "CmdOrCtrl+Shift+n"},
+	{ID: "view.layout.columns", Group: "View", Label: "Three Columns", Accelerator: "CmdOrCtrl+Alt+1", Checkable: true},
+	{ID: "view.layout.stacked", Group: "View", Label: "List Above Reader", Accelerator: "CmdOrCtrl+Alt+2", Checkable: true},
+	{ID: "view.pane.folders", Group: "View", Label: "Show Folder Pane", Accelerator: "CmdOrCtrl+Alt+s", Checkable: true},
+	{ID: "view.pane.reader", Group: "View", Label: "Show Reader Pane", Accelerator: "CmdOrCtrl+Alt+r", Checkable: true},
 	{ID: "reply", Group: "Message", Label: "Reply", Accelerator: "CmdOrCtrl+r", Message: true},
 	{ID: "reply-all", Group: "Message", Label: "Reply All", Accelerator: "CmdOrCtrl+Shift+r", Message: true},
 	{ID: "forward", Group: "Message", Label: "Forward", Accelerator: "CmdOrCtrl+Shift+f", Message: true},
@@ -33,6 +38,23 @@ type State struct {
 	Draft      bool   `json:"draft"`
 	Read       bool   `json:"read"`
 	Flagged    bool   `json:"flagged"`
+	Layout     string `json:"layout"`
+	Folders    bool   `json:"folders"`
+	Reader     bool   `json:"reader"`
+}
+
+func (state State) Checked(identifier string) bool {
+	switch identifier {
+	case "view.layout.columns":
+		return state.Layout != "stacked"
+	case "view.layout.stacked":
+		return state.Layout == "stacked"
+	case "view.pane.folders":
+		return state.Folders
+	case "view.pane.reader":
+		return state.Reader
+	}
+	return false
 }
 
 func (state State) Allows(command Command, mainWindow bool) bool {

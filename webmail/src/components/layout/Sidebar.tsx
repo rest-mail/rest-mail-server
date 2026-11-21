@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal, Settings2, Inbox, Send, FileText, Archive, Trash2, Folder, ShieldAlert, LogOut } from 'lucide-react';
+import { Menu, X, MoreHorizontal, Settings2, Inbox, Send, FileText, Archive, Trash2, Folder, ShieldAlert, LogOut, ChevronRight, Plus, MailPlus, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
@@ -123,7 +123,6 @@ export function Sidebar() {
     <>
       {/* Logo area */}
       {desktop ? <>
-        <div className="desktop-drag-region" />
         <div className="desktop-account"><strong>{mailPlatform().serverHost?.() || 'Mail server'}</strong><span>{user?.email}</span></div>
       </> : <div className="h-12 flex items-center justify-between px-4 shrink-0">
         <h1 className="flex items-center gap-2 font-heading-oswald text-lg font-semibold text-primary tracking-wider">
@@ -151,7 +150,7 @@ export function Sidebar() {
           onClick={() => startCompose()}
           className="w-[200px] h-8 rounded-2xl bg-primary flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
-          {!desktop && <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>}
+          {desktop ? <SquarePen size={16} aria-hidden="true" /> : <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>}
           <span className="font-mono text-xs font-semibold text-primary-foreground">{desktop ? 'New message' : 'compose'}</span>
         </button>
       </div>
@@ -175,14 +174,15 @@ export function Sidebar() {
           {accounts.map(account => (
             <div key={account.id}>
               {/* Account row */}
-              {(!desktop || accounts.length > 1) && <div className="group flex items-center hover:bg-sidebar-accent transition-colors">
+              {(!desktop || accounts.length > 1) && <div className={cn('group flex items-center hover:bg-sidebar-accent transition-colors', desktop && 'desktop-account-group')}>
                 <button
+                  aria-expanded={desktop ? isExpanded(account.id) : undefined}
                   onClick={() => handleAccountClick(account.id)}
-                  className="flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0"
+                  className={cn('flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0', desktop && 'desktop-account-row')}
                 >
-                  <span className="text-muted-foreground text-[10px]">
+                  {desktop ? <ChevronRight size={16} className="desktop-account-chevron" aria-hidden="true" /> : <span className="text-muted-foreground text-[10px]">
                     {isExpanded(account.id) ? '▾' : '▸'}
-                  </span>
+                  </span>}
                   <span className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{displayAddress(account.address)}</span>
                   {!isExpanded(account.id) && <InboxBadge />}
                 </button>
@@ -193,7 +193,7 @@ export function Sidebar() {
                     setView('accountSettings');
                     setMobileOpen(false);
                   }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 mr-1 rounded text-muted-foreground hover:text-foreground"
+                  className={cn('opacity-0 group-hover:opacity-100 transition-opacity p-1.5 mr-1 rounded text-muted-foreground hover:text-foreground', desktop && 'desktop-account-settings')}
                 >
                   <Settings2 className="w-3.5 h-3.5" />
                 </button>
@@ -297,8 +297,9 @@ export function Sidebar() {
                       ) : (
                         <button
                           onClick={() => setCreatingFolder(true)}
-                          className="w-full text-left px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          className={cn('w-full text-left px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors', desktop && 'desktop-sidebar-action')}
                         >
+                          {desktop && <Plus size={16} aria-hidden="true" />}
                           {desktop ? 'New folder' : '[+ new_folder]'}
                         </button>
                       )}
@@ -316,7 +317,7 @@ export function Sidebar() {
 
       {/* Bottom nav — settings shortcuts */}
       <details open={desktop ? undefined : true} className={desktop ? 'desktop-sidebar-tools' : 'contents'}>
-      {desktop && <summary data-testid="sidebar-tools">More tools</summary>}
+      {desktop && <summary data-testid="sidebar-tools"><ChevronRight size={16} aria-hidden="true" />More tools</summary>}
       <div className="px-1.5 py-1.5 space-y-px shrink-0">
         {([
           { view: 'scheduled' as const, label: 'scheduled' },
@@ -345,8 +346,9 @@ export function Sidebar() {
       <div className="px-3 py-2 shrink-0">
         <button
           onClick={() => { setView('addAccount'); setMobileOpen(false); }}
-          className="w-full h-[30px] flex items-center justify-center rounded-2xl font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className={cn('w-full h-[30px] flex items-center justify-center rounded-2xl font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors', desktop && 'desktop-sidebar-action desktop-add-account')}
         >
+          {desktop && <MailPlus size={16} aria-hidden="true" />}
           {desktop ? 'Add account' : '[+ add_account]'}
         </button>
       </div>
