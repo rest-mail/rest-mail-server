@@ -2,14 +2,19 @@ module github.com/rest-mail/rest-mail-server/desktop
 
 go 1.26.10
 
-require github.com/wailsapp/wails/v3 v3.1.0
+require (
+	github.com/wailsapp/wails/v3 v3.1.0
+	github.com/zalando/go-keyring v0.2.6
+)
 
 require (
+	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	github.com/antimatter-studios/go-oapifly v0.35.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
