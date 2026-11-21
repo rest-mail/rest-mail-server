@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { Clock, Mail, X, Paperclip } from 'lucide-react';
 import { WaitingBadge } from './signals';
 import { updateMessage, deleteMessage } from '@/api/client';
+import { formatListDate } from '@/lib/listDate';
 
 /** Count total unread across displayed messages */
 function useUnreadCount() {
@@ -87,20 +88,7 @@ export function MessageList() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    if (isToday) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) {
-      return 'yesterday';
-    }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }).toLowerCase().replace(' ', '_');
-  };
+  const formatDate = (dateStr: string) => formatListDate(dateStr, new Date(), desktop === true);
 
   // Loading skeleton
   if (loadingMessages && !isInSearch) {
