@@ -12,6 +12,7 @@ function App() {
   }, [])
   return (
     <div className="container" style={{ padding: 32 }}>
+      <img src="/rest-mail-icon.svg" alt="" width={96} height={96} />
       <h1>REST Mail</h1>
       <p>Desktop client</p>
       {release ? (
