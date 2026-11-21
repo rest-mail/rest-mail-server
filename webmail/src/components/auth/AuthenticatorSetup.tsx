@@ -4,16 +4,17 @@ import { QRCodeSVG } from 'qrcode.react'
 interface Props {
   secret: string
   otpauthUrl: string
+  qrSize?: number
 }
 
-export function AuthenticatorSetup({ secret, otpauthUrl }: Props) {
+export function AuthenticatorSetup({ secret, otpauthUrl, qrSize = 256 }: Props) {
   const [copyStatus, setCopyStatus] = useState('')
 
   return (
     <div className="space-y-3">
       <p className="text-sm">Scan this QR code with your authenticator app.</p>
       {/* Render locally: the provisioning URI must never go to a QR service. */}
-      {otpauthUrl && <QRCodeSVG value={otpauthUrl} size={256} level="M" marginSize={4}
+      {otpauthUrl && <QRCodeSVG value={otpauthUrl} size={qrSize} level="M" marginSize={4}
         bgColor="#FFFFFF" fgColor="#000000" role="img" aria-label="Authenticator setup QR code"
         className="block mx-auto max-w-full h-auto" />}
       <details open={!otpauthUrl} className="text-sm">
