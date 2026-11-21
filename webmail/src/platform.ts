@@ -9,6 +9,7 @@ export interface NativeAttachment {
 export interface MailPlatform {
   desktop?: boolean;
   fetch?: typeof fetch;
+  streamURL?: (url: string) => string;
   restoreSession?: () => Promise<User | null>;
   signOut?: () => Promise<void>;
   pickAttachments?: () => Promise<NativeAttachment[]>;

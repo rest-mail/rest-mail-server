@@ -3,16 +3,15 @@ import { configureMailPlatform } from '@webmail/platform';
 import { session, runtimeEvents, nativeFiles, identity } from './session';
 import { createDesktopTransport } from './transport';
 import { registerUIBridge } from './bridge';
-import '@webmail/index.css';
 import './desktop.css';
 
 async function launch() {
   const mock = import.meta.env.DESKTOP_MOCK ? await import('../dev/session') : null;
   const binding = mock?.session ?? session;
   const events = mock?.events ?? runtimeEvents;
-  const transport = createDesktopTransport();
+  const transport = createDesktopTransport(mock?.mockFetch);
   configureMailPlatform({
-    desktop: true, fetch: transport,
+    desktop: true, fetch: transport, streamURL: mock?.streamURL,
     restoreSession: async () => identity(await binding.Status()),
     signOut: () => binding.SignOut(),
     pickAttachments: nativeFiles.pick,
@@ -45,7 +44,7 @@ async function launch() {
       else throw new Error('Unknown route');
     },
     screenshot: async () => {
-      const { default: html2canvas } = await import('html2canvas');
+      const { default: html2canvas } = await import('html2canvas-pro');
       const canvas = await html2canvas(document.body, { useCORS: false, allowTaint: false, ignoreElements: element => element instanceof HTMLInputElement && element.type === 'password' });
       return canvas.toDataURL('image/png').split(',')[1];
     },
