@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { readFileSync } from 'node:fs';
 import { Sidebar } from '@webmail/components/layout/Sidebar';
 import { configureMailPlatform } from '@webmail/platform';
 import { useAuthStore } from '@webmail/stores/authStore';
@@ -8,6 +9,15 @@ import { useMailStore } from '@webmail/stores/mailStore';
 import { useUIStore } from '@webmail/stores/uiStore';
 
 vi.mock('@webmail/components/ui/scroll-area', () => ({ ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
+
+describe('desktop sheet spacing', () => {
+  it('keeps sign-in and setup scrollable with safe outer margins and nonshrinking sheets', () => {
+    const theme = readFileSync('src/theme.css', 'utf8');
+    expect(theme).toMatch(/\.desktop-signin \{[^}]*overflow: auto;[^}]*padding: 48px;/);
+    expect(theme).toMatch(/\.desktop-signin-sheet \{[^}]*flex-shrink: 0; margin: auto 0;/);
+    expect(theme).toMatch(/\.desktop-setup-sheet \{[^}]*margin: auto;/);
+  });
+});
 
 describe('desktop-only sidebar polish', () => {
   beforeEach(() => {

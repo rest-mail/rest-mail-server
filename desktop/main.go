@@ -95,9 +95,8 @@ func main() {
 		Name:           "main",
 		EnableFileDrop: true,
 		Title:          windowTitle("REST Mail "+version, currentInstance()),
-		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
-		Width:  1000,
-		Height: 618,
+		Width:          1200,
+		Height:         742,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
