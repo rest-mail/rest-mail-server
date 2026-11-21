@@ -99,6 +99,25 @@ The mock is enabled only by Vite's development server and excluded from producti
 builds. It does not test native authentication or setup. Wails tasks install
 frontend dependencies with pnpm.
 
+## Desktop layout and typography
+
+The title bar keeps REST Mail's brand beside the macOS window controls and provides
+two layout choices: three columns, or a message list above the reader. The two
+adjacent pane toggles show or hide folders and the reader. With the reader hidden,
+opening a message uses a full-pane reader with **Back to messages**, keeping message
+navigation separate from draft tabs. These controls also appear with checkmarks in
+the native **View** menu: **⌘⌥1/2** select a layout, **⌘⌥S** toggles folders, and
+**⌘⌥R** toggles the reader. Drag the message list's lower-right resize grip to
+adjust its width in columns or its height in the stacked layout.
+
+Layout, pane visibility, and separate split sizes are saved in localStorage per
+server host and signed-in email. No account settings are changed. The desktop-only
+theme uses the native system UI face, an 11/12/13/15/20px type scale, 400/500/600
+weights, 16/20/28px line heights, 32px sidebar rows, and tabular counts and times.
+Monospace is reserved for authenticator secrets and recovery-code data. Brand navy
+and yellow remain the sidebar and primary-action accents; shared webmail does not
+import this theme or render the desktop title bar.
+
 ## Frontend validation
 
 ```sh
