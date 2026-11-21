@@ -587,3 +587,38 @@ class SignScriptTests(unittest.TestCase):
             result = self.run_sign("--notarize", str(app))
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Not notarized: no Developer ID", result.stderr)
+
+
+@unittest.skipUnless(shutil.which("codesign"), "macOS-only")
+class StopInstalledTests(unittest.TestCase):
+    """desktop/scripts/stop-installed.sh stops only processes running the exact path given."""
+
+    def test_stops_exact_path_and_spares_another_copy(self):
+        with tempfile.TemporaryDirectory() as root:
+            installed = Path(root) / "Applications/RESTMail.app/Contents/MacOS/RESTMail"
+            other = Path(root) / "checkout/desktop/bin/RESTMail.app/Contents/MacOS/RESTMail"
+            for path in (installed, other):
+                path.parent.mkdir(parents=True)
+                shutil.copy("/bin/sleep", path)
+                # A copied system binary keeps Apple's signature, which macOS rejects at
+                # the new path with SIGKILL; sign each copy for itself.
+                subprocess.run(["codesign", "--force", "--sign", "-", str(path)], check=True, capture_output=True)
+            processes = [subprocess.Popen([str(path), "60"]) for path in (installed, other)]
+            try:
+                result = subprocess.run(
+                    ["sh", str(ROOT / "desktop/scripts/stop-installed.sh"), str(installed)],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIsNotNone(processes[0].wait(timeout=5))
+                self.assertIsNone(processes[1].poll(), "another copy of the app was stopped")
+            finally:
+                for process in processes:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+
+    def test_release_does_not_quit_the_app_by_name(self):
+        tasks = (ROOT / "tasks/desktop.yml").read_text()
+        self.assertNotIn('tell application "REST Mail" to quit', tasks)
+        self.assertIn("scripts/stop-installed.sh", tasks)
