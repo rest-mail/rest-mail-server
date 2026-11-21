@@ -4091,15 +4091,19 @@ def list_the_sent_messages_queue_entry(transaction):
         return number.isdecimal() and (name == "offset" or int(number) > 0)
 
     if params.get("status") != ["pending"] or any(
-        name != "status" and not paging(name, value) for name, value in params.items()
+        name != "status"
+        and not paging(name, value)
+        and not (name == "scope" and value == ["authorized"])
+        for name, value in params.items()
     ):
         return
+    fixture_query = {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+    if "scope" in params:
+        fixture_query["scope"] = params["scope"][0]
     transaction["fullPath"] = (
         path
         + "?"
-        + urllib.parse.urlencode(
-            {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
-        )
+        + urllib.parse.urlencode(fixture_query)
     )
 
 

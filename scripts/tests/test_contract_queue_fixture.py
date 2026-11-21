@@ -26,20 +26,45 @@ class ContractQueueFixtureTests(unittest.TestCase):
             spec.loader.exec_module(self.module)
 
     def test_example_uses_the_held_fixture_without_changing_the_principal(self):
-        for headers in ({}, {"Authorization": "Bearer synthetic-token"}):
-            with self.subTest(headers=headers):
-                transaction = {"fullPath": "/api/v1/admin/queue?status=pending", "request": {"headers": dict(headers)}}
-                self.module.list_the_sent_messages_queue_entry(transaction)
-                self.assertEqual(transaction["fullPath"], "/api/v1/admin/queue?recipient=contract-retry%40retry.invalid")
-                self.assertEqual(transaction["request"]["headers"], headers)
+        for query, scope in (
+            ("status=pending", ""),
+            ("status=pending&limit=50&offset=0", ""),
+            ("status=pending&scope=authorized", "&scope=authorized"),
+            ("status=pending&limit=50&offset=0&scope=authorized", "&scope=authorized"),
+            ("scope=authorized&offset=0&status=pending&limit=20", "&scope=authorized"),
+        ):
+            for headers in ({}, {"Authorization": "Bearer synthetic-token"}):
+                with self.subTest(query=query, headers=headers):
+                    transaction = {"fullPath": "/api/v1/admin/queue?" + query, "request": {"headers": dict(headers)}}
+                    self.module.list_the_sent_messages_queue_entry(transaction)
+                    self.assertEqual(transaction["fullPath"], "/api/v1/admin/queue?recipient=contract-retry%40retry.invalid" + scope)
+                    self.assertEqual(transaction["request"]["headers"], headers)
 
     def test_other_queries_and_invalid_boundary_values_are_unchanged(self):
         for path in ("/api/v1/admin/queue?status=delivered", "/api/v1/admin/queue?status=not-a-status",
-                     "/api/v1/admin/queue?limit=-1", "/api/v1/admin/queue?offset=1.5"):
+                     "/api/v1/admin/queue?limit=-1", "/api/v1/admin/queue?offset=1.5",
+                     "/api/v1/admin/queue?status=pending&scope=",
+                     "/api/v1/admin/queue?status=pending&scope=invalid",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&scope=authorized",
+                     "/api/v1/admin/queue?status=delivered&scope=authorized",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&limit=0",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&offset=-1",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&offset=1.5",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&limit=20&limit=50",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&domain=other.test",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&sender=other%40other.test",
+                     "/api/v1/admin/queue?status=pending&scope=authorized&recipient=other%40other.test"):
             with self.subTest(path=path):
                 transaction = {"fullPath": path}
                 self.module.list_the_sent_messages_queue_entry(transaction)
                 self.assertEqual(transaction["fullPath"], path)
+
+    def test_clean_start_keeps_the_examples_own_queue_entry(self):
+        path = "/api/v1/admin/queue?status=pending&scope=authorized"
+        transaction = {"fullPath": path}
+        with patch.object(self.module, "asked_for_a_clean_start", return_value=True):
+            self.module.list_the_sent_messages_queue_entry(transaction)
+        self.assertEqual(transaction["fullPath"], path)
 
     def test_task_selects_the_fixture_container_and_refuses_other_configs(self):
         tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
