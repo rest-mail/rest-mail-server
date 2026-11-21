@@ -69,7 +69,7 @@ export function FirstRunSetup({ session, onFinished }: { session: SessionBinding
         <button data-testid="setup-change-password" className="desktop-primary" disabled={busy}>{busy ? 'Changing password…' : 'Change password'}</button>
       </form> : challenge || enrollment ? <form onSubmit={verify}>
         {enrollment && <>
-          <div data-ui-sensitive="true" data-testid="setup-authenticator"><AuthenticatorSetup secret={enrollment.Secret} otpauthUrl={enrollment.OTPAuthURL} /></div>
+          <div data-ui-sensitive="true" data-testid="setup-authenticator"><AuthenticatorSetup secret={enrollment.Secret} otpauthUrl={enrollment.OTPAuthURL} qrSize={200} /></div>
           <p className="desktop-setup-intro">Save these recovery codes somewhere safe. Each code works once if you lose access to your authenticator. They are shown only now.</p>
           <pre data-ui-sensitive="true" data-testid="setup-recovery-codes" className="desktop-recovery-codes">{enrollment.RecoveryCodes.join('\n')}</pre>
           <label className="desktop-setup-check"><input data-testid="setup-codes-saved" type="checkbox" checked={savedCodes} onChange={event => setSavedCodes(event.target.checked)} />I have saved my recovery codes</label>
