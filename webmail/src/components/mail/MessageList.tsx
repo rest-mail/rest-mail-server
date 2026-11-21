@@ -12,6 +12,7 @@ import { ClassLabel } from '@/components/mail/signals';
 import { cn } from '@/lib/utils';
 import { Clock, Mail, X, Paperclip } from 'lucide-react';
 import { WaitingBadge } from './signals';
+import { updateMessage, deleteMessage } from '@/api/client';
 
 /** Count total unread across displayed messages */
 function useUnreadCount() {
@@ -61,6 +62,12 @@ export function MessageList() {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable) return;
 
     const idx = displayMessages.findIndex(m => m.id === selectedMessageId);
+    if (desktop && !e.metaKey && !e.ctrlKey && !e.altKey && selectedMessageId && (e.key === 'Delete' || e.key.toLowerCase() === 'e' || e.key === 'Enter')) {
+      e.preventDefault();
+      if (e.key === 'Enter') void selectMessage(selectedMessageId);
+      else void (e.key === 'Delete' ? deleteMessage(selectedMessageId) : updateMessage(selectedMessageId, { folder: 'Archive' })).then(() => useMailStore.getState().refresh());
+      return;
+    }
 
     if (e.key === 'ArrowDown' || e.key === 'j') {
       e.preventDefault();
@@ -71,7 +78,7 @@ export function MessageList() {
       const prev = Math.max(idx - 1, 0);
       selectMessage(displayMessages[prev].id);
     }
-  }, [displayMessages, selectedMessageId, selectMessage]);
+  }, [displayMessages, selectedMessageId, selectMessage, desktop]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -146,10 +153,10 @@ export function MessageList() {
   }
 
   return (
-    <ScrollArea className={cn('h-full', TYPEFACE_CLASS[v.listType])}>
+    <ScrollArea className={cn('h-full', TYPEFACE_CLASS[v.listType], desktop && 'desktop-list-scroll')}>
       <div className={cn('flex flex-col', v.surface === 'cards' && 'py-1')}>
         {desktop && <>
-          <div className="flex gap-3 px-3 py-2 text-xs items-center">
+          <div className="desktop-list-controls flex gap-3 px-3 py-2 text-xs items-center">
             <input data-testid="messages-select-all" aria-label="Select all messages" type="checkbox" checked={displayMessages.length > 0 && displayMessages.every(message => selected.includes(message.id))} onChange={event => setSelected(event.target.checked ? displayMessages.map(message => message.id) : [])} />
             <select data-testid="messages-sort" aria-label="Sort messages" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="subject">Subject</option><option value="sender">Sender</option></select>
             <label><input data-testid="messages-threaded" type="checkbox" checked={threaded} onChange={event => setThreaded(event.target.checked)} /> Threads</label>
@@ -157,12 +164,12 @@ export function MessageList() {
           {selected.length > 0 && <MessageActions ids={selected} prefix="bulk" onComplete={() => setSelected([])} />}
         </>}
         {/* List header */}
-        <div className="flex items-center justify-between h-8 px-3 shrink-0">
+        <div className={cn('flex items-center justify-between h-8 px-3 shrink-0', desktop && 'desktop-list-heading')}>
           <span className={cn(
             "text-sm text-muted-foreground",
             v.listType === 'serif' ? 'font-semibold italic' : 'font-heading-oswald font-semibold tracking-wide',
           )}>
-            {isWaiting ? 'WAITING' : isInSearch ? 'SEARCH' : activeFolder}
+            {desktop ? (isWaiting ? 'Waiting' : isInSearch ? 'Search results' : activeFolder === 'INBOX' ? 'Inbox' : activeFolder) : isWaiting ? 'WAITING' : isInSearch ? 'SEARCH' : activeFolder}
           </span>
           <span className="flex items-center gap-2">
             {isWaiting ? (
@@ -180,7 +187,7 @@ export function MessageList() {
               </button>
             ) : unreadCount > 0 ? (
               <span className="text-[9px] font-medium text-primary">
-                // {unreadCount}_UNREAD
+                {desktop ? `${unreadCount} unread` : `// ${unreadCount}_UNREAD`}
               </span>
             ) : null}
           </span>
@@ -200,13 +207,14 @@ export function MessageList() {
 
         {/* Messages */}
         {displayMessages.map((msg, i) => (
-          <div key={msg.id} className={desktop ? 'flex items-start' : undefined}>
+          <div key={msg.id} className={desktop ? 'desktop-message flex items-start' : undefined} data-unread={desktop && !msg.is_read ? 'true' : undefined} data-selected={desktop && selectedMessageId === msg.id ? 'true' : undefined}>
             {desktop && <input data-testid={`message-select-${msg.id}`} aria-label={`Select ${msg.subject}`} className="ml-2 mt-3" type="checkbox" checked={selected.includes(msg.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, msg.id] : previous.filter(id => id !== msg.id))} />}
             <button
               data-testid={`message-${msg.id}`}
               onClick={() => selectMessage(msg.id)}
               className={cn(
                 "w-full text-left px-3 flex items-start gap-2 transition-all duration-150",
+                desktop && 'desktop-message-row',
                 density === 'compact' ? 'py-1.5' : 'py-2',
                 selectedMessageId === msg.id ? "bg-secondary" : "hover:bg-secondary/30",
                 (v.surface === 'rules' || v.surface === 'dense') && 'border-t border-border',
@@ -216,7 +224,7 @@ export function MessageList() {
               )}
             >
               {/* Sender identity chip (packs that want one) */}
-              {v.identity !== 'none' && (
+              {!desktop && v.identity !== 'none' && (
                 <span
                   className={cn(
                     "mt-0.5 w-6 h-6 shrink-0 flex items-center justify-center text-[9px] font-bold text-white select-none",
@@ -230,7 +238,7 @@ export function MessageList() {
 
               {/* Star */}
               <span className={cn(
-                "text-xs mt-0.5 shrink-0",
+                "text-xs mt-0.5 shrink-0", desktop && 'desktop-row-star',
                 msg.is_flagged ? "text-primary" : "text-muted-foreground"
               )}>
                 {msg.is_flagged ? '★' : '☆'}
@@ -264,6 +272,7 @@ export function MessageList() {
                     <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
                   )}
                 </div>
+                {desktop && <p className="desktop-message-preview">{msg.body_text?.replace(/\s+/g, ' ') || (msg.has_attachments ? 'Includes attachments' : '')}</p>}
                 <WaitingBadge since={msg.awaiting_since} />
               </div>
             </button>
@@ -280,7 +289,7 @@ export function MessageList() {
             onClick={() => (isWaiting ? loadMoreWaiting() : loadMoreMessages())}
             className="w-full py-3 text-xs text-primary hover:bg-secondary/30 transition-colors"
           >
-            [load_more...]
+            {desktop ? 'Load more messages' : '[load_more...]'}
           </button>
         )}
       </div>
@@ -292,7 +301,7 @@ export function EmptyMailViewer() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
       <Mail className="w-10 h-10 stroke-1" />
-      <p className="font-mono text-sm">// select_a_message</p>
+      <p className="font-mono text-sm">{mailPlatform().desktop ? 'Select a message to read it.' : '// select_a_message'}</p>
     </div>
   );
 }

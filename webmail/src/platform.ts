@@ -10,6 +10,8 @@ export interface MailPlatform {
   desktop?: boolean;
   fetch?: typeof fetch;
   streamURL?: (url: string) => string;
+  serverHost?: () => string;
+  canSendAttachments?: boolean;
   restoreSession?: () => Promise<User | null>;
   signOut?: () => Promise<void>;
   pickAttachments?: () => Promise<NativeAttachment[]>;
