@@ -55,6 +55,18 @@ func main() {
 		},
 		ShouldQuit: nativeUI.shouldQuit,
 	}
+	// One copy per installed app: opening it again brings this window forward.
+	var mainWindow *application.WebviewWindow
+	options.SingleInstance = &application.SingleInstanceOptions{
+		UniqueID: singleInstanceID(currentExecutable()),
+		OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+			if mainWindow != nil {
+				mainWindow.UnMinimise()
+				mainWindow.Show()
+				mainWindow.Focus()
+			}
+		},
+	}
 
 	// Desktop core: share this manager and client with native integrations, including MCP.
 	sessionManager := newDesktopSession()
@@ -79,7 +91,7 @@ func main() {
 	// 'Mac' options tailor the window when running on macOS.
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:           "main",
 		EnableFileDrop: true,
 		Title:          "REST Mail " + version,
