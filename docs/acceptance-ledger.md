@@ -147,11 +147,29 @@ that moves the count. The rest need harnesses and decisions first.
 | AC03 preferences and notifications end to end | R + H | time zone is R; real push needs a device |
 | AC04 previews and unsubscribe cannot execute or SSRF | R + D | sandbox tests are R; Office conversion is a decision |
 | AC05 contacts and calendar round-trip and isolation | **P** | vCard trust gate, `N` names, quoted-printable |
-| AC01 ledger and trust enforce accountability | R | endpoint-level tests |
-| AC02 reviewed proposals use draft/send and policy | R | workflow tests |
-| AC03 inbox triage reports traceable, reversible results | R | counts vs persisted state |
-| AC04 meeting workflow uses real calendar facts | R | conflict/availability tests |
+| AC01 ledger and trust enforce accountability | R + D | `TestAC01AssistantFoundationScopedGrantCeiling` proves existing scoped grant ceilings only. Ledger/trust endpoints are absent; retained #1423 principal, capability, MFA and undo-window questions need answers. |
+| AC02 reviewed proposals use draft/send and policy | R + D | `TestAC02AssistantFoundationDraftSendRequiresWriteAndSend` proves persisted draft/edit/restore, capability refusals, Sent/queue linkage and consumed-draft replay only. Proposal/approval, reason/confidence, assistant ledger/DMARC policy and bounded undo are absent and depend on AC01. |
+| AC03 inbox triage reports traceable, reversible results | R + D | `TestAC03AssistantFoundationClassifiedMovesAreScopedAndReversible` proves classifications, manual move/reverse, counts against storage and untouched controls only. No triage receipt, assistant capability policy, per-action ledger or undo exists; depends on AC01. |
+| AC04 meeting workflow uses real calendar facts | R + D | `TestAC04AssistantFoundationCalendarContactsRetainSourceFacts` proves exact stored invitation links/participants/times and calendar/contact isolation only. Meeting proposal/approval, availability/conflict decisions, attribution and undo are absent; #1426 specifies a mail command surface, not scheduling policy. |
 | AC05 foundations and client acceptance proven together | H | final integrated run |
+
+Local PostgreSQL proofs for the personal-mail rows, not client or installation acceptance:
+
+- AC01: [`TestAC01LocalSubmissionPreservesSentStateAndRecipientOutcomes`](../internal/api/personal_workflows_db_test.go) uses authenticated SMTP submission, the queue worker, inbound SMTP and the public API. It verifies one Sent copy, independent delivery and refusal for two local recipients, recipient-only attachment metadata, and a scoped message update visible in a later read. The read-only credential cannot change the message. Remote delivery and client presentation are outside this proof.
+- AC03: [`TestIMAPSearchUsesTheAccountZone`](../internal/api/imap_search_zone_db_test.go) uses scoped API credentials to choose, read and clear the zone. An invalid name leaves the saved zone and search behavior unchanged. The same authenticated IMAP connection follows zone changes and returns to UTC on clear. Browser settings UI and real push are outside this proof.
+
+The four assistant foundation tests above live in
+[`internal/api/assistant_foundations_db_test.go`](../internal/api/assistant_foundations_db_test.go)
+and use the production router with real PostgreSQL and the complete server migration.
+**No assistant AC is complete.** On the supplied `d6704e8cf` stack head, the assistant
+implementation described on the paused `feat/1423-agent-ledger` source branch is not
+present. Its historical results are not transferred here. The existing owner draft/send
+flow does not require an assistant ledger or approval; manual draft restoration and folder
+reversal are not assistant undo. Calendar fixtures include overlapping and disjoint times,
+but listing their source facts does not compute availability or decide conflicts. Reads
+are verified not to create parallel calendar state. Scoped refusals do not prove the
+missing suggest/approve/auto policy. The complete inventory and six retained owner
+questions are recorded on #2101; foundation proofs do not turn those gaps into acceptance.
 
 ## #2100 — protocols and gateways
 
