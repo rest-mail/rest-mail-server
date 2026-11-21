@@ -374,8 +374,8 @@ func TestLaunchConfiguration(t *testing.T) {
 		port           int
 		invalid        bool
 	}{
-		{enabled: developmentBuild, port: DefaultPort},
-		{args: []string{"--mcp"}, enabled: true, port: DefaultPort},
+		{enabled: developmentBuild, port: 0},
+		{args: []string{"--mcp"}, enabled: true, port: 0},
 		{args: []string{"--mcp-stdio", "--mcp-port", "47822"}, enabled: true, stdio: true, port: 47822},
 		{env: map[string]string{"RESTMAIL_DESKTOP_MCP": "1", "RESTMAIL_DESKTOP_MCP_PORT": "47823"}, enabled: true, port: 47823},
 		{args: []string{"--mcp-port=47824"}, env: map[string]string{"RESTMAIL_DESKTOP_MCP_PORT": "47823"}, enabled: developmentBuild, port: 47824},
@@ -406,5 +406,39 @@ func TestLogBufferBoundedAndRedacted(t *testing.T) {
 	}
 	if len(buffer.Recent(1)) != 1 {
 		t.Fatal("line limit ignored")
+	}
+}
+
+func TestBusyRequestedPortFallsBackToEphemeral(t *testing.T) {
+	occupied, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	server, discovery := startTestServer(t, Options{Port: occupied.Addr().(*net.TCPAddr).Port})
+	if strings.Contains(discovery.URL, occupied.Addr().String()+"/") {
+		t.Fatal("discovery retained busy port")
+	}
+	if !strings.Contains(strings.Join(server.logs.Recent(20), "\n"), "falling back") {
+		t.Fatal("fallback not logged")
+	}
+	connect(t, discovery)
+}
+
+func TestStartupFailureIsRecordedInLogs(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "not-a-directory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	server, err := New(Options{ConfigDir: file.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.StartHTTP(t.Context()); err == nil {
+		t.Fatal("expected discovery failure")
+	}
+	if !strings.Contains(strings.Join(server.logs.Recent(20), "\n"), "MCP HTTP startup failed") {
+		t.Fatal("startup failure not logged")
 	}
 }
