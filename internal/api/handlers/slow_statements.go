@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
@@ -14,12 +17,13 @@ import (
 // The slow statement view gives an operator the database's slowest statements
 // without a shell in the database pod (#1629). It reads pg_stat_statements,
 // which the chart's Postgres preloads and the boot creates. Postgres
-// normalises each statement, putting $1, $2 ... in place of constants, so no
-// parameter value reaches the answer. A database without the extension (an
+// normalises constants in optimizable statements, but retains comments and
+// some utility literals. Only normalized statement shapes are safe to show.
+// A database without the extension (an
 // operator's own managed Postgres that does not preload it) answers 503 with
 // code statistics_unavailable, never a 500.
 
-const slowStatementsDescription = "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Each is the statement as Postgres normalises it, constants replaced by `$1`, `$2` and so on, so no parameter value is shown, with its calls, total and mean execution time in milliseconds and the rows it returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has."
+const slowStatementsDescription = "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Shows normalized SQL shapes with constants replaced by `$1`, `$2` and so on. Text that may contain unnormalized values or comments is replaced by a redaction marker with the query ID. Each row includes calls, total and mean execution time in milliseconds, and rows returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has."
 
 const slowStatementsResetDescription = "Resets the current database's pg_stat_statements counters, so the slow statement view counts from now: reset after a change, wait for traffic, then read the view. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded or its user may not reset it."
 
@@ -60,9 +64,9 @@ type SlowStatements struct {
 	Statements []SlowStatement `json:"statements"`
 }
 
-// SlowStatement is one normalised statement's figures since the last reset.
+// SlowStatement is one statement's figures since the last reset.
 type SlowStatement struct {
-	Query   string  `json:"query" description:"The statement as Postgres normalises it, constants replaced by $1, $2 and so on"`
+	Query   string  `json:"query" description:"Normalized SQL shape or a redaction marker with the query ID"`
 	Calls   int64   `json:"calls"`
 	TotalMS float64 `json:"total_ms" description:"Total execution time in milliseconds"`
 	MeanMS  float64 `json:"mean_ms" description:"Mean execution time per call in milliseconds"`
@@ -71,6 +75,22 @@ type SlowStatement struct {
 
 // The ORDER BY column comes from this map, never from the request text.
 var slowStatementsOrder = map[string]string{"total": "total_exec_time", "mean": "mean_exec_time"}
+
+// PostgreSQL normalizes constants only for certain commands and keeps
+// comments even there. Allow ordinary normalized DML and simple schema
+// identifiers. A statement outside that shape still contributes its figures,
+// but we expose only the query ID for grouping it across reads.
+var normalizedStatementShape = regexp.MustCompile(`\A(?i:SELECT|INSERT|UPDATE|DELETE|MERGE|WITH)\b(?:[A-Za-z0-9_ \t\r\n.,()*=:/<>!+%&|^~;?\[\]#@-]|\$[0-9]+|"[A-Za-z_][A-Za-z0-9_]*")*\z`)
+
+func slowStatementText(query string, id int64) string {
+	if normalizedStatementShape.MatchString(query) && !strings.Contains(query, "/*") && !strings.Contains(query, "--") {
+		return query
+	}
+	if query == "" {
+		return "[query text unavailable]"
+	}
+	return fmt.Sprintf("[redacted query %d]", id)
+}
 
 func (h *SlowStatementsHandler) list(r *http.Request, in slowStatementsInput) (SlowStatements, error) {
 	sort := "total"
@@ -82,16 +102,24 @@ func (h *SlowStatementsHandler) list(r *http.Request, in slowStatementsInput) (S
 		limit = *in.Limit
 	}
 	out := SlowStatements{Sort: sort, Statements: []SlowStatement{}}
-	err := h.db.WithContext(r.Context()).Raw(`SELECT query, calls, total_exec_time AS total_ms, mean_exec_time AS mean_ms, rows
+	var rows []struct {
+		SlowStatement
+		QueryID int64
+	}
+	err := h.db.WithContext(r.Context()).Raw(`SELECT query, queryid AS query_id, calls, total_exec_time AS total_ms, mean_exec_time AS mean_ms, rows
 		FROM pg_stat_statements
 		WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
 		ORDER BY `+slowStatementsOrder[sort]+` DESC, queryid
-		LIMIT ?`, limit).Scan(&out.Statements).Error
+		LIMIT ?`, limit).Scan(&rows).Error
 	if err != nil {
 		if statisticsMissing(err) {
 			return SlowStatements{}, errStatisticsUnavailable
 		}
 		return SlowStatements{}, err
+	}
+	for _, row := range rows {
+		row.Query = slowStatementText(row.Query, row.QueryID)
+		out.Statements = append(out.Statements, row.SlowStatement)
 	}
 	return out, nil
 }

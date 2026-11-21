@@ -1038,6 +1038,49 @@ paths:
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
 
+  /api/v1/status:
+    get:
+      operationId: getPublicStatus
+      tags: [Health]
+      summary: Public service availability
+      description: "Reports whether the API can reach its database. Every answer has Cache-Control: no-store."
+      security: []
+      responses:
+        "200":
+          description: Operational
+          headers: &publicStatusHeaders
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
+          content: &publicStatusContent
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        enum: [operational, degraded]
+        "503":
+          description: Degraded
+          headers: *publicStatusHeaders
+          content: *publicStatusContent
+
   # ═══════════════════════════════════════════════════════════════
   # Auth
   # ═══════════════════════════════════════════════════════════════
@@ -20683,7 +20726,7 @@ paths:
   /api/v1/admin/database/statements:
     get:
       operationId: listSlowStatements
-      description: "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Each is the statement as Postgres normalises it, constants replaced by `$1`, `$2` and so on, so no parameter value is shown, with its calls, total and mean execution time in milliseconds and the rows it returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has."
+      description: "The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Shows normalized SQL shapes with constants replaced by `$1`, `$2` and so on. Text that may contain unnormalized values or comments is replaced by a redaction marker with the query ID. Each row includes calls, total and mean execution time in milliseconds, and rows returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has."
       tags: ["Admin: Stats"]
       security:
         - CookieAuth: [database:read]
@@ -30465,14 +30508,14 @@ components:
             $ref: "#/components/schemas/SlowStatement"
 
     SlowStatement:
-      description: One normalised statement's figures since the last reset.
+      description: One statement's figures since the last reset.
       type: object
       additionalProperties: false
       required: [query, calls, total_ms, mean_ms, rows]
       properties:
         query:
           type: string
-          description: The statement as Postgres normalises it, constants replaced by $1, $2 and so on
+          description: Normalized SQL shape or a redaction marker with the query ID
         calls:
           type: integer
           format: int64

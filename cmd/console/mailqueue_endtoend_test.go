@@ -32,6 +32,7 @@ type queueServer struct {
 	db     *gorm.DB
 	url    string
 	client *http.Client
+	holder models.Mailbox
 	manage string // queue:read and queue:manage
 	read   string // queue:read only
 }
@@ -40,7 +41,8 @@ func newQueueServer(t *testing.T) *queueServer {
 	t.Helper()
 	db := migrationDatabase(t)
 	jwt := auth.NewJWTService("mail-queue-test-signing-key-of-no-value", 5*time.Minute, time.Hour)
-	routers := api.NewRouters(db, jwt, &config.Config{Environment: "test", SMTPMaxMessageSize: 1 << 20, APIMaxBodyBytes: 4 << 20}, nil)
+	routers := api.NewRouters(db, jwt, &config.Config{Environment: "test", SMTPMaxMessageSize: 1 << 20, APIMaxBodyBytes: 4 << 20,
+		TOTP2FAEnabled: true, MasterKey: operatorMasterKey}, nil)
 	t.Cleanup(routers.Close)
 	server := httptest.NewServer(routers.Public)
 	t.Cleanup(server.Close)
@@ -61,19 +63,23 @@ func newQueueServer(t *testing.T) *queueServer {
 		Scope: grants.All, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
 		t.Fatalf("grant the admin role: %v", err)
 	}
-	key := func(name string, capabilities ...string) string {
-		permissions := make([]auth.ScopedPermission, 0, len(capabilities))
-		for _, capability := range capabilities {
-			permissions = append(permissions, auth.ScopedPermission{Capability: capability, Scope: grants.All})
-		}
-		_, secret, err := repositories.NewCredentialRepository(db).CreateAPIKey(holder.ID, holder.ID, name, permissions, nil)
-		if err != nil {
-			t.Fatalf("create the %s key: %v", name, err)
-		}
-		return secret
+	s := &queueServer{db: db, url: server.URL, client: server.Client(), holder: holder}
+	s.manage, _ = s.key(t, "manage", grants.All, "queue:read", "queue:manage")
+	s.read, _ = s.key(t, "read", grants.All, "queue:read")
+	return s
+}
+
+func (s *queueServer) key(t *testing.T, name, scope string, capabilities ...string) (string, uint) {
+	t.Helper()
+	permissions := make([]auth.ScopedPermission, 0, len(capabilities))
+	for _, capability := range capabilities {
+		permissions = append(permissions, auth.ScopedPermission{Capability: capability, Scope: scope})
 	}
-	return &queueServer{db: db, url: server.URL, client: server.Client(),
-		manage: key("manage", "queue:read", "queue:manage"), read: key("read", "queue:read")}
+	key, secret, err := repositories.NewCredentialRepository(s.db).CreateAPIKey(s.holder.ID, s.holder.ID, name, permissions, nil)
+	if err != nil {
+		t.Fatalf("create the %s key: %v", name, err)
+	}
+	return secret, key.ID
 }
 
 // queueRows names the entries seed makes.

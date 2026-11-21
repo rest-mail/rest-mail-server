@@ -396,6 +396,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// admin token; unauthenticated callers receive the liveness response only.
 	// ═══════════════════════════════════════════════════════════════
 	healthH.Register(publicRoutes(r))
+	healthH.RegisterPublicStatus(publicRoutes(r))
 
 	// ═══════════════════════════════════════════════════════════════
 	// Prometheus metrics (no auth)

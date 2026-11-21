@@ -3,6 +3,7 @@
     "apiRoot",
     "describeServer",
     "getHealth",
+    "getPublicStatus",
     "openapiDocument",
     "openapiSpec",
     "prometheusMetrics",
