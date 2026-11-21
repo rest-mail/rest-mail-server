@@ -118,6 +118,11 @@ Monospace is reserved for authenticator secrets and recovery-code data. Brand na
 and yellow remain the sidebar and primary-action accents; shared webmail does not
 import this theme or render the desktop title bar.
 
+The default window is 1200×742. Sign-in and setup sheets retain at least 48px of
+space on every side, centering when space permits and scrolling rather than
+clipping when the window is short. Sign-in uses a compact 48px logo and the same
+type scale as the mailbox.
+
 ## Frontend validation
 
 ```sh
