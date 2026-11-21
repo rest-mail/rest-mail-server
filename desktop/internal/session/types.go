@@ -11,9 +11,10 @@ type SignInResult struct {
 }
 
 type SessionStatus struct {
-	SignedIn bool
-	Server   string
-	Email    string
+	SignedIn  bool
+	Server    string
+	Email     string
+	AccountID uint
 }
 
 type APIError struct {
