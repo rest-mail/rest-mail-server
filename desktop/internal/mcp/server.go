@@ -43,13 +43,14 @@ type Info struct {
 }
 
 type Options struct {
-	Port      int
-	ConfigDir string
-	Info      Info
-	Domain    Domain
-	UI        UI
-	Secrets   func() []string
-	Timeout   time.Duration
+	Port       int
+	ConfigDir  string
+	Info       Info
+	Domain     Domain
+	UI         UI
+	Secrets    func() []string
+	Timeout    time.Duration
+	Screenshot func(context.Context) ([]byte, error)
 }
 
 type Discovery struct {
@@ -74,6 +75,9 @@ func New(options Options) (*Server, error) {
 	}
 	if options.Timeout <= 0 {
 		options.Timeout = 10 * time.Second
+	}
+	if options.Screenshot == nil {
+		options.Screenshot = nativeScreenshot
 	}
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
@@ -224,18 +228,28 @@ func (server *Server) redact(text string) string {
 func (server *Server) result(value any) *sdk.CallToolResult {
 	data, err := json.Marshal(value)
 	if err != nil {
+		server.logs.Write([]byte("tool result encoding failed: " + err.Error() + "\n"))
 		return toolError("result_encoding_failed")
 	}
 	var safe any
 	if err := json.Unmarshal(data, &safe); err != nil {
 		return toolError("result_encoding_failed")
 	}
-	safe = scrubFields(safe)
+	safe = redactStrings(scrubFields(safe), server.redact)
 	data, err = json.Marshal(safe)
 	if err != nil {
 		return toolError("result_encoding_failed")
 	}
-	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: server.redact(string(data))}}}
+	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(data)}}}
+}
+
+func (server *Server) toolFailure(name, code string, err error) *sdk.CallToolResult {
+	line := name + ": " + code
+	if err != nil {
+		line += ": " + err.Error()
+	}
+	server.logs.Write([]byte(line + "\n"))
+	return toolError(code)
 }
 
 func toolError(code string) *sdk.CallToolResult {
