@@ -147,7 +147,7 @@ func TestToolListComplete(t *testing.T) {
 	for _, test := range domainCases {
 		expected = append(expected, test.name)
 	}
-	expected = append(expected, "ui_snapshot", "ui_click", "ui_type", "ui_navigate", "ui_read_text", "ui_screenshot", "app_info", "app_logs")
+	expected = append(expected, "add_imap_account", "list_accounts", "remove_imap_account", "ui_snapshot", "ui_click", "ui_type", "ui_navigate", "ui_read_text", "ui_screenshot", "app_info", "app_logs")
 	var actual []string
 	for _, tool := range list.Tools {
 		actual = append(actual, tool.Name)
