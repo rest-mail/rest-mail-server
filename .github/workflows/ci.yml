@@ -202,7 +202,8 @@ jobs:
         with:
           version: v2.11.4
           install-mode: none
-          args: --timeout=5m
+          # The same headroom as the judging step below, for the same reason.
+          args: --timeout=10m
           verify: false
 
   contract-diff-gate:
@@ -491,7 +492,12 @@ jobs:
           version: v2.11.4
           # Installed by the step above, which keeps trying for longer.
           install-mode: none
-          args: --timeout=5m
+          # Five minutes was the whole budget on a quiet runner; on the ARC
+          # pool this job has taken 7 minutes end to end with lint sharing a
+          # node with the IMAP module and the first-start build, and one merge
+          # group failed with "Timeout exceeded" rather than a finding. Ten
+          # minutes is headroom, not silence: every linter still runs.
+          args: --timeout=10m
           # `config verify` downloads its JSON schema from golangci-lint.run
           # and fails the job when that fetch times out (#508, #521). The
           # run itself still rejects an invalid config.
