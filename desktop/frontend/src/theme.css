@@ -32,12 +32,14 @@ body, button, input, textarea, select { font-family: inherit; }
 button, input, textarea, select { border-radius: 6px; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(255 204 0 / 55%); }
 .desktop-signin { height: 100%; display: grid; place-items: center; background: var(--ink); overflow: auto; position: relative; padding: 24px; }
-.desktop-brace { position: fixed; top: 50%; transform: translateY(-55%); color: var(--deep); font-size: 100vh; font-weight: 600; line-height: 1; pointer-events: none; user-select: none; }
-.desktop-signin { --sheet-half: 200px; --brace-gap: 16px; }
+/* The braces frame the sheet: centred on the window's vertical middle, each the same
+   gap outside the sheet's edge. They are one mirrored SVG path, so the gaps match. */
+.desktop-signin { --sheet-half: 200px; --brace-gap: 24px; --brace-height: min(86vh, 860px); }
 .desktop-signin:has(.desktop-setup-sheet) { --sheet-half: 240px; }
-/* The braces frame the form: each sits a fixed gap outside the sheet's edge, not at the window's edge. */
+.desktop-brace { position: fixed; top: 50%; height: var(--brace-height); width: calc(var(--brace-height) / 4); transform: translateY(-50%); fill: none; stroke: var(--deep); stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; user-select: none; }
 .desktop-brace-left { right: calc(50% + var(--sheet-half) + var(--brace-gap)); }
-.desktop-brace-right { left: calc(50% + var(--sheet-half) + var(--brace-gap)); }
+.desktop-brace-right { left: calc(50% + var(--sheet-half) + var(--brace-gap)); transform: translateY(-50%) scaleX(-1); }
+@media (max-width: 720px) { .desktop-brace { display: none; } }
 .desktop-signin-sheet { z-index: 1; width: 400px; max-width: 100%; padding: 40px; border-radius: 12px; background: #ffffff; color: var(--ink); box-shadow: 0 24px 64px rgb(10 18 36 / 35%); }
 .desktop-signin-sheet img { display: block; margin: 0 auto 16px; width: 64px; height: 64px; }
 .desktop-signin-sheet h1 { margin: 0; text-align: center; font-size: 28px; font-weight: 600; line-height: 36px; }
