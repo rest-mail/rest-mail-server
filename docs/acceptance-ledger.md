@@ -169,6 +169,11 @@ that moves the count. The rest need harnesses and decisions first.
 | AC05 FETCH and POP3 accounting matches client bytes | **P** | metadata vs octets |
 | AC06 new protocol support decided or demonstrated | D | JMAP decision |
 
+Local proof for the delivery/import and RFC inventory rows (not installation acceptance):
+
+- `TestAC03DeliveryAndImportContractsAreSeparate` runs the registered delivery route, SMTP arrival and authenticated IMAP APPEND/COPY on PostgreSQL. The delivery body and SMTP client type already exclude import metadata. Legacy fields are ignored; current import-only fields other than the legacy `folder` are refused before storage. APPEND uses import; production set COPY uses transfer, and the single-message `CopyUID` fallback uses import.
+- `TestAC01CoreRequirementInventory` reads [`core-requirements.tsv`](../third_party/go-imap/internal/checklist/testdata/core-requirements.tsv), covering the numbered sections and appendices of the RFC Editor's RFC 3501 and RFC 9051 texts pinned in the [detailed checklist](../third_party/go-imap/CHECKLIST.md). Related clauses with the same evidence are grouped; the library checklist and grammar inventory retain the finer-grained proofs. The audit found RFC 3501 Appendix A.1 absent from the previous section index. A supported row is only the behavior its evidence names, not whole-RFC conformance. A refused row means the conformance claim cannot be made, which includes explicit wire refusals, known differences and missing evidence. Out-of-scope rows identify client-only duties, document context and conditions on optional facilities not offered.
+
 ## #2099 — contracts and fixtures
 
 | AC | Bucket | What is missing |

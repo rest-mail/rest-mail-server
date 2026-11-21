@@ -670,17 +670,10 @@ func (m *mailbox) Copy(uid uint32, dest string) error {
 	return err
 }
 
-// CopyUID duplicates the message named by uid into dest by re-delivering its full
-// detail (with the raw original preserved) directly into the destination folder.
-// It returns the new message's UID (UIDPLUS, RFC 4315) — the ID the delivery
-// assigned, which is rest-mail's UID for the copy — for the COPYUID response code.
-//
-// The copy carries the source message's flags and INTERNALDATE (RFC 3501 §6.4.7
-// SHOULD preserve them) and is created directly in dest in a single delivery, so
-// there is no transient INBOX state and no separate, error-swallowing move step. A
-// delivery that produces no message (pipeline quarantine/discard, or an
-// out-of-range UID) is surfaced as an error rather than reported as a bogus
-// success carrying UID 0.
+// CopyUID imports a single copy with the source octets, flags and INTERNALDATE
+// directly into dest (RFC 3501 §6.4.7). It does not run inbound delivery rules.
+// It returns the assigned UID for COPYUID (RFC 4315); an import that produced no
+// message or assigned an out-of-range UID is an error. The set path uses CopyMessages.
 //
 // It always asks the import for a new message. COPY adds a message to the end of
 // dest (RFC 3501 §6.4.7), so a copy into the folder the source is in is a second

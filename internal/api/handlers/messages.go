@@ -1176,9 +1176,7 @@ func queueRowsFor(recipients []string, messageID uint, sender, raw string, requi
 	return rows
 }
 
-// deliverMessageBody is a message a protocol gateway delivers into a mailbox, named by
-// mailbox_id or address. Every field is optional to binding: the handler checks the mailbox,
-// and the gateway sends only what it has.
+// deliverMessageBody is an arrival addressed to a recipient, not an IMAP import.
 type deliverMessageBody = apitypes.DeliverMessageBody
 
 // DeliveryProcessed is the answer to a delivery the inbound pipeline quarantined or discarded:
@@ -1204,7 +1202,9 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 			"With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, " +
 			"the text is whatever follows its first blank line. " +
 			"An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. " +
-			"The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.",
+			"The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. " +
+			"For compatibility, legacy fields mailbox_id, folder, is_answered, is_read, is_flagged, is_starred, is_draft and received_at are ignored. " +
+			"Import fields flags and internal_date are rejected, as are always_store and match_submission (422 validation_failed).",
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
 			{Status: http.StatusCreated, Description: "Delivered; which message was made", Type: oapifly.TypeOf[endpoint.Data[DeliveredMessage]]()},

@@ -12331,8 +12331,11 @@ paths:
         from raw_message; when it can't be parsed, the text is whatever follows its
         first blank line.
         The recipient is resolved from address. Arriving mail uses server time and
-        default Inbox/flags, subject to inbound rules. Import-only fields sent by
-        older callers are ignored. An arrival past the hop limit or a reserved alias
+        default Inbox/flags, subject to inbound rules. For compatibility, legacy fields
+        mailbox_id, folder, is_answered, is_read, is_flagged, is_starred, is_draft and
+        received_at are ignored. Import fields flags and internal_date are rejected,
+        as are always_store and match_submission (422 validation_failed).
+        An arrival past the hop limit or a reserved alias
         that cannot route is 403 rejected before the pipeline runs. A recipient on a domain
         deleted through deleteDomain and not restored, at any local part or through an alias,
         is 503 deferred, so the sender retries.

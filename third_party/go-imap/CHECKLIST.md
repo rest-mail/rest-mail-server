@@ -135,7 +135,8 @@ not that any one test proves the family. Read each row's actual Tests cell.
 | 11.1 | STARTTLS Security Considerations | IMAP-INV-SEC-01; IMAP-INV-SEC-02; IMAP-INV-SEC-03; IMAP-INV-CLIENT-03 |
 | 11.2 | Other Security Considerations | IMAP-INV-SEC-04; IMAP-INV-SEC-05; IMAP-INV-SEC-06; IMAP-INV-SEC-07; IMAP-AUTHENTICATE-09; IMAP-LOGIN-02 |
 | 12 | IANA Considerations | n/a: IANA/specification-editor registration procedure, not a Session operation; capability naming duties are IMAP-INV-CAP-01 and IMAP-INV-ABNF-07. |
-| A | Normative and informative references | n/a: Bibliography; referenced RFCs are dependencies of definitions, not an assertion that every requirement of every referenced RFC is inventoried here. |
+| A | Normative References | n/a: Bibliography; referenced RFCs are dependencies of definitions, not an assertion that every requirement of every referenced RFC is inventoried here. |
+| A.1 | Informative References | n/a: Related and historical protocols; no additional server requirement. |
 | B | Changes from RFC 2060 | n/a: Historical change list. Reconciled against current prose/grammar above; superseded intermediate changes (for example NEWNAME) are not current requirements. |
 | C | Key Word Index | n/a: Keyword locator index; duplicates requirements in the indexed sections and adds none. |
 
