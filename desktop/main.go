@@ -56,7 +56,6 @@ func main() {
 	// Desktop core: share this manager and client with native integrations, including MCP.
 	sessionManager := session.New()
 	mailClient := apiclient.New(sessionManager)
-	_ = mailClient
 	application.RegisterEvent[SessionStatus]("session:changed")
 	options.Services = append(options.Services, application.NewService(NewSession(sessionManager)))
 	options.Assets.Middleware = apiproxy.New(sessionManager)
@@ -64,7 +63,7 @@ func main() {
 	app := application.New(options)
 
 	// Embedded MCP service registration.
-	stopMCP := startMCP(app)
+	stopMCP := startMCP(app, sessionManager, mailClient)
 	defer stopMCP()
 	// End embedded MCP service registration.
 
