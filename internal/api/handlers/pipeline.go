@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -742,7 +741,7 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, err := io.ReadAll(sidecarResp.Body)
+	respBody, err := filters.ReadSidecarResponse(sidecarResp)
 	if err != nil || !json.Valid(respBody) {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
 	}
@@ -774,7 +773,7 @@ func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCusto
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, err := io.ReadAll(sidecarResp.Body)
+	respBody, err := filters.ReadSidecarResponse(sidecarResp)
 	if err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
 	}

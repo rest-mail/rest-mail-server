@@ -35,10 +35,16 @@ func spool(src io.Reader) (*spoolFile, error) {
 		return nil, err
 	}
 	spooled := &spoolFile{file: file}
+	ready := false
+	defer func() {
+		if !ready {
+			spooled.remove()
+		}
+	}()
 	if spooled.size, err = io.Copy(file, src); err != nil {
-		spooled.remove()
 		return nil, err
 	}
+	ready = true
 	return spooled, nil
 }
 

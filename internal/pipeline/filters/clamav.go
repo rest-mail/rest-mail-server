@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -74,15 +73,12 @@ func newClamAV(config []byte, hmacSecret string) (pipeline.Filter, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("clamav: url is required")
 	}
-	if cfg.TimeoutMS <= 0 {
-		cfg.TimeoutMS = 30000
-	}
 
 	adapter := &clamavAdapter{
 		url:        strings.TrimRight(cfg.URL, "/"),
 		hmacSecret: hmacSecret,
 		client: &http.Client{
-			Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
+			Timeout: filterHTTPTimeout(cfg.TimeoutMS, 30*time.Second, 0),
 		},
 	}
 
@@ -128,7 +124,7 @@ func (a *clamavAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readFilterResponse(resp, clamavResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("clamav: read response: %w", err)
 	}

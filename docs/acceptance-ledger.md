@@ -97,8 +97,8 @@ that moves the count. The rest need harnesses and decisions first.
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 file-carrying paths inventoried and spooled | R | inventory + streaming work |
-| AC02 hostile shapes bounded per path | R | ceilings and refusal tests |
+| AC01 file-carrying paths inventoried and spooled | R | inventory and local spool proofs below; remove the remaining whole-body buffers |
+| AC02 hostile shapes bounded per path | R | external filter responses bounded; stored-source, filter-request and processing deadline gaps remain |
 | AC03 cross-platform allocation failures explained | R | Darwin + Linux comparator; CI can run both |
 | AC04 boundedness survives semantic and cleanup controls | **P** | exact DATA octets, dot-stuffing, signature survival |
 | AC05 hidden recipients cannot escape either route | **P** | 7 line-end mixes, one head reader |
@@ -107,6 +107,12 @@ that moves the count. The rest need harnesses and decisions first.
 | AC02 malformed parameter policy consistent | R | corpus + linear scanner |
 | AC03 filters and scanners cannot miss content | R | shared parse or documented difference |
 | AC04 wire normalisation cannot smuggle or corrupt | **P** | large-parameter 500 root-caused (`tsvector`) |
+
+Local streaming evidence (not an acceptance closure):
+
+- AC01: The [19-path inventory](message-byte-paths.tsv) lists entrypoints, storage modes, byte and time limits, implementation locations and proof gaps. `TestAC01FileCarryingPathInventoryAndSpoolLifecycle` observes spool files during real-router requests for 2 and 6 MiB messages, checks that a complete copy cannot fit in the allocation delta on refused uploads, and checks the original 200/201/422 status, committed source and cleanup. `TestAC01InboundDATAWaitsForDeliveryVerdict` holds the delivery answer after reading the HTTP upload and observes that SMTP sends neither 250 nor 550 early. `TestAC01UploadSpoolCleansUpWhenSourcePanics` originally failed with `panicking upload left 1 spool file(s)`; it and `TestAC01DATAFileCleansUpWhenSourcePanics` now cover a panic during the copy. The ordinary receipt paths still materialize accepted raw data for the pipeline/DB; the inventory records compatibility binder fallbacks, IMAP APPEND, forwarded attachments and compressed DMARC reports separately.
+- AC02: `TestAC02FilterResponsesRefusedAtByteLimit` covers inbound and outbound Rspamd, ClamAV, webhook and JS, with exact-limit success and declared, chunked and compressed over-limit refusal. In a Go overlay that raised all four caps by one byte, each compressed oversize verdict was accepted and its subtest failed: Rspamd and ClamAV continued instead of deferring, and webhook and JS discarded instead of continuing and deferring, respectively. `TestAC02FilterResponseReadBudgetAndAllocation` offered 1, 8 and 64 MiB to a 64 KiB reader: each consumed 65,537 bytes (including the one-byte overrun probe) and allocated 138,216 Go bytes on darwin/arm64 Go 1.26.10 (`runtime.MemStats.TotalAlloc`, not peak RSS). A declared oversize response reads zero body bytes. `TestAC02FilterHTTPTimeoutIncludesResponseBody` holds the peer open, and `TestAC02AdminRejectsOversizedSidecarResponses` covers the admin execute and validate routes. The existing import/delivery/RESTMAIL field and real Sieve-engine allocation tests passed without increasing their ceilings.
+- Filter ceilings reflect the response shapes: ClamAV and webhook return a small verdict, Rspamd can include a symbol table, and the JS sidecar can return a transformed message. JS gets its 32 MiB default request allowance plus 1 MiB for the result envelope and escaped logs. The transport timeout cannot exceed the pipeline's 60-second default execution backstop; admin routes retain their existing 10/5-second budgets. No existing parser allocation ceiling was increased.
 
 ## #2105 — transport and queue
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -86,15 +85,12 @@ func newRspamd(config []byte, hmacSecret string) (pipeline.Filter, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("rspamd: url is required")
 	}
-	if cfg.TimeoutMS <= 0 {
-		cfg.TimeoutMS = 5000
-	}
 
 	adapter := &rspamdAdapter{
 		url:        strings.TrimRight(cfg.URL, "/"),
 		hmacSecret: hmacSecret,
 		client: &http.Client{
-			Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
+			Timeout: filterHTTPTimeout(cfg.TimeoutMS, 5*time.Second, 0),
 		},
 	}
 
@@ -153,7 +149,7 @@ func (a *rspamdAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readFilterResponse(resp, rspamdResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("rspamd: read response: %w", err)
 	}

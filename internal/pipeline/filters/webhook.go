@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -13,7 +12,8 @@ import (
 )
 
 type webhookFilter struct {
-	cfg pipeline.WebhookCfg
+	cfg    pipeline.WebhookCfg
+	client *http.Client
 }
 
 func init() {
@@ -33,10 +33,10 @@ func NewWebhook(config []byte) (pipeline.Filter, error) {
 	if cfg.Method == "" {
 		cfg.Method = "POST"
 	}
-	if cfg.TimeoutMS == 0 {
-		cfg.TimeoutMS = 5000
-	}
-	return &webhookFilter{cfg: cfg}, nil
+	return &webhookFilter{
+		cfg:    cfg,
+		client: newGuardedHTTPClient(filterHTTPTimeout(cfg.TimeoutMS, 5*time.Second, 0)),
+	}, nil
 }
 
 func (f *webhookFilter) Name() string              { return "webhook" }
@@ -51,8 +51,6 @@ func (f *webhookFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) 
 
 	// Send the webhook. The URL is operator-supplied (pipelines:write), so the
 	// client refuses loopback/link-local targets to blunt SSRF (see ssrf.go).
-	client := newGuardedHTTPClient(time.Duration(f.cfg.TimeoutMS) * time.Millisecond)
-
 	req, err := http.NewRequestWithContext(ctx, f.cfg.Method, f.cfg.URL, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -62,7 +60,7 @@ func (f *webhookFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) 
 		req.Header.Set(k, v)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := f.client.Do(req)
 	if err != nil {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
@@ -76,7 +74,18 @@ func (f *webhookFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) 
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readFilterResponse(resp, webhookResponseBytes)
+	if err != nil {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "webhook",
+				Result: "error",
+				Detail: fmt.Sprintf("read webhook response: %v", err),
+			},
+		}, nil
+	}
 
 	// Parse response
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
