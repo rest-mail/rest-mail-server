@@ -62,9 +62,11 @@ Happy coding with Wails3! If you encounter any issues or have questions, don't h
 
 Development builds enable the embedded MCP server automatically. Production builds
 disable it unless launched with `--mcp`, `--mcp-stdio`, or
-`RESTMAIL_DESKTOP_MCP=1`. HTTP always binds to `127.0.0.1:47821`; override the port
-with `--mcp-port 47822` or `RESTMAIL_DESKTOP_MCP_PORT=47822`. Host overrides are
-not supported. A port conflict fails startup rather than exposing another address.
+`RESTMAIL_DESKTOP_MCP=1`. HTTP binds to an available ephemeral port on `127.0.0.1`.
+Request a preferred port with `--mcp-port 47822` or
+`RESTMAIL_DESKTOP_MCP_PORT=47822`; if it is busy, MCP falls back to an ephemeral
+loopback port. Always read the actual URL from `mcp.json`. Host overrides are not
+supported. An MCP startup failure is logged and never prevents the app from running.
 
 Every launch creates a fresh MCP bearer token, separate from the mail API token.
 The user-only discovery file is `os.UserConfigDir()/REST Mail/mcp.json`, containing
@@ -93,8 +95,10 @@ claude mcp add --transport stdio restmail -- \
 ```
 
 Stdio reserves stdout for MCP and sends application logs to stderr. HTTP remains
-available for other agents; use a different `--mcp-port` when another instance is
-running. Domain tools operate through the same Go session as the UI. UI tools
+available for other agents, using an ephemeral port by default. Domain tools
+operate through the same Go session as the UI. `list_messages.page` is a one-based
+page number (default 1, maximum 100), with 50 messages per page; later pages follow
+the server's opaque pagination cursors. UI tools
 require the frontend's `mcp:ui:request` / `mcp:ui:response` bridge and time out after
 10 seconds if it is not ready. `ui_screenshot` returns a PNG from its `screenshot`
 action (`{data: base64PNG}`). `app_logs` returns up to 500 recent redacted lines.

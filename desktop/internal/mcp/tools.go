@@ -86,10 +86,7 @@ func domainTool[Args any](server *Server, name, description string) {
 		defer cancel()
 		value, err := server.options.Domain.Call(ctx, name, data)
 		if err != nil {
-			code := "domain_error"
-			if errors.Is(err, context.DeadlineExceeded) {
-				code = "domain_timeout"
-			}
+			code := domainErrorCode(err)
 			server.logs.Write([]byte(name + ": " + code + "\n"))
 			return toolError(code), nil, nil
 		}

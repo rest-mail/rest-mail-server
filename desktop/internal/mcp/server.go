@@ -21,8 +21,6 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const DefaultPort = 47821
-
 type Domain interface {
 	Call(context.Context, string, json.RawMessage) (any, error)
 }
@@ -116,8 +114,17 @@ func (server *Server) Handler() http.Handler {
 	})
 }
 
-func (server *Server) StartHTTP(ctx context.Context) (func() error, error) {
+func (server *Server) StartHTTP(ctx context.Context) (stop func() error, startupErr error) {
+	defer func() {
+		if startupErr != nil {
+			server.logs.Write([]byte("MCP HTTP startup failed: " + startupErr.Error() + "\n"))
+		}
+	}()
 	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(server.options.Port)))
+	if err != nil && server.options.Port != 0 {
+		server.logs.Write([]byte("MCP requested port unavailable; falling back to a loopback ephemeral port\n"))
+		listener, err = net.Listen("tcp4", "127.0.0.1:0")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("listen for desktop MCP: %w", err)
 	}
