@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { AuthenticatorSetup } from '@webmail/components/auth/AuthenticatorSetup';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { identity, type SessionBinding, type TwoFactorEnrollment } from './session';
+import { Brace } from './Brace';
 
 export function FirstRunSetup({ session, onFinished }: { session: SessionBinding; onFinished: () => void }) {
   const steps = useAuthStore(state => state.setupRequired);
@@ -56,8 +57,8 @@ export function FirstRunSetup({ session, onFinished }: { session: SessionBinding
   }
 
   return <main className="desktop-signin">
-    <span aria-hidden="true" className="desktop-brace desktop-brace-left">{'{'}</span>
-    <span aria-hidden="true" className="desktop-brace desktop-brace-right">{'}'}</span>
+    <Brace side="left" />
+    <Brace side="right" />
     <section className="desktop-signin-sheet desktop-setup-sheet" aria-labelledby="setup-heading">
       <h1 id="setup-heading">Finish account setup</h1>
       <p className="desktop-signin-description">{email}</p>
