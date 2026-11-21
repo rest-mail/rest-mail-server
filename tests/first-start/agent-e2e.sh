@@ -83,16 +83,23 @@ wait_healthy() { for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/hea
 # had left to write.
 server_output() { docker logs e2e-api >"$LOG" 2>&1; }
 # server_says PATTERN: the server's output has a line matching PATTERN, within
-# 30 seconds. Health can answer before the container engine has written the
+# 60 seconds. Health can answer before the container engine has written the
 # server's earlier lines to its log: some engines copy a burst of output (the
 # migrations, in development) to the log behind the process, so one read right
-# after health may not have it yet.
+# after health may not have it yet. Thirty seconds was enough on a quiet
+# runner; a merge group on the ARC pool failed this with an empty log after
+# thirty reads, while the image pull had taken twenty-five seconds and lint and
+# the IMAP module were on the same node. The assertion is unchanged: the same
+# line must appear, or this fails.
 server_says() {
-  for _ in $(seq 30); do
+  for _ in $(seq 60); do
     server_output
     grep -q -- "$1" "$LOG" && return 0
     sleep 1
   done
+  printf '   the container: %s; its log is %s bytes\n' \
+    "$(docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' e2e-api 2>&1)" \
+    "$(wc -c <"$LOG" 2>/dev/null || echo '?')" >&2
   printf '   the server said, last 20 lines:\n' >&2
   tail -n 20 "$LOG" >&2
   return 1
