@@ -1,5 +1,8 @@
 import type { SessionBinding, SessionStatus, RuntimeEvents } from '../src/session';
 
+export const streamURL = (url: string) => `/__desktop_mock${url}`;
+export const mockFetch: typeof fetch = (input, options) => fetch(streamURL(String(input)), options);
+
 let status: SessionStatus = { SignedIn: false, Server: '', Email: '' };
 const listeners = new Map<string, Set<(data: unknown) => void>>();
 export const events: RuntimeEvents = {
