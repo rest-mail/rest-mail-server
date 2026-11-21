@@ -1907,26 +1907,37 @@ def admin_token(origin):
     """Sign in for fixture setup without changing the transaction's principal.
 
     Basic auth accepts app passwords, not the admin's account password. Cache
-    the setup session per origin so repeated probes do not exhaust login limits.
+    the setup session per origin so repeated probes do not exhaust login limits,
+    and renew it after ten minutes like the two-factor one: an access token has
+    a lifetime, and the own-data run used to start an hour into a job that was
+    twenty-five minutes long, so a cached token outlived itself and every
+    exchange using it answered 401 "Invalid or expired token".
     """
     tokens = hooks.stash.get("setup_admin_tokens", {})
-    if origin not in tokens:
-        pace_auth_requests(None)
-        request = urllib.request.Request(
-            origin + "/api/v1/auth/login",
-            data=json.dumps(
-                {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}
-            ).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            token = (json.load(response).get("data") or {}).get("access_token")
-        if not isinstance(token, str) or not token:
-            raise RuntimeError("fixture admin sign-in returned no access token")
-        tokens[origin] = token
-        hooks.stash["setup_admin_tokens"] = tokens
-    return tokens[origin]
+    cached = tokens.get(origin)
+    # A bare string is what earlier runs (and the hook unit tests) put here:
+    # take it as a token that was just obtained, so a test that seeds one does
+    # not have to know about the age this adds.
+    if isinstance(cached, str) and cached:
+        return cached
+    if isinstance(cached, dict) and time.time() - cached["at"] < 600:
+        return cached["token"]
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin + "/api/v1/auth/login",
+        data=json.dumps(
+            {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        token = (json.load(response).get("data") or {}).get("access_token")
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("fixture admin sign-in returned no access token")
+    tokens[origin] = {"token": token, "at": time.time()}
+    hooks.stash["setup_admin_tokens"] = tokens
+    return token
 
 
 @hooks.before("login")
