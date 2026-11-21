@@ -5,6 +5,7 @@ import * as api from '../api/client';
 import { threadDueChange } from '../lib/threadDue';
 import { threadSnoozeChange } from '../lib/threadSnooze';
 import { noWaitingView, waitingPage } from '../lib/threadAwaiting';
+import { mailPlatform } from '../platform';
 
 interface MailState {
   // Accounts
@@ -194,12 +195,13 @@ export const useMailStore = create<MailState>((set, get) => ({
       messages: state.messages.map(m =>
         m.id === msgId ? { ...m, is_flagged: flagged } : m
       ),
+      ...(mailPlatform().desktop && state.selectedMessage?.id === msgId ? { selectedMessage: { ...state.selectedMessage, is_flagged: flagged } } : {}),
     }));
     try {
       await api.updateMessage(msgId, { is_flagged: flagged });
     } catch {
       // Rollback on error
-      set({ messages: prev.messages });
+      set({ messages: prev.messages, ...(mailPlatform().desktop ? { selectedMessage: prev.selectedMessage } : {}) });
     }
   },
 

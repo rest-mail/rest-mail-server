@@ -58,9 +58,10 @@ export function MessageList() {
   const listCount = allMessages.filter(message => message.class === 'newsletter').length;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (mailPlatform().mailboxActive?.() === false) return;
     if (!displayMessages.length) return;
     const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable) return;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target instanceof Element && e.target.closest('[contenteditable]:not([contenteditable="false"]), [role="textbox"]')) return;
 
     const idx = displayMessages.findIndex(m => m.id === selectedMessageId);
     if (desktop && !e.metaKey && !e.ctrlKey && !e.altKey && selectedMessageId && (e.key === 'Delete' || e.key.toLowerCase() === 'e' || e.key === 'Enter')) {
