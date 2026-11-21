@@ -157,7 +157,7 @@ class DesktopWorkflowTests(unittest.TestCase):
         tasks = yaml.safe_load((ROOT / "tasks/desktop.yml").read_text())["tasks"]
         commands = "\n".join(tasks["build"]["cmds"])
         self.assertLess(
-            commands.index("Resources/release.json"), commands.index("codesign --force")
+            commands.index("Resources/release.json"), commands.index("scripts/sign.sh")
         )
         self.assertNotIn(
             "Resources/release.json",
@@ -548,3 +548,42 @@ class LatestReleaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("codesign"), "codesign is macOS-only")
+class SignScriptTests(unittest.TestCase):
+    """desktop/scripts/sign.sh signs ad hoc when no Developer ID keychain is present."""
+
+    def make_app(self, root):
+        app = Path(root) / "Probe.app"
+        (app / "Contents/MacOS").mkdir(parents=True)
+        shutil.copy("/usr/bin/true", app / "Contents/MacOS/Probe")
+        (app / "Contents/Info.plist").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>'
+            "<key>CFBundleExecutable</key><string>Probe</string>"
+            "<key>CFBundleIdentifier</key><string>com.restmail.probe</string></dict></plist>\n"
+        )
+        return app
+
+    def run_sign(self, *arguments):
+        env = dict(os.environ, DESKTOP_SIGN_KEYCHAIN="/nonexistent/restmail-signing.keychain-db")
+        return subprocess.run(
+            ["sh", str(ROOT / "desktop/scripts/sign.sh"), *arguments],
+            capture_output=True, text=True, env=env, check=False,
+        )
+
+    def test_without_developer_id_build_is_signed_ad_hoc(self):
+        with tempfile.TemporaryDirectory() as root:
+            app = self.make_app(root)
+            result = self.run_sign(str(app))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Signed ad hoc", result.stdout)
+            details = subprocess.run(["codesign", "-dv", str(app)], capture_output=True, text=True)
+            self.assertIn("Signature=adhoc", details.stderr)
+
+    def test_notarize_without_developer_id_skips_with_reason(self):
+        with tempfile.TemporaryDirectory() as root:
+            app = self.make_app(root)
+            result = self.run_sign("--notarize", str(app))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Not notarized: no Developer ID", result.stderr)
