@@ -14,7 +14,7 @@ import * as api from '@webmail/api/client';
 
 describe('desktop compose', () => {
   beforeEach(() => {
-    vi.clearAllMocks(); configureMailPlatform({ desktop: true });
+    vi.clearAllMocks(); configureMailPlatform({ desktop: true, canSendAttachments: true });
     useMailStore.setState({ accounts: [{ id: 1, address: 'chris@test.invalid', display_name: 'Chris', is_primary: true }], activeAccountId: 1 });
     useUIStore.getState().startCompose({ to: 'alex@test.invalid', cc: '', bcc: '', subject: 'Hello' });
   });
@@ -27,7 +27,7 @@ describe('desktop compose', () => {
     expect(api.updateDraft).toHaveBeenCalledWith(88, expect.objectContaining({ subject: 'Hello' }));
   });
   it('native selections block send, draft save and schedule rather than dropping files', async () => {
-    configureMailPlatform({ desktop: true, pickAttachments: async () => [{ filename: 'report.pdf', content_type: 'application/pdf', content: 'ZmlsZQ==' }] });
+    configureMailPlatform({ desktop: true, canSendAttachments: true, pickAttachments: async () => [{ filename: 'report.pdf', content_type: 'application/pdf', content: 'ZmlsZQ==' }] });
     render(<ComposeView />); fireEvent.click(screen.getByTestId('compose-attach'));
     await screen.findByText('report.pdf');
     expect(screen.getByRole('alert').textContent).toContain("Attachments can't be sent yet");

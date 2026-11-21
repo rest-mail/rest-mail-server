@@ -5,7 +5,7 @@ export function devMock(): Plugin {
     id: index + 1, mailbox_id: 1, thread_id: index < 2 ? 'welcome' : `thread-${index}`,
     class: 'personal', folder: 'INBOX', message_id: `<fixture-${index}@example.test>`,
     sender: index === 0 ? 'team@restmail.test' : 'alex@example.test', sender_name: index === 0 ? 'REST Mail team' : 'Alex Morgan',
-    recipients_to: ['chris@restmail.test'], subject: index === 0 ? 'Welcome to REST Mail desktop' : index === 1 ? 'Re: Welcome to REST Mail desktop' : ['Weekend plans', 'Project notes', 'Design review'][index % 3] + ` · ${index + 1}`,
+    recipients_to: ['chris@restmail.test'], subject: index === 0 ? 'Welcome to REST Mail desktop' : index === 1 ? 'Re: Welcome to REST Mail desktop' : ['Weekend plans', 'Project notes', 'Design review'][index % 3] + ` ${index + 1}`,
     size_bytes: 2048, has_attachments: index === 0, is_read: index > 3, is_flagged: false, is_starred: false, is_draft: false,
     received_at: new Date(Date.UTC(2026, 10, 21, 12, 0) - index * 3600000).toISOString(),
     body_text: 'Your mail, in one place. This is development fixture data, never included in a production build.',
