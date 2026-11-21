@@ -114,7 +114,12 @@ class LivePrincipals(unittest.TestCase):
         gateway = [(request, options) for request, options in self.calls if request.full_url.startswith(self.internal)]
         self.assertEqual([request.method for request, _ in gateway], ["POST", "DELETE"])
         opened, closed = gateway[0][0], gateway[1][0]
-        self.assertEqual(json.loads(opened.data), {"protocol": "imap", "address": self.app["address"], "password": self.app["secret"]})
+        self.assertEqual(json.loads(opened.data), {
+            "protocol": "imap",
+            "address": self.app["address"],
+            "password": self.app["secret"],
+            "client_ip": "198.51.100.7",
+        })
         self.assertIsNone(opened.get_header("Authorization"))
         self.assertEqual(closed.get_header("Authorization"), "Bearer rmgs_real-session")
         self.assertTrue(closed.full_url.endswith("/gateway-sessions/current"))

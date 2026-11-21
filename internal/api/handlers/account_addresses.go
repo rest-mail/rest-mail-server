@@ -38,8 +38,8 @@ type sendingAddressMode struct {
 }
 
 // addresses answers GET /api/v1/accounts/{id}/addresses. It needs mail:read on
-// the account, like the account itself; an account the caller may not read is
-// 404, as for getAccount.
+// the account. Like getAccount, it returns 404 for a hidden or missing account
+// and 403 when the account is visible but this credential lacks mail:read.
 func (h *AccountHandler) addresses(r *http.Request, in accountPath) (accountAddresses, error) {
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)

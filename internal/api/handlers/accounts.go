@@ -75,8 +75,8 @@ type SessionRouteChecks struct {
 	Audit    func(action string, options ...middleware.AuditOption) endpoint.Middleware
 }
 
-// RegisterReads registers the account reads, which the mail routes' group serves: a session,
-// a scoped API key or HTTP Basic.
+// RegisterReads registers the account reads. The mail routes accept a session,
+// a scoped API key or an internal gateway session.
 func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 	tags := []string{"Accounts"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts",
@@ -91,7 +91,8 @@ func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 		Description: "receives is the account's own address, then every active alias on an active domain whose destination is this account; no other alias or destination is shown. " +
 			"sends_as is every mailbox address the account may put in From, each with the modes allowed (from: on_behalf false; on_behalf: on_behalf true), decided by the same check sendMessage makes, so the two cannot disagree. " +
 			"Asked by the account itself, it answers for the credential the request is made with; asked by someone else who may read the account, for the account's own sign-in. " +
-			"Uses the same mail:read authorization as getAccount; an account the caller may not read is 404.",
+			"Uses the same mail:read authorization as getAccount. Hidden or missing accounts return 404. " +
+			"A visible account without mail:read for this credential returns 403.",
 		Errors:   []int{http.StatusForbidden, http.StatusNotFound},
 		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth")}, h.addresses)
 }
