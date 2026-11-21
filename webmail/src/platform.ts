@@ -1,4 +1,5 @@
 import type { User } from './types';
+import type { SetupStep } from './components/auth/AccountAccess';
 
 export interface NativeAttachment {
   filename: string;
@@ -12,7 +13,7 @@ export interface MailPlatform {
   streamURL?: (url: string) => string;
   serverHost?: () => string;
   canSendAttachments?: boolean;
-  restoreSession?: () => Promise<User | null>;
+  restoreSession?: () => Promise<(User & { setup_required?: SetupStep[] }) | null>;
   signOut?: () => Promise<void>;
   pickAttachments?: () => Promise<NativeAttachment[]>;
   saveAttachment?: (url: string, filename: string) => Promise<void>;

@@ -21,7 +21,7 @@ describe('MCP UI bridge', () => {
   it('snapshots stable test IDs on the sign-in screen before authentication', async () => {
     render(<><input data-testid="signin-password" type="password" defaultValue="secret" /><button data-testid="signin-submit">Sign in</button></>);
     const snapshot = await handleUIRequest({ id: '1', action: 'snapshot' }, options());
-    expect(snapshot).toMatchObject({ route: '/signin', elements: [{ testId: 'signin-password', text: '' }, { testId: 'signin-submit', text: 'Sign in' }] });
+    expect(snapshot).toMatchObject({ route: '/signin', elements: [{ testId: 'signin-password', text: '[redacted]' }, { testId: 'signin-submit', text: 'Sign in' }] });
     expect(JSON.stringify(snapshot)).not.toContain('secret');
   });
   it('clicks controls and types through React controlled fields', async () => {
@@ -33,6 +33,13 @@ describe('MCP UI bridge', () => {
     await handleUIRequest({ id: '2', action: 'click', args: { testId: 'send' } }, options());
     expect(click).toHaveBeenCalledOnce();
     expect(await handleUIRequest({ id: '3', action: 'readText', args: { testId: 'email' } }, options())).toEqual({ text: 'chris@test.invalid' });
+  });
+  it('redacts enrollment secrets and recovery codes, including ancestor text and readText', async () => {
+    render(<section data-testid="setup-card"><div data-ui-sensitive="true" data-testid="setup-secrets"><code data-testid="setup-key">private-enrollment-key</code><pre>private-recovery-code</pre></div></section>);
+    const snapshot = JSON.stringify(await handleUIRequest({ id: '1', action: 'snapshot' }, options()));
+    expect(snapshot).not.toContain('private-enrollment-key');
+    expect(snapshot).not.toContain('private-recovery-code');
+    for (const testId of ['setup-card', 'setup-secrets', 'setup-key']) expect(await handleUIRequest({ id: '2', action: 'readText', args: { testId } }, options())).toEqual({ text: '[redacted]' });
   });
   it('routes navigation and returns PNG data for screenshots', async () => {
     const config = options();

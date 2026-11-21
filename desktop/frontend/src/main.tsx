@@ -37,11 +37,11 @@ async function launch() {
     const status = data as Awaited<ReturnType<typeof binding.Status>>;
     serverHost = status.Server ? new URL(status.Server).host : '';
     const user = identity(status);
-    useAuthStore.setState({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: [] });
+    useAuthStore.setState({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: status.SetupRequired ?? [] });
     if (!user) useMailStore.setState({ accounts: [], folders: [], messages: [], selectedMessage: null, selectedMessageId: null, activeAccountId: null });
   });
   registerUIBridge(events, {
-    route: () => !useAuthStore.getState().isAuthenticated ? '/signin' : `/${useUIStore.getState().view}`,
+    route: () => !useAuthStore.getState().isAuthenticated ? '/signin' : useAuthStore.getState().setupRequired.length ? `/setup/${useAuthStore.getState().setupRequired[0]}` : `/${useUIStore.getState().view}`,
     navigate: async route => {
       if (route === '/signin') { await binding.SignOut(); return; }
       if (!useAuthStore.getState().isAuthenticated) throw new Error('Sign in first');
@@ -53,7 +53,7 @@ async function launch() {
     },
     screenshot: async () => {
       const { default: html2canvas } = await import('html2canvas-pro');
-      const canvas = await html2canvas(document.body, { useCORS: false, allowTaint: false, ignoreElements: element => element instanceof HTMLInputElement && element.type === 'password' });
+      const canvas = await html2canvas(document.body, { useCORS: false, allowTaint: false, ignoreElements: element => element.hasAttribute('data-ui-sensitive') || element instanceof HTMLInputElement && element.type === 'password' });
       return canvas.toDataURL('image/png').split(',')[1];
     },
   });
