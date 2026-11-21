@@ -1,29 +1,8 @@
-import { useEffect, useState } from 'react'
-import { AppInfo } from "../bindings/github.com/rest-mail/rest-mail-server/desktop";
+import MailApp from '@webmail/App';
+import { TooltipProvider } from '@webmail/components/ui/tooltip';
+import { SignIn } from './SignIn';
+import type { SessionBinding } from './session';
 
-type Release = { version: string; commit: string; builtAt: string }
-
-// The first shell: it proves the app launches and knows which build it is.
-// The mail UI from webmail replaces this view as #2211's criteria land.
-function App() {
-  const [release, setRelease] = useState<Release | null>(null)
-  useEffect(() => {
-    AppInfo.Release().then((r) => setRelease(r as Release)).catch(() => setRelease(null))
-  }, [])
-  return (
-    <div className="container" style={{ padding: 32 }}>
-      <img src="/rest-mail-icon.svg" alt="" width={96} height={96} />
-      <h1>REST Mail</h1>
-      <p>Desktop client</p>
-      {release ? (
-        <p data-testid="release">
-          Version {release.version} · commit {release.commit} · built {release.builtAt}
-        </p>
-      ) : (
-        <p>Reading build information…</p>
-      )}
-    </div>
-  )
+export default function App({ session }: { session: SessionBinding }) {
+  return <TooltipProvider><MailApp loginPage={<SignIn session={session} />} /></TooltipProvider>;
 }
-
-export default App

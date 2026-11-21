@@ -41,6 +41,9 @@ func main() {
 		Description: "REST Mail desktop client",
 		Services: []application.Service{
 			application.NewService(&AppInfo{}),
+			// BEGIN UI native file service
+			application.NewService(&Files{}),
+			// END UI native file service
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

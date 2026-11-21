@@ -3,6 +3,7 @@ import { ApiError, apiErrorFromBody } from './apiError';
 import { API_BASE as BASE } from './base';
 import type { components, paths } from './types';
 import type { PushDeviceList } from '../lib/webPush';
+import { mailFetch as fetch, mailPlatform } from '../platform';
 
 // BASE is the same-origin API path (default `/api/v1`); see ./base for how it is
 // resolved and why a missing/invalid VITE_API_URL no longer falls back to a
@@ -41,7 +42,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers as Record<string, string> || {}),
   };
   const method = (options.method || 'GET').toUpperCase();
-  if (MUTATING_METHODS.has(method)) {
+  if (!mailPlatform().desktop && MUTATING_METHODS.has(method)) {
     headers['X-CSRF-Token'] = getCsrfToken();
   }
   // credentials: 'include' sends the httpOnly session cookie (and the CSRF
@@ -64,7 +65,7 @@ async function requestNoContent(path: string, options: RequestInit = {}): Promis
     ...(options.headers as Record<string, string> || {}),
   };
   const method = (options.method || 'GET').toUpperCase();
-  if (MUTATING_METHODS.has(method)) {
+  if (!mailPlatform().desktop && MUTATING_METHODS.has(method)) {
     headers['X-CSRF-Token'] = getCsrfToken();
   }
   const res = await fetch(path, { ...options, headers, credentials: 'include' });
