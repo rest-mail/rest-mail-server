@@ -52,15 +52,13 @@ body, button, input, textarea, select { font-family: inherit; }
 code, pre.desktop-recovery-codes { font-family: var(--desktop-mono); }
 button, input, textarea, select { border-radius: 6px; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(255 204 0 / 55%); }
-.desktop-signin { height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; background: var(--ink); overflow: auto; position: relative; padding: 48px; }
-/* The braces frame the sheet: centred on the window's vertical middle, each the same
-   gap outside the sheet's edge. They are one mirrored SVG path, so the gaps match. */
-.desktop-signin { --sheet-half: 200px; --brace-gap: 24px; --brace-height: min(86vh, 860px); }
-.desktop-signin:has(.desktop-setup-sheet) { --sheet-half: 240px; }
-.desktop-brace { position: fixed; top: 50%; height: var(--brace-height); width: calc(var(--brace-height) / 4); transform: translateY(-50%); fill: none; stroke: var(--deep); stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; user-select: none; }
-.desktop-brace-left { right: calc(50% + var(--sheet-half) + var(--brace-gap)); }
-.desktop-brace-right { left: calc(50% + var(--sheet-half) + var(--brace-gap)); transform: translateY(-50%) scaleX(-1); }
-@media (max-width: 720px) { .desktop-brace { display: none; } }
+.desktop-signin { --brace-overhang: 70px; --brace-gap: 24px; --brace-width: 160px; height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; background: var(--ink); overflow: auto; position: relative; padding: 32px; }
+.desktop-braced-sheet { position: relative; flex-shrink: 0; width: 400px; max-width: 100%; margin: auto 0; padding: var(--brace-overhang) 0; }
+.desktop-braced-sheet:has(.desktop-setup-sheet) { width: 480px; }
+.desktop-braced-sheet > .desktop-signin-sheet { width: 100%; margin: 0; }
+.desktop-brace { position: absolute; top: 0; height: 100%; width: var(--brace-width); fill: none; stroke: var(--deep); stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; user-select: none; }
+.desktop-brace-left { right: calc(100% + var(--brace-gap)); }
+.desktop-brace-right { left: calc(100% + var(--brace-gap)); transform: scaleX(-1); }
 .desktop-signin-sheet { z-index: 1; flex-shrink: 0; margin: auto 0; width: 400px; max-width: 100%; padding: 28px; border-radius: 12px; background: #ffffff; color: var(--ink); box-shadow: 0 24px 64px rgb(10 18 36 / 35%); }
 .desktop-signin-sheet img { display: block; margin: 0 auto 12px; width: 48px; height: 48px; }
 .desktop-signin-sheet h1 { margin: 0; text-align: center; font-size: var(--desktop-heading); font-weight: var(--desktop-semibold); line-height: var(--desktop-leading-heading); letter-spacing: -.3px; }

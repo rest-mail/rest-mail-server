@@ -118,10 +118,15 @@ Monospace is reserved for authenticator secrets and recovery-code data. Brand na
 and yellow remain the sidebar and primary-action accents; shared webmail does not
 import this theme or render the desktop title bar.
 
-The default window is 1200×742. Sign-in and setup sheets retain at least 48px of
-space on every side, centering when space permits and scrolling rather than
-clipping when the window is short. Sign-in uses a compact 48px logo and the same
-type scale as the mailbox.
+The default window is 1200×800, with a 1000×720 native content minimum (1000×754
+including the macOS title-bar inset). Sign-in and setup
+use a fixed brace composition measured from the approved sign-in capture: 70px
+vertical overhang, 24px side gaps, and 160px-wide braces. The SVG path's inset
+makes the visible overhang approximately 65px. Braces track the sheet's height,
+not the window; resizing changes only the empty space outside the composition.
+At least 32px of outer padding surrounds the composition. Taller setup or error
+states scroll as one block without shrinking the braces. Sign-in uses a compact
+48px logo and the same type scale as the mailbox.
 
 ## Frontend validation
 

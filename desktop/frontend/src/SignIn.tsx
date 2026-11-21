@@ -34,6 +34,7 @@ export function SignIn({ session }: { session: SessionBinding }) {
   }
   if (imap) return <IMAPAccountSheet session={session} onClose={() => setIMAP(false)} />;
   return <main className="desktop-signin">
+    <div className="desktop-braced-sheet">
     <Brace side="left" />
     <Brace side="right" />
     <form onSubmit={submit} className="desktop-signin-sheet">
@@ -50,5 +51,6 @@ export function SignIn({ session }: { session: SessionBinding }) {
       {!challenge && <button type="button" data-testid="signin-use-imap" className="desktop-text-button" onClick={() => setIMAP(true)}>Use an IMAP account instead</button>}
       {challenge && <button type="button" className="desktop-signin-back" data-testid="signin-back" onClick={() => { setChallenge(false); setTotp(''); }}>Back to sign in</button>}
     </form>
+    </div>
   </main>;
 }

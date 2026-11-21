@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { readFileSync } from 'node:fs';
 import { Sidebar } from '@webmail/components/layout/Sidebar';
@@ -7,13 +7,38 @@ import { configureMailPlatform } from '@webmail/platform';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { useMailStore } from '@webmail/stores/mailStore';
 import { useUIStore } from '@webmail/stores/uiStore';
+import { SignIn } from './SignIn';
+import { FirstRunSetup } from './FirstRunSetup';
+import type { SessionBinding } from './session';
 
 vi.mock('@webmail/components/ui/scroll-area', () => ({ ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
 
 describe('desktop sheet spacing', () => {
-  it('keeps sign-in and setup scrollable with safe outer margins and nonshrinking sheets', () => {
+  it('keeps an expanding sign-in error inside the same fixed brace composition', async () => {
+    const session = { SignIn: vi.fn().mockRejectedValue(new Error('network')) } as unknown as SessionBinding;
+    const { container } = render(<SignIn session={session} />);
+    const composition = container.querySelector('.desktop-braced-sheet')!;
+    expect(composition.querySelectorAll('.desktop-brace')).toHaveLength(2);
+    fireEvent.submit(screen.getByTestId('signin-submit').closest('form')!);
+    expect(composition.contains(await screen.findByRole('alert'))).toBe(true);
+    expect(container.querySelector('.desktop-braced-sheet')).toBe(composition);
+  });
+
+  it('frames the taller setup sheet in the same scrolling composition', () => {
+    useAuthStore.setState({ user: null, setupRequired: ['password'] });
+    const { container } = render(<FirstRunSetup session={{} as SessionBinding} onFinished={vi.fn()} />);
+    const composition = container.querySelector('.desktop-braced-sheet')!;
+    expect(composition.querySelectorAll('.desktop-brace')).toHaveLength(2);
+    expect(composition.querySelector('.desktop-setup-sheet')).not.toBeNull();
+    expect(composition.contains(screen.getByTestId('setup-confirm-password'))).toBe(true);
+  });
+
+  it('keeps fixed brace overhang and gap around a sheet-relative scrollable composition', () => {
     const theme = readFileSync('src/theme.css', 'utf8');
-    expect(theme).toMatch(/\.desktop-signin \{[^}]*overflow: auto;[^}]*padding: 48px;/);
+    expect(theme).toMatch(/\.desktop-signin \{[^}]*--brace-overhang: 70px; --brace-gap: 24px; --brace-width: 160px;/);
+    expect(theme).toMatch(/\.desktop-signin \{[^}]*overflow: auto;[^}]*padding: 32px;/);
+    expect(theme).toMatch(/\.desktop-braced-sheet \{[^}]*flex-shrink: 0;[^}]*margin: auto 0; padding: var\(--brace-overhang\) 0;/);
+    expect(theme).toMatch(/\.desktop-brace \{[^}]*position: absolute; top: 0; height: 100%;/);
     expect(theme).toMatch(/\.desktop-signin-sheet \{[^}]*flex-shrink: 0; margin: auto 0;/);
     expect(theme).toMatch(/\.desktop-setup-sheet \{[^}]*margin: auto;/);
   });
