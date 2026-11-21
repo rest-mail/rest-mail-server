@@ -28,17 +28,17 @@ func TestSMTPListenersServeRenewedCertificate(t *testing.T) {
 	t.Cleanup(s.Shutdown)
 
 	t.Run("inbound STARTTLS", func(t *testing.T) {
-		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
+		reloadtest.Prove(t, host, pair, func(t *testing.T) *tls.Conn {
 			return reloadtest.StartTLS(t, inboundPort, host,
 				reloadtest.Step{Until: "220 "},
 				reloadtest.Step{Send: "EHLO client.test", Until: "250 "},
 				reloadtest.Step{Send: "STARTTLS", Until: "220 "})
-		})
+		}, reloadtest.Step{Send: "NOOP", Until: "250 "})
 	})
 	t.Run("submission implicit TLS", func(t *testing.T) {
-		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
-			return reloadtest.ImplicitTLS(t, submissionPort, host)
-		})
+		reloadtest.Prove(t, host, pair, func(t *testing.T) *tls.Conn {
+			return reloadtest.ImplicitTLS(t, submissionPort, host, reloadtest.Step{Until: "220 "})
+		}, reloadtest.Step{Send: "NOOP", Until: "250 "})
 	})
 }
 

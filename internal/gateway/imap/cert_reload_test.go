@@ -30,15 +30,15 @@ func TestIMAPListenersServeRenewedCertificate(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
 
 	t.Run("STARTTLS", func(t *testing.T) {
-		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
+		reloadtest.Prove(t, host, pair, func(t *testing.T) *tls.Conn {
 			return reloadtest.StartTLS(t, plainPort, host,
 				reloadtest.Step{Until: "* OK"},
 				reloadtest.Step{Send: "a1 STARTTLS", Until: "a1 OK"})
-		})
+		}, reloadtest.Step{Send: "a2 NOOP", Until: "a2 OK"})
 	})
 	t.Run("implicit TLS", func(t *testing.T) {
-		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
-			return reloadtest.ImplicitTLS(t, implicitPort, host)
-		})
+		reloadtest.Prove(t, host, pair, func(t *testing.T) *tls.Conn {
+			return reloadtest.ImplicitTLS(t, implicitPort, host, reloadtest.Step{Until: "* OK"})
+		}, reloadtest.Step{Send: "a2 NOOP", Until: "a2 OK"})
 	})
 }

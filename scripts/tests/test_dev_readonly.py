@@ -78,8 +78,11 @@ class DevReadonlyTests(unittest.TestCase):
             self.assertIn("fixture-smtp_gateway_own_certs_volume:/certs:ro", front[0])
             for flag in ("--read-only", "--cap-drop", "ALL", "no-new-privileges:true", "10001:10001"):
                 self.assertIn(flag, front[0])
+            watcher = front[0].index("tls-front")
+            self.assertEqual(front[0][watcher - 1], (ROOT / "tasks/tls-front-reload.sh").read_text().rstrip("\n"))
+            self.assertEqual(front[0][watcher + 2:], ["fixture-smtp_gateway_tls_cert_path", "fixture-smtp_gateway_tls_key_path"])
             for setting in ("listen 443 ssl", "ssl_certificate fixture-smtp_gateway_tls_cert_path", "ssl_certificate_key fixture-smtp_gateway_tls_key_path", "proxy_pass 192.0.2.20:8080;"):
-                self.assertIn(setting, front[0][-1])
+                self.assertIn(setting, front[0][watcher + 1])
         else:
             self.assertEqual(front, [])
         launch = [call for call in calls if call["args"][:2] == command and not any(arg.endswith("-https") for arg in call["args"])]
