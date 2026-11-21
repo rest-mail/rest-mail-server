@@ -1,0 +1,85 @@
+version: "3"
+
+# The REST Mail desktop client (desktop/, Wails 3, #2211).
+#
+#   chore desktop:dev       run the app with live reload
+#   chore desktop:build     build RESTMail.app for this Mac
+#   chore desktop:release   build, install into ~/Applications, print the release info
+#   chore desktop:info      print the installed build's release info
+#
+# A release's version is desktop/VERSION plus the repository's commit count, so every
+# build from a new commit has a higher number: 0.1.<n>. The commit and build time are
+# compiled into the binary and shown in the app.
+#
+# chores.yml exports OUTPUT (where raw command output goes). Wails' Taskfiles read
+# a variable of the same name as the build's output path, so it is unset here.
+
+silent: true
+
+vars:
+  WAILS3:
+    sh: command -v wails3 || echo "$HOME/go/bin/wails3"
+  DESKTOP_DIR: '{{.ROOT_DIR}}/desktop'
+  APP_NAME: RESTMail
+  INSTALL_DIR: '{{.DESKTOP_INSTALL_DIR | default (print .HOME "/Applications")}}'
+  APP_VERSION:
+    sh: 'echo "$(tr -d "[:space:]" < desktop/VERSION).$(git rev-list --count HEAD)"'
+  APP_COMMIT:
+    sh: 'git rev-parse --short=12 HEAD'
+  APP_DIRTY:
+    sh: 'git diff --quiet HEAD -- desktop webmail 2>/dev/null && echo "" || echo "-dirty"'
+
+tasks:
+  tool:
+    desc: Install the pinned Wails 3 CLI when it is missing
+    status:
+      - test -x "{{.WAILS3}}"
+    cmds:
+      - go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+  dev:
+    desc: Run the desktop app with live reload
+    deps: [tool]
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - 'env -u OUTPUT -u VERBOSE "{{.WAILS3}}" dev'
+
+  build:
+    desc: Build RESTMail.app for this Mac (desktop/bin)
+    deps: [tool]
+    dir: '{{.DESKTOP_DIR}}'
+    vars:
+      APP_BUILT:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+    cmds:
+      - 'env -u OUTPUT -u VERBOSE "{{.WAILS3}}" task darwin:package APP_VERSION={{.APP_VERSION}}{{.APP_DIRTY}} APP_COMMIT={{.APP_COMMIT}}{{.APP_DIRTY}} APP_BUILT={{.APP_BUILT}}'
+      - /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
+      - /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
+      - codesign --force --deep --sign - "bin/{{.APP_NAME}}.app"
+      - |
+        cat > bin/release.json <<JSON
+        {"app":"REST Mail","version":"{{.APP_VERSION}}{{.APP_DIRTY}}","commit":"{{.APP_COMMIT}}{{.APP_DIRTY}}","builtAt":"{{.APP_BUILT}}","bundle":"{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app"}
+        JSON
+
+  release:
+    desc: Build, install into ~/Applications and print the release info
+    cmds:
+      - task: build
+      - mkdir -p "{{.INSTALL_DIR}}"
+      - osascript -e 'tell application "REST Mail" to quit' >/dev/null 2>&1 || true
+      - rm -rf "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
+      - cp -R "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app" "{{.INSTALL_DIR}}/"
+      - cp "{{.DESKTOP_DIR}}/bin/release.json" "{{.INSTALL_DIR}}/{{.APP_NAME}}.app/Contents/Resources/release.json"
+      - task: info
+
+  info:
+    desc: Print the installed build's release info
+    cmds:
+      - |
+        f="{{.INSTALL_DIR}}/{{.APP_NAME}}.app/Contents/Resources/release.json"
+        if [ -f "$f" ]; then echo "Installed: {{.INSTALL_DIR}}/{{.APP_NAME}}.app"; cat "$f"; echo; else echo "REST Mail is not installed in {{.INSTALL_DIR}}"; fi
+
+  open:
+    desc: Launch the installed app
+    cmds:
+      - open "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
