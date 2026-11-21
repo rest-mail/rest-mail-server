@@ -22,8 +22,8 @@ func TestIMAPAccountDateDSTBoundaries(t *testing.T) {
 	}{
 		{"north_spring_forward", "America/New_York", "8-Mar-2026", "2026-03-08T05:00:00Z", "2026-03-08T07:00:00Z", "2026-03-09T04:00:00Z", "1 2 3 4 5 6"},
 		{"north_fall_back", "America/New_York", "1-Nov-2026", "2026-11-01T04:00:00Z", "2026-11-01T06:00:00Z", "2026-11-02T05:00:00Z", "1 2 3 4 5 6"},
-		{"south_fall_back", "Australia/Sydney", "5-Apr-2026", "2026-04-04T13:00:00Z", "2026-04-04T16:00:00Z", "2026-04-05T14:00:00Z", "7 8 9"},
-		{"south_spring_forward", "Australia/Sydney", "4-Oct-2026", "2026-10-03T14:00:00Z", "2026-10-03T16:00:00Z", "2026-10-04T13:00:00Z", "7 8 9"},
+		{"south_fall_back", "Australia/Sydney", "6-Apr-2025", "2025-04-05T13:00:00Z", "2025-04-05T16:00:00Z", "2025-04-06T14:00:00Z", "7 8 9"},
+		{"south_spring_forward", "Australia/Sydney", "5-Oct-2025", "2025-10-04T14:00:00Z", "2025-10-04T16:00:00Z", "2025-10-05T13:00:00Z", "7 8 9"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			gateway := newGatewayFixture(t)
