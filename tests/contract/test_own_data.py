@@ -347,11 +347,11 @@ class Selection(unittest.TestCase):
         out = own_data.configure({"provides": {"principal": ["anonymous"], "state": ["x"]}})
         self.assertEqual(
             out["provides"],
-            {"principal": ["anonymous"], "state": ["calendar_invitation", "disposable_data", "x"]},
+            {"principal": ["anonymous"], "state": ["calendar_invitation", "disposable_data", "held_message", "x"]},
         )
         self.assertEqual(
             own_data.configure({"provides": {}})["provides"],
-            {"state": ["calendar_invitation", "disposable_data"]},
+            {"state": ["calendar_invitation", "disposable_data", "held_message"]},
         )
 
     def test_each_provided_state_is_only_the_moved_examples_its_hooks_make(self):
@@ -370,6 +370,7 @@ class Selection(unittest.TestCase):
             {
                 ("respondToCalendar", "accepted"),
                 ("respondToCalendar", "foreign_sender"),
+                ("releaseHeldMessage", "released"),
                 ("resetTestData", "admin"),
                 ("restoreTestSnapshot", "admin"),
                 ("restoreTestSnapshot", "unknown_field"),

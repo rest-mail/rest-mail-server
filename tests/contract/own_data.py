@@ -363,7 +363,7 @@ MOVED = (
 # literal stream the live server never sends, compared byte for byte (#1385).
 # disposable_data is resetTestData's and restoreTestSnapshot's: what each wipes
 # was made for it by its own reset, and no exchange after it needs that.
-PROVIDES = {"state": ["calendar_invitation", "disposable_data"]}
+PROVIDES = {"state": ["calendar_invitation", "disposable_data", "held_message"]}
 
 
 def configure(config):

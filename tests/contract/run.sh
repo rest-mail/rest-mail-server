@@ -36,6 +36,9 @@ gate | authorization | ownership | fuzz | own-data)
   ;;
 esac
 select=("$@")
+if [ "$phase" = own-data ] && [ "${select[0]:-}" = --isolation ]; then
+  exec python3 -B tests/contract/fixture_isolation.py "${select[@]:1}"
+fi
 narrowed=()
 if [ ${#select[@]} -gt 0 ]; then
   narrowed=(--narrowed)

@@ -1635,6 +1635,37 @@ subprocesses must still be serialized; this is not a concurrency-isolation API.
 
 ## Moved to a clean start (Part of #1385)
 
+`tests/contract/run.sh own-data --isolation` proves selected operations alone,
+then in two reproducibly shuffled repetitions on the same running server. Its
+defaults are `getDomain`, `createFolder` and `releaseHeldMessage`; repeat
+`--operation-id NAME` to choose others, and use `--seed N` or `--repeats N` to
+replay another order. `CONTRACT_ENDPOINT` must name the disposable server.
+Every invocation uses the ordinary full-description own-data path. The runner
+requires a passing, nonempty JUnit report, exactly one reset/seed trace per
+exchange, the same endpoint, and unchanged exchange counts across repetitions.
+Reports and traces remain in `.cache/contract/isolation/receipt.json` and its
+per-selection directories. The full `test:contract-own-data` task runs this
+check before the whole own-data phase. Private topologies run it with
+`chore topology:contract:own-data TOPOLOGY=<name>`; `topology:ci` includes it
+after the ordinary contract gate and tears down on failure too.
+`test_own_data_isolated_schedule` and
+`test_stale_cache_and_counter_control_turns_isolation_red` hold the selection
+and stale-state failure controls in the contract tooling suite.
+
+The own-data phase alone provides `held_message`, for
+`releaseHeldMessage/released`. After its reset, `held_release_hooks.py` creates
+a disposable account through the API, signs in as that sender, sets its own
+hourly message budget to one, sends once (201), and retains the actual next
+send's 202 ID. The intended target is the real MFA administrator, who releases
+that ID. The after hook requires 200 and the same row transitioning to `sent`,
+then independently reads the persisted Sent message, verifies the held list no
+longer contains the row, and requires a second release to answer 409
+`not_held`. Invalid IDs and refusal credentials remain unchanged. This does not
+provide MFA globally. `TestHeldReleasePersistsThroughRouter` proves the same
+transition with real PostgreSQL, API-created sender and real MFA enrollment;
+invalid, absent, anonymous, password-only, unrelated MFA and already-sent
+controls leave the held record and queue unchanged.
+
 `getDomain`, `setMtaStsPolicy`, `getMtaStsPolicy` and `deleteMtaStsPolicy` reset and
 seed before each exchange, refusals included, and each success makes the domain it
 needs, and for a read or delete the policy too. Only the path changes, so bodies and

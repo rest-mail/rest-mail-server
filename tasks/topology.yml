@@ -191,6 +191,19 @@ tasks:
         export CONTRACT_INTERNAL_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}} -- internal)
         "${CHORE_BIN:-chore}" contract:topology {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
 
+  contract:own-data:
+    desc: "Run isolated, shuffled and repeated fixtures, then the full own-data phase, on TOPOLOGY"
+    dotenv: []
+    cmds:
+      - |
+        set -eu
+        eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --shell)"
+        export TOPOLOGY_SHIM_DIR={{.ROOT_DIR}}/.cache/topology/{{.TOPOLOGY}}/bin
+        export PATH="$TOPOLOGY_SHIM_DIR:$PATH"
+        export CONTRACT_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}})
+        export CONTRACT_INTERNAL_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}} -- internal)
+        "${CHORE_BIN:-chore}" test:contract-own-data {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
+
   down:
     desc: "Remove everything TOPOLOGY made, by its label: containers, networks, volumes and the files it wrote. Nothing unlabelled is touched"
     dotenv: []
@@ -208,4 +221,5 @@ tasks:
         trap '"$chore_bin" topology:down TOPOLOGY={{.TOPOLOGY}}' EXIT
         "$chore_bin" topology:up TOPOLOGY={{.TOPOLOGY}} || exit 1
         "$chore_bin" topology:test:e2e TOPOLOGY={{.TOPOLOGY}} -- -timeout=2h || exit 1
-        "$chore_bin" topology:contract TOPOLOGY={{.TOPOLOGY}}
+        "$chore_bin" topology:contract TOPOLOGY={{.TOPOLOGY}} || exit 1
+        "$chore_bin" topology:contract:own-data TOPOLOGY={{.TOPOLOGY}}
