@@ -23,7 +23,8 @@ COPY . .
 # Set by BuildKit to the platform this image is being built for.
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/pop3-gateway ./cmd/pop3-gateway
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/pop3-gateway ./cmd/pop3-gateway
 
 # ── Stage 3: dev (hot reload via air) ────────────────────────────────
 # Source code is volume-mounted at /app by docker-compose.override.yml.
@@ -33,7 +34,7 @@ ENV ENVIRONMENT=development
 RUN go install github.com/air-verse/air@v1.67.2
 # The same unprivileged user as the prod image (#193). Go's build cache goes in
 # its home directory, and air builds into /app/tmp, which the dev task mounts as
-# a tmpfs that user owns.
+# a disk-backed volume that user owns.
 RUN addgroup -S -g 10001 restmail && adduser -S -u 10001 -G restmail restmail
 USER 10001:10001
 EXPOSE 995

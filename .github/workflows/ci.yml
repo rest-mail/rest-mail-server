@@ -1738,13 +1738,19 @@ jobs:
         run: |
           set -euo pipefail
           docker build --target prod -t "restmail-$APP:smoke" "$APP"
-          owner=$("$GITHUB_WORKSPACE/tasks/tmpfs-owner.sh" 101)
-          container=$(docker run -d --read-only --cap-drop ALL \
+          export RESTMAIL_LABEL="rest-mail.run=frontend-$APP-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+          prefix=${RESTMAIL_LABEL#*=}
+          config_volume="$prefix-prod-conf"
+          scratch_volume="$prefix-prod-tmp"
+          container=
+          trap 'status=$?; if [ -n "$container" ]; then docker logs "$container" || true; docker rm -f "$container" >/dev/null || true; fi; docker volume rm "$config_volume" "$scratch_volume" >/dev/null 2>&1 || true; exit "$status"' EXIT
+          sh "$GITHUB_WORKSPACE/tasks/writable-volume.sh" "$config_volume" 101 0755 /etc/nginx/conf.d >/dev/null
+          sh "$GITHUB_WORKSPACE/tasks/writable-volume.sh" "$scratch_volume" 101 1777 /tmp >/dev/null
+          container=$(docker run -d --label "$RESTMAIL_LABEL" --read-only --cap-drop ALL \
             --security-opt no-new-privileges --user 101:101 \
-            --tmpfs "/etc/nginx/conf.d:rw,$owner" \
-            --tmpfs "/tmp:rw,$owner" \
+            --mount "type=volume,src=$config_volume,dst=/etc/nginx/conf.d,volume-nocopy" \
+            -v "$scratch_volume:/tmp" \
             -e NGINX_BASE_PATH=/ -p 127.0.0.1::8080 "restmail-$APP:smoke")
-          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
           origin="http://$(docker port "$container" 8080/tcp)"
           # The published port answers before nginx listens: docker-proxy accepts the
           # connection and resets it. Ask nginx itself from inside the container, so
@@ -1777,13 +1783,20 @@ jobs:
         run: |
           set -euo pipefail
           docker build --target dev -t "restmail-$APP:dev-smoke" "$APP"
-          container=$(docker run -d --read-only --cap-drop ALL \
+          export RESTMAIL_LABEL="rest-mail.run=frontend-$APP-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+          prefix=${RESTMAIL_LABEL#*=}
+          scratch_volume="$prefix-dev-tmp"
+          modules_volume="$prefix-dev-modules"
+          container=
+          trap 'status=$?; if [ -n "$container" ]; then docker logs "$container" || true; docker rm -f "$container" >/dev/null || true; fi; docker volume rm "$scratch_volume" "$modules_volume" >/dev/null 2>&1 || true; rm -f "$APP/src/hardening-smoke.ts"; exit "$status"' EXIT
+          sh "$GITHUB_WORKSPACE/tasks/writable-volume.sh" "$scratch_volume" 0 1777 /tmp >/dev/null
+          sh "$GITHUB_WORKSPACE/tasks/writable-volume.sh" "$modules_volume" 0 0755 /app/node_modules >/dev/null
+          container=$(docker run -d --label "$RESTMAIL_LABEL" --read-only --cap-drop ALL \
             --security-opt no-new-privileges:true \
             --pids-limit 512 --memory 1g --cpus 1.5 \
-            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777 \
-            -v "$PWD/$APP:/app" -v /app/node_modules \
+            -v "$scratch_volume:/tmp" \
+            -v "$PWD/$APP:/app" -v "$modules_volume:/app/node_modules" \
             -e VITE_BASE_PATH=/ -p 127.0.0.1::3000 "restmail-$APP:dev-smoke")
-          trap 'docker logs "$container"; docker rm -fv "$container" >/dev/null; rm -f "$APP/src/hardening-smoke.ts"' EXIT
           origin="http://$(docker port "$container" 3000/tcp)"
           # docker-proxy accepts the connection and then resets it until Vite
           # listens, so retry every error, not only refused connections.

@@ -285,9 +285,11 @@ def plan(name, existing_subnets=(), pool=None):
             # Docker Desktop has no route from the host to the run's subnet, so the object store's
             # first bootstrap runs in a container on it.
             "RESTMAIL_GARAGE_BOOTSTRAP_IMAGE": "golang:1.26.11",
-            # The dev containers' Go build cache, as the E2E workflow gives them: on their 1 GB tmpfs
-            # the API's link runs out of space. The task adds -<uid>.
             "RESTMAIL_DEV_GOCACHE_VOLUME": f"restmail-{name}-devcache",
+            "RESTMAIL_SERVICE_MODE": "prod",
+            "RESTMAIL_PREBUILT_IMAGES": "true",
+            "RESTMAIL_TOPOLOGY_STORAGE": "true",
+            "RESTMAIL_TOPOLOGY_IMAGE_TAG": f"topology-{name}",
             "RESTMAIL_SOURCE_VOLUME_PREFIX": f"restmail-{name}-src",
             "SUBNET": subnet,
             # The rest-mail instance is a config of the run's own, made in .cache. The nested

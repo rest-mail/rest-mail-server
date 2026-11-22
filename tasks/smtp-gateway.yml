@@ -93,10 +93,15 @@ tasks:
     desc: Build the smtp-gateway image (target controlled by MODE=dev|prod)
     cmds:
       - |
+        if [ "${RESTMAIL_PREBUILT_IMAGES:-false}" = true ] && [ "{{.SMTP_GATEWAY_MODE}}" = prod ] &&
+          [ "$(docker image inspect -f '{{`{{ index .Config.Labels "rest-mail.mode" }}`}}' {{.SMTP_GATEWAY_IMAGE}} 2>/dev/null)" = prod ]; then
+          echo "  reusing prebuilt {{.SMTP_GATEWAY_IMAGE}}"
+          exit 0
+        fi
         echo "  building {{.SMTP_GATEWAY_IMAGE}} (target: {{.SMTP_GATEWAY_MODE}})"
         docker build \
           -t {{.SMTP_GATEWAY_IMAGE}} \
-          --target {{.SMTP_GATEWAY_MODE}} \
+          --label rest-mail.mode={{.SMTP_GATEWAY_MODE}} --target {{.SMTP_GATEWAY_MODE}} \
           -f projects/smtp-gateway/Dockerfile \
           . >$OUTPUT 2>&1
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
@@ -119,22 +124,17 @@ tasks:
       - |
         echo "  starting smtp-gateway ({{.SMTP_GATEWAY_CONTAINER_NAME}} @ {{.SMTP_GATEWAY_IP}}, mode: {{.SMTP_GATEWAY_MODE}})"
 
-        # Air executes /app/tmp binaries; Go needs executable build/temp space.
-        # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
-        # the image's preloaded modules as a read-only proxy before the network.
         if [ "{{.SMTP_GATEWAY_MODE}}" = "dev" ]; then
-          TMPFS_OWNER=$("{{.TASKFILE_DIR}}/tmpfs-owner.sh" 10001)
           DEV_FLAGS="--read-only -v $(pwd):/app \
-            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,$TMPFS_OWNER \
-            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
-            -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
-            -e GOCACHE=/tmp/go-build-cache \
+            $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.SMTP_GATEWAY_CONTAINER_NAME}}-tmp 10001 1777 /tmp) \
+            $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.SMTP_GATEWAY_CONTAINER_NAME}}-air 10001 0700 /app/tmp) \
+            $("{{.TASKFILE_DIR}}/dev-gocache.sh" 10001 {{.SMTP_GATEWAY_PROJECT}}-devcache) \
             -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
-          if [ -n "${RESTMAIL_DEV_GOCACHE_VOLUME:-}" ]; then
-            DEV_FLAGS="$DEV_FLAGS $("{{.TASKFILE_DIR}}/dev-gocache.sh" 10001)"
-          fi
         else
           DEV_FLAGS=""
+          if [ "${RESTMAIL_TOPOLOGY_STORAGE:-false}" = true ]; then
+            DEV_FLAGS="--read-only $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.SMTP_GATEWAY_CONTAINER_NAME}}-tmp 10001 1777 /tmp)"
+          fi
         fi
 
         docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
@@ -161,8 +161,8 @@ tasks:
         # pid/mem/cpu ceilings. It binds 25 and 465 without NET_BIND_SERVICE because
         # the sysctl below lets any user bind any port in the container's own
         # network namespace (Docker's default too; said here so it is not assumed).
-        # Dev uses a read-only rootfs; Air and Go write only to bounded tmpfs
-        # mounts (in addition to the existing source and data mounts).
+        # Dev uses a read-only rootfs; Air and Go write to disk-backed volumes
+        # (in addition to the existing source and data mounts).
         HARDENING="--security-opt no-new-privileges:true \
           --user 10001:10001 --cap-drop ALL \
           --sysctl net.ipv4.ip_unprivileged_port_start=0 \
@@ -252,7 +252,7 @@ tasks:
         docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}}-https >"$OUTPUT" 2>&1 || true
         docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}}-https \
           --security-opt no-new-privileges:true --user 10001:10001 --cap-drop ALL \
-          --read-only --tmpfs /tmp:rw,nosuid,nodev,size=16m,mode=1777 \
+          --read-only $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.SMTP_GATEWAY_CONTAINER_NAME}}-https-tmp 10001 1777 /tmp) \
           --pids-limit 64 --memory 64m --cpus 0.25 \
           --restart unless-stopped \
           --network container:{{.SMTP_GATEWAY_CONTAINER_NAME}} \

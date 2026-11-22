@@ -28,12 +28,17 @@ ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
 ARG COMMIT=
-RUN COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} \
+ARG API_COVER=false
+ARG API_BUILD_TAGS=
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} \
  && BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
  && LDFLAGS="-X github.com/rest-mail/rest-mail-server/internal/version.Version=${VERSION} \
              -X github.com/rest-mail/rest-mail-server/internal/version.Commit=${COMMIT} \
              -X github.com/rest-mail/rest-mail-server/internal/version.BuildDate=${BUILD_DATE}" \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api \
+ && set -- \
+ && if [ "$API_COVER" = true ]; then set -- -cover; fi \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build "$@" -tags "$API_BUILD_TAGS" -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api \
  && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "${LDFLAGS}" -o /bin/restmail-rotate-key ./cmd/rotate-key
 # NOTE: cmd/seed is deliberately NOT built into any shipped image. It creates
 # fixture accounts with well-known passwords (mailbox `password123`, and an

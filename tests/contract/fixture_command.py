@@ -1,10 +1,11 @@
 """Run one of the contract fixture commands with a compile-sized bound.
 
-Each `chore test:contract-*-fixture` command runs
+In dev mode, `chore test:contract-*-fixture` runs
 
     docker exec <project>-api go run ./tests/contract/fixtures ...
 
-inside the run's own container: a compile followed by one insert. Twenty seconds
+inside the run's own container: a compile followed by one insert. CI's prod-mode
+test image instead runs the prebuilt `restmail-fixtures` binary. Twenty seconds
 was the compile budget on a quiet runner, and five call sites used it. On the ARC
 pool, with the contract phases sharing a node, one run timed out at it before the
 fixture ran at all:

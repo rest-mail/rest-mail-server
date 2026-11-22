@@ -100,6 +100,7 @@ class WebAppImageStep(unittest.TestCase):
         self.stub("docker", f"""
             case "$1" in
             build) ;;
+            volume) case "$2" in inspect) exit 1 ;; create|rm) ;; *) exit 2 ;; esac ;;
             run) echo stand-in-container ;;
             port) echo 127.0.0.1:{server.server_address[1]} ;;
             exec) {"printf x >> " + str(self.polls) + '; [ "$(wc -c < ' + str(self.polls) + f')" -ge {READY_AFTER_POLLS} ]' if comes_up else "exit 1"} ;;
