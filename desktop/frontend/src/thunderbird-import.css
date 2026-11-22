@@ -1,0 +1,52 @@
+.thunderbird-backdrop { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 22px; background: var(--background); }
+.thunderbird-sheet { width: min(760px, 100%); max-height: calc(100dvh - 44px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--card); color: var(--foreground); box-shadow: 0 24px 80px #0004; outline: none; }
+.thunderbird-sheet header { display: flex; align-items: flex-start; justify-content: space-between; padding: 22px 26px 18px; border-bottom: 1px solid var(--border); }
+.thunderbird-eyebrow { color: var(--primary); font-size: 10px; font-weight: 650; letter-spacing: .16em; margin-bottom: 7px; }
+.thunderbird-sheet h1 { font-size: 23px; font-weight: 600; letter-spacing: -.035em; margin: 0 0 6px; }
+.thunderbird-sheet header p, .thunderbird-progress p { color: var(--muted-foreground); font-size: 12px; margin: 0; }
+.thunderbird-sheet button { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; background: var(--secondary); color: var(--foreground); }
+.thunderbird-sheet button:hover { filter: brightness(1.08); }
+.thunderbird-sheet button:disabled { opacity: .45; cursor: default; }
+.thunderbird-sheet .thunderbird-close { font-size: 22px; line-height: 22px; padding: 0 5px; background: transparent; border: none; }
+.thunderbird-content { min-height: 0; overflow-y: auto; padding: 18px 26px; }
+.thunderbird-notice { background: var(--secondary); border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 12px; line-height: 1.6; color: var(--muted-foreground); margin-bottom: 16px; }
+.thunderbird-notice strong { color: var(--foreground); margin-right: 5px; }
+.thunderbird-warning { border-color: var(--primary); }
+.thunderbird-error { font-size: 12px; color: var(--destructive); }
+.thunderbird-selection { border: none; padding: 0; margin: 0; min-width: 0; }
+.thunderbird-selection-compact .thunderbird-folders, .thunderbird-selection-compact .thunderbird-folder-heading, .thunderbird-selection-compact .thunderbird-filter { display: none; }
+.thunderbird-filter { width: 100%; border: 1px solid var(--border); background: var(--background); color: var(--foreground); border-radius: 7px; padding: 7px 10px; margin: 0 0 8px; font-size: 12px; }
+.thunderbird-selectors { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.thunderbird-selectors label { font-size: 11px; color: var(--muted-foreground); }
+.thunderbird-selectors select { width: 100%; border: 1px solid var(--border); background: var(--background); color: var(--foreground); border-radius: 7px; padding: 8px; margin-top: 6px; font-size: 12px; }
+.thunderbird-folder-heading { display: flex; align-items: center; gap: 10px; margin: 18px 0 8px; font-size: 12px; }
+.thunderbird-folder-heading span { color: var(--muted-foreground); font-size: 11px; }
+.thunderbird-folder-heading button { margin-left: auto; padding: 4px 8px; font-size: 11px; }
+.thunderbird-folders { max-height: 225px; overflow-y: auto; border: 1px solid var(--border); border-radius: 9px; }
+.thunderbird-account summary { display: flex; justify-content: space-between; padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer; background: var(--secondary); }
+.thunderbird-account summary span { font-size: 11px; color: var(--muted-foreground); font-weight: 400; }
+.thunderbird-account-check { display: flex; gap: 9px; align-items: center; padding: 8px 16px; font-size: 11px; color: var(--muted-foreground); }
+.thunderbird-folder { display: flex; align-items: center; gap: 9px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+.thunderbird-folder:hover { background: var(--secondary); }
+.thunderbird-folder > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.thunderbird-sheet input[type=checkbox] { accent-color: var(--primary); flex-shrink: 0; }
+.thunderbird-folder small { display: block; font-size: 10px; color: var(--muted-foreground); margin-top: 2px; }
+.thunderbird-folder-count { margin-left: auto; flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.thunderbird-progress { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 18px; font-size: 12px; }
+.thunderbird-progress-heading, .thunderbird-progress-detail { display: flex; justify-content: space-between; gap: 8px; }
+.thunderbird-progress-detail { color: var(--muted-foreground); font-size: 10px; }
+.thunderbird-progress progress { width: 100%; height: 7px; margin: 10px 0 5px; accent-color: var(--primary); }
+.thunderbird-progress progress { appearance: none; border: 0; border-radius: 5px; overflow: hidden; background: var(--secondary); }
+.thunderbird-progress progress::-webkit-progress-bar { background: var(--secondary); }
+.thunderbird-progress progress::-webkit-progress-value { background: var(--primary); }
+.thunderbird-progress progress::-moz-progress-bar { background: var(--primary); }
+.thunderbird-summary { display: flex; flex-wrap: wrap; gap: 14px; margin: 13px 0; color: var(--muted-foreground); font-size: 11px; }
+.thunderbird-summary strong { color: var(--foreground); }
+.thunderbird-progress details { margin-bottom: 10px; }
+.thunderbird-progress li { margin-top: 5px; }
+.thunderbird-sheet footer { border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; padding: 16px 26px; background: var(--background); }
+.thunderbird-sheet footer > div:first-child { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.thunderbird-sheet footer span { font-size: 11px; color: var(--muted-foreground); }
+.thunderbird-actions { display: flex; gap: 8px; align-items: center; }
+.thunderbird-sheet .thunderbird-primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent; font-weight: 600; }
+@media(max-width: 600px) { .thunderbird-backdrop { padding: 10px; } .thunderbird-selectors { grid-template-columns: 1fr; gap: 10px; } .thunderbird-sheet footer { flex-direction: column; } .thunderbird-sheet header, .thunderbird-content, .thunderbird-sheet footer { padding-left: 16px; padding-right: 16px; } }
