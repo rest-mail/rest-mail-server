@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -21,6 +22,7 @@ type Manager struct {
 	mu       sync.Mutex
 	enabled  bool
 	onChange func(session.SessionStatus)
+	onRemove func(uint) error
 }
 
 func New(rest *session.Manager, accounts *imapmail.Store) *Manager {
@@ -81,9 +83,14 @@ func (manager *Manager) RemoveIMAPAccount(id uint) error {
 		return errors.New("IMAP keychain unavailable")
 	}
 	err := manager.accounts.RemoveIMAPAccount(id)
+	if err == nil && manager.onRemove != nil {
+		err = manager.onRemove(id)
+	}
 	manager.notify()
 	return err
 }
+
+func (manager *Manager) SetOnRemove(callback func(uint) error) { manager.onRemove = callback }
 
 func (manager *Manager) ListAccounts() []imapmail.Account {
 	accounts := []imapmail.Account{}
@@ -143,6 +150,14 @@ func (manager *Manager) DoRequest(ctx context.Context, request *http.Request) (*
 	if manager.local() {
 		if response, handled, err := manager.accounts.Handle(request); handled || err != nil {
 			if handled && request.Method == http.MethodDelete && strings.HasPrefix(request.URL.Path, "/api/v1/accounts/") {
+				if err == nil && response != nil && response.StatusCode >= 200 && response.StatusCode < 300 && manager.onRemove != nil {
+					if id, parseError := strconv.ParseUint(strings.TrimPrefix(request.URL.Path, "/api/v1/accounts/"), 10, 53); parseError == nil {
+						if removeError := manager.onRemove(uint(id)); removeError != nil {
+							response.Body.Close()
+							return nil, removeError
+						}
+					}
+				}
 				manager.notify()
 			}
 			return response, err

@@ -88,8 +88,20 @@ func TestFolderPagingBodiesAttachmentsCatalogAndReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, err := store.Status(ctx)
-	if err != nil || status.Complete || status.Bodies != 0 || status.Messages != 125 {
+	if err != nil || status.Complete || status.Bodies != 125 || status.Messages != 125 {
 		t.Fatalf("reset: %+v %v", status, err)
+	}
+	message, err := store.Get(ctx, 1, true)
+	if err != nil || message.BodyText != "body" {
+		t.Fatalf("reindex removed offline body: %+v %v", message, err)
+	}
+	pending, err = store.Pending(ctx, 4)
+	if err != nil || len(pending) != 100 {
+		t.Fatalf("reindex not resumable: %d %v", len(pending), err)
+	}
+	result, err := store.Search(ctx, "in:INBOX BEFORE:2030-01-01 message", "Archive", 50, 0)
+	if err != nil || len(result.Data) != 50 {
+		t.Fatalf("explicit folder/date override: %+v %v", result, err)
 	}
 	if err = store.RestartScan(ctx, "INBOX"); err != nil {
 		t.Fatal(err)
@@ -101,7 +113,7 @@ func TestFolderPagingBodiesAttachmentsCatalogAndReset(t *testing.T) {
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("folder removal: %+v %v", folders, err)
 	}
-	result, err := store.Search(ctx, "message", "", 1, 0)
+	result, err = store.Search(ctx, "message", "", 1, 0)
 	if err != nil || len(result.Data) != 1 || !result.Pagination.HasMore || result.Pagination.Cursor != "local:1" {
 		t.Fatalf("search paging: %+v %v", result, err)
 	}

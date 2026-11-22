@@ -77,7 +77,7 @@ func New(manager Manager) func(http.Handler) http.Handler {
 				}
 			}
 			body = manager.Redact(body)
-			for _, header := range []string{"Content-Type", "Content-Disposition", "Last-Modified"} {
+			for _, header := range []string{"Content-Type", "Content-Disposition", "Last-Modified", "X-Restmail-Source", "X-Restmail-Offline"} {
 				for _, value := range response.Header.Values(header) {
 					writer.Header().Add(header, string(manager.Redact([]byte(value))))
 				}
