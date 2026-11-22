@@ -142,10 +142,10 @@ that moves the count. The rest need harnesses and decisions first.
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 mail operations preserve state and truthful outcomes | R | contract surface |
+| AC01 mail operations preserve state and truthful outcomes | R | The merged submission/compose slices and local unsubscribe proof below do not complete the remaining contract surface or mobile recipient-status acceptance. |
 | AC02 scheduling and due dates explicit and reversible | D + R | 7 due-date decisions, then send-later/undo tests |
-| AC03 preferences and notifications end to end | R + H | time zone is R; real push needs a device |
-| AC04 previews and unsubscribe cannot execute or SSRF | R + D | sandbox tests are R; Office conversion is a decision |
+| AC03 preferences and notifications end to end | R + H | Account time-zone persistence/search is P (#2214). The API-to-push boundary is proven locally below; real Android/closed-browser receipt still needs a device/browser. |
+| AC04 previews and unsubscribe cannot execute or SSRF | R + D | Local unsubscribe redirect/rebinding proof is below; image/PDF sandbox acceptance remains R, and Office conversion needs a decision. |
 | AC05 contacts and calendar round-trip and isolation | **P** | vCard trust gate, `N` names, quoted-printable |
 | AC01 ledger and trust enforce accountability | R + D | `TestAC01AssistantFoundationScopedGrantCeiling` proves existing scoped grant ceilings only. Ledger/trust endpoints are absent; retained #1423 principal, capability, MFA and undo-window questions need answers. |
 | AC02 reviewed proposals use draft/send and policy | R + D | `TestAC02AssistantFoundationDraftSendRequiresWriteAndSend` proves persisted draft/edit/restore, capability refusals, Sent/queue linkage and consumed-draft replay only. Proposal/approval, reason/confidence, assistant ledger/DMARC policy and bounded undo are absent and depend on AC01. |
@@ -153,10 +153,35 @@ that moves the count. The rest need harnesses and decisions first.
 | AC04 meeting workflow uses real calendar facts | R + D | `TestAC04AssistantFoundationCalendarContactsRetainSourceFacts` proves exact stored invitation links/participants/times and calendar/contact isolation only. Meeting proposal/approval, availability/conflict decisions, attribution and undo are absent; #1426 specifies a mail command surface, not scheduling policy. |
 | AC05 foundations and client acceptance proven together | H | final integrated run |
 
-Local PostgreSQL proofs for the personal-mail rows, not client or installation acceptance:
+Merged repository slices, not completion of their encompassing AC:
+
+| Slice | Bucket | Merged proof |
+|---|---|---|
+| AC01 local-only submission, Sent state and per-recipient outcomes | **P** | #2214: `TestAC01LocalSubmissionPreservesSentStateAndRecipientOutcomes` |
+| AC01 explicit refusal of unsupported compose attachments and fresh-install quota state | **P** | #2218: `TestComposeAttachmentRefusalContract`, `TestSendMessageRefusesAttachments`, `TestSaveDraftRefusesAttachments`, `TestUpdateDraftRefusesAttachments`, `TestBootstrapEveryMailboxHasQuotaUsage`, `TestBootstrapQuotaFailureRollsBackMailbox`, `TestBootstrapAdminCanImportOnFreshInstall` |
+| AC03 choosing/reading/clearing the account time zone and actual IMAP searches | **P** | #2214: `TestIMAPSearchUsesTheAccountZone` |
+
+PostgreSQL proofs for the personal-mail rows, not client or installation acceptance:
 
 - AC01: [`TestAC01LocalSubmissionPreservesSentStateAndRecipientOutcomes`](../internal/api/personal_workflows_db_test.go) uses authenticated SMTP submission, the queue worker, inbound SMTP and the public API. It verifies one Sent copy, independent delivery and refusal for two local recipients, recipient-only attachment metadata, and a scoped message update visible in a later read. The read-only credential cannot change the message. Remote delivery and client presentation are outside this proof.
 - AC03: [`TestIMAPSearchUsesTheAccountZone`](../internal/api/imap_search_zone_db_test.go) uses scoped API credentials to choose, read and clear the zone. An invalid name leaves the saved zone and search behavior unchanged. The same authenticated IMAP connection follows zone changes and returns to UTC on clear. Browser settings UI and real push are outside this proof.
+
+The local `feat/2101-personal-car` adds the following bounded proofs on top of
+`e0b519e65`; these remain local evidence, not a merged-PR, CI or installation claim:
+
+- AC01: [`TestAC01OneClickRedirectsRequireAnActualPost`](../internal/api/personal_unsubscribe_db_test.go) uses the production router, scoped API credentials, real PostgreSQL and an observed TLS recipient. Reading options or using a read-only key sends nothing. Redirects 301/302/303 must return `502 unsubscribe_failed` without following a rewritten GET; 307/308 preserve the exact credential-free RFC 8058 POST and report the observed 204. Every case leaves the received message unchanged and creates no outbound queue row. On the base, all three non-preserving redirects returned 200 after issuing GET, while 307/308 passed. The method-preservation guard makes all five cases pass.
+- AC03: [`TestAC03QuietHoursAPIGatesContentFreePushAndRevokedSessions`](../internal/api/personal_notifications_db_test.go) sets, reads and clears preferences through the production router. Read-only, foreign-account, unknown-zone and incomplete-input refusals preserve saved state. Real PostgreSQL arrival receipts survive a dispatcher restart and preference clearing until their original quiet window ends. Exactly one count-only summary reaches each configured live APNs/Web Push sender boundary, with current unread and arrival counts, no message content, no revoked-session push and no replay. Mail stays readable and unchanged apart from the explicit read action. On the base, only APNs received the summary (one notification instead of two): the transactional store silently discarded the Web Push platform configuration. Preserving the configured platforms makes the proof pass. Actual providers, encryption/delivery over their networks, closed-browser receipt and Android remain outside this proof.
+- AC04: [`TestAC04OneClickPublicLookupCannotRebindToLoopback`](../internal/api/handlers/unsubscribe_rebinding_test.go) runs the real HTTPS poster with a public validation lookup and a subsequent actual `localhost` dial. The production dial guard refuses before a private TLS listener accepts any connection. Disabling only that guard as a deliberate control made the listener accept one connection and POST and return 204; restoring it produces the required refusal with zero connections. Existing `TestOneClickPoster_RefusesAPrivateTarget` and `TestOneClickPoster_RefusesARedirectToAPrivateAddress` retain initial/mixed/private/redirect address checks. This proves unsubscribe network confinement, not preview rendering or Office conversion.
+
+Reproduction uses a dedicated PostgreSQL 16 container `restmail-2101-pg` on
+`127.0.0.1:55466`, database `restmail_2101`, user/password `restmail`,
+`shared_preload_libraries=pg_stat_statements`, and `pg_stat_statements.max=100000`.
+Build `go build -o /tmp/restmail-2101-testdb-exec ./tools/testdb-exec` and run
+`DB_HOST=127.0.0.1 DB_PORT=55466 DB_NAME=restmail_2101 DB_USER=restmail DB_PASS=restmail ENVIRONMENT=test go test -v -count=1 -timeout 60m -exec /tmp/restmail-2101-testdb-exec ./internal/api/... ./internal/push -run '^TestAC(01OneClickRedirectsRequireAnActualPost|03QuietHoursAPIGatesContentFreePushAndRevokedSessions|04OneClickPublicLookupCannotRebindToLoopback)$'`.
+The helper creates and drops a separate database per test binary. Python uses an
+isolated venv with `jsonschema[format]` and `pyyaml` on the Go subprocess PATH.
+No due-date, undo-send, assistant ledger/trust/capability, calendar-policy or Office
+decision is made by this car; no unmerged attachment-upload work is imported.
 
 The four assistant foundation tests above live in
 [`internal/api/assistant_foundations_db_test.go`](../internal/api/assistant_foundations_db_test.go)
