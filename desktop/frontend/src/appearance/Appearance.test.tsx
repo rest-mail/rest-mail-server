@@ -10,6 +10,9 @@ describe('desktop appearance settings', () => {
     render(<AppearanceSettings />);
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true');
     expect(screen.getByLabelText('Live theme preview')).toBeTruthy();
+    expect(screen.getByText('Today')).toBeTruthy();
+    expect(screen.getByText('From Ada')).toBeTruthy();
+    for (const label of ['YOUR WORKSPACE', 'A LITTLE MORE YOU', 'YOUR INBOX, REIMAGINED', 'TODAY', 'FROM ADA, WITH LOVE']) expect(screen.queryByText(label)).toBeNull();
     for (const theme of builtInThemes) expect(screen.getByTestId(`theme-${theme.id}`).textContent).toContain(theme.character);
     fireEvent.click(screen.getByTestId('theme-letterpress'));
     expect(appearance.get().selected).toBe('letterpress');

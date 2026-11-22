@@ -1,8 +1,7 @@
 .thunderbird-backdrop { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 22px; background: var(--background); }
 .thunderbird-sheet { width: min(760px, 100%); max-height: calc(100dvh - 44px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--card); color: var(--foreground); box-shadow: 0 24px 80px #0004; outline: none; }
 .thunderbird-sheet header { display: flex; align-items: flex-start; justify-content: space-between; padding: 22px 26px 18px; border-bottom: 1px solid var(--border); }
-.thunderbird-eyebrow { color: var(--primary); font-size: 10px; font-weight: 650; letter-spacing: .16em; margin-bottom: 7px; }
-.thunderbird-sheet h1 { font-size: 23px; font-weight: 600; letter-spacing: -.035em; margin: 0 0 6px; }
+.thunderbird-sheet h1 { font-family: var(--theme-display, var(--desktop-font)); font-size: 23px; font-weight: 600; letter-spacing: -.035em; margin: 0 0 6px; }
 .thunderbird-sheet header p, .thunderbird-progress p { color: var(--muted-foreground); font-size: 12px; margin: 0; }
 .thunderbird-sheet button { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; background: var(--secondary); color: var(--foreground); }
 .thunderbird-sheet button:hover { filter: brightness(1.08); }
