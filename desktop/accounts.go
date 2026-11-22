@@ -8,9 +8,13 @@ import (
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/mailbackend"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
+	keyring "github.com/zalando/go-keyring"
 )
 
 func newDesktopSession() *mailbackend.Manager {
+	if isolatedInstanceName(currentInstance()) != "" {
+		keyring.MockInit()
+	}
 	accounts, err := imapmail.New()
 	if err != nil {
 		log.Print("Could not restore IMAP accounts from system keychain")
