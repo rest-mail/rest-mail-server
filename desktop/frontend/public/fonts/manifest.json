@@ -1,0 +1,350 @@
+[
+  {
+    "family": "Bricolage Grotesque",
+    "upstream_family": "Bricolage Grotesque",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/bricolagegrotesque",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "bricolagegrotesque-variable-latin.woff2",
+        "bytes": 188300,
+        "sha256": "a5072837c9e2164633d770b23d1de7f8d14f4b298f233bec91786ea30c80066f",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/bricolagegrotesque/BricolageGrotesque%5Bopsz%2Cwdth%2Cwght%5D.ttf",
+        "weight": "200 800"
+      }
+    ]
+  },
+  {
+    "family": "Instrument Sans",
+    "upstream_family": "Instrument Sans",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/instrumentsans",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "instrumentsans-variable-latin.woff2",
+        "bytes": 83516,
+        "sha256": "652f76952c88ba9b524ac95393c1c3a1e5887fd80eb5db0f2e1e53e7a887c73f",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/instrumentsans/InstrumentSans%5Bwdth%2Cwght%5D.ttf",
+        "weight": "400 700"
+      }
+    ]
+  },
+  {
+    "family": "Space Grotesk",
+    "upstream_family": "Space Grotesk",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/spacegrotesk",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "spacegrotesk-variable-latin.woff2",
+        "bytes": 40512,
+        "sha256": "b78043d077c97657022a662868e2691d86da80199e44e7ffbbb789d323c2409d",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf",
+        "weight": "300 700"
+      }
+    ]
+  },
+  {
+    "family": "Parcel Sans",
+    "upstream_family": "IBM Plex Sans",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexsans",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "ibmplexsans-variable-latin.woff2",
+        "bytes": 110992,
+        "sha256": "2acca11c8908b60d9d5cca7536cf0ecd31b179633d0d934ca3b8674ffd9fa071",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexsans/IBMPlexSans%5Bwdth%2Cwght%5D.ttf",
+        "weight": "100 700"
+      }
+    ]
+  },
+  {
+    "family": "Parcel Serif",
+    "upstream_family": "IBM Plex Serif",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexserif",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "ibmplexserif-700-latin.woff2",
+        "bytes": 30052,
+        "sha256": "46975cd70279935c8df2f97ab001608157a5e972ade68fa7c3b5aebea22f21fa",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexserif/IBMPlexSerif-Bold.ttf",
+        "weight": "700"
+      },
+      {
+        "file": "ibmplexserif-400-latin.woff2",
+        "bytes": 29592,
+        "sha256": "864da265942a928ffa78f19ec3c0273a34320045406e54d343622c3414270394",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexserif/IBMPlexSerif-Regular.ttf",
+        "weight": "400"
+      }
+    ]
+  },
+  {
+    "family": "Parcel Mono",
+    "upstream_family": "IBM Plex Mono",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexmono",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "ibmplexmono-700-latin.woff2",
+        "bytes": 24372,
+        "sha256": "c72feef316acfabeedbe05210762769b8935931bb6246cc6f4766817a81cdcd9",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexmono/IBMPlexMono-Bold.ttf",
+        "weight": "700"
+      },
+      {
+        "file": "ibmplexmono-400-latin.woff2",
+        "bytes": 23852,
+        "sha256": "b0e45e85f62048f54a5514518a1a5f6b8d557194700403fc779c8ff8e64d130a",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/ibmplexmono/IBMPlexMono-Regular.ttf",
+        "weight": "400"
+      }
+    ]
+  },
+  {
+    "family": "Fraunces",
+    "upstream_family": "Fraunces",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/fraunces",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "fraunces-variable-latin.woff2",
+        "bytes": 189384,
+        "sha256": "fa1a031c1e8f85a1e198eee1e30511a9df49161307bd498e1bca495fa5a8a4a1",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/fraunces/Fraunces%5BSOFT%2CWONK%2Copsz%2Cwght%5D.ttf",
+        "weight": "100 900"
+      }
+    ]
+  },
+  {
+    "family": "Geist",
+    "upstream_family": "Geist",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/geist",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "geist-variable-latin.woff2",
+        "bytes": 43396,
+        "sha256": "88ea516b6a6f37e9ab1038445764e86087d7c019799354eb84e45168f9af11ef",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/geist/Geist%5Bwght%5D.ttf",
+        "weight": "100 900"
+      }
+    ]
+  },
+  {
+    "family": "Geist Mono",
+    "upstream_family": "Geist Mono",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/geistmono",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "geistmono-variable-latin.woff2",
+        "bytes": 43360,
+        "sha256": "a2ff2af6b9dbfa44a7b4258d9701c46bebf2c11682b7ccb73b3f88d0ca9f2c30",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/geistmono/GeistMono%5Bwght%5D.ttf",
+        "weight": "100 900"
+      }
+    ]
+  },
+  {
+    "family": "Roboto Slab",
+    "upstream_family": "Roboto Slab",
+    "license": "Apache 2.0",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/apache/robotoslab",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "robotoslab-variable-latin.woff2",
+        "bytes": 59080,
+        "sha256": "519ef293df05397df3e8e31d6de32b071deecfde47847982653442b43b980dda",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/apache/robotoslab/RobotoSlab%5Bwght%5D.ttf",
+        "weight": "100 900"
+      }
+    ]
+  },
+  {
+    "family": "Manrope",
+    "upstream_family": "Manrope",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/manrope",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "manrope-variable-latin.woff2",
+        "bytes": 36164,
+        "sha256": "c68790e27e48b225ae33eba1ba8cb57b7beac91ac96a3ba2f047a14dd56a0d8c",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/manrope/Manrope%5Bwght%5D.ttf",
+        "weight": "200 800"
+      }
+    ]
+  },
+  {
+    "family": "DM Serif Display",
+    "upstream_family": "DM Serif Display",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/dmserifdisplay",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "dmserifdisplay-400-latin.woff2",
+        "bytes": 28032,
+        "sha256": "d8b5c3e6d821102482632f1b828e011a883aa68788fcc5f50e841c26d0548ba6",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf",
+        "weight": "400"
+      }
+    ]
+  },
+  {
+    "family": "Newsreader",
+    "upstream_family": "Newsreader",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/newsreader",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "newsreader-variable-latin.woff2",
+        "bytes": 206196,
+        "sha256": "a627bcdb65506d69f2b86b1ea24698decf6456d33fc3090d5b45a65fe8c724ee",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/newsreader/Newsreader%5Bopsz%2Cwght%5D.ttf",
+        "weight": "200 800"
+      }
+    ]
+  },
+  {
+    "family": "JetBrains Mono",
+    "upstream_family": "JetBrains Mono",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/jetbrainsmono",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "jetbrainsmono-variable-latin.woff2",
+        "bytes": 48624,
+        "sha256": "0df324af0957127bff10ee37398f12b79f5dc1f6f0f216fff7b6ee20ae0359bf",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+        "weight": "100 800"
+      }
+    ]
+  },
+  {
+    "family": "Syne",
+    "upstream_family": "Syne",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/syne",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "syne-variable-latin.woff2",
+        "bytes": 44660,
+        "sha256": "fa3ddba9070d1bdab69da8e42381b652b95bddd70dc9dafa7320e713afa2e0f6",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/syne/Syne%5Bwght%5D.ttf",
+        "weight": "400 800"
+      }
+    ]
+  },
+  {
+    "family": "Unbounded",
+    "upstream_family": "Unbounded",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/unbounded",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "unbounded-variable-latin.woff2",
+        "bytes": 154412,
+        "sha256": "28f0690c5ba6c6d18e1ba15a9ceddd3c16ac4a517bf3c7e72eb15089d6704da9",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/unbounded/Unbounded%5Bwght%5D.ttf",
+        "weight": "200 900"
+      }
+    ]
+  },
+  {
+    "family": "Literata",
+    "upstream_family": "Literata",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/literata",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "literata-variable-latin.woff2",
+        "bytes": 244100,
+        "sha256": "fb2db75fc1d72ffdcfa40bda98bad8cec3ce3162a031a9f325807df9bdf7d0bc",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/literata/Literata%5Bopsz%2Cwght%5D.ttf",
+        "weight": "200 900"
+      }
+    ]
+  },
+  {
+    "family": "Archivo",
+    "upstream_family": "Archivo",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/archivo",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "archivo-variable-latin.woff2",
+        "bytes": 160704,
+        "sha256": "5393628752e1dfa837db722531adb700abadd6b7af0e82ac1e7d1b3e7292c311",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/archivo/Archivo%5Bwdth%2Cwght%5D.ttf",
+        "weight": "100 900"
+      }
+    ]
+  },
+  {
+    "family": "Atkinson Hyperlegible",
+    "upstream_family": "Atkinson Hyperlegible",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/atkinsonhyperlegible",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "atkinsonhyperlegible-700-latin.woff2",
+        "bytes": 19668,
+        "sha256": "3106ff77698e5962f28e6432530e526f23cdb49a4d73ceadf42b61ff8a166981",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Bold.ttf",
+        "weight": "700"
+      },
+      {
+        "file": "atkinsonhyperlegible-400-latin.woff2",
+        "bytes": 19204,
+        "sha256": "16ea9aa8b2148e17e49a4463bcde9ff7179be5a49db5323df16cdd7f08ec628f",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/atkinsonhyperlegible/AtkinsonHyperlegible-Regular.ttf",
+        "weight": "400"
+      }
+    ]
+  },
+  {
+    "family": "Silkscreen",
+    "upstream_family": "Silkscreen",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/silkscreen",
+    "commit": "06bfe0d62a98375cb09c942fa18e68bd32cff057",
+    "assets": [
+      {
+        "file": "silkscreen-700-latin.woff2",
+        "bytes": 7384,
+        "sha256": "de234eb7bc76c9864d375063156ff4dbea377aee83db7d2cab56367adc71233b",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/silkscreen/Silkscreen-Bold.ttf",
+        "weight": "700"
+      },
+      {
+        "file": "silkscreen-400-latin.woff2",
+        "bytes": 8248,
+        "sha256": "58c9888fc90099f7e2a6e96d739e9dff4e69e123ef25fd7fcfa36743a8c2b807",
+        "source": "https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/silkscreen/Silkscreen-Regular.ttf",
+        "weight": "400"
+      }
+    ]
+  }
+]

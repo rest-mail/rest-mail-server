@@ -8,7 +8,7 @@ describe('desktop appearance engine', () => {
     appearance.select('REST Mail');
     expect(document.documentElement.style.getPropertyValue('--theme-sidebar')).toBe('#1a2a4a');
     expect(document.documentElement.style.getPropertyValue('--desktop-font')).toContain('Instrument Sans');
-    appearance.override({ accent: '#ff0088', ui: 'IBM Plex Mono', radius: 0, density: 48 });
+    appearance.override({ accent: '#ff0088', ui: 'Parcel Mono', radius: 0, density: 48 });
     expect(document.documentElement.style.getPropertyValue('--signal')).toBe('#ff0088');
     expect(document.documentElement.style.getPropertyValue('--radius')).toBe('0px');
     expect(document.documentElement.style.getPropertyValue('--desktop-row-height')).toBe('48px');
