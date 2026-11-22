@@ -9,9 +9,11 @@ version: "3"
 #   chore desktop:notarize  notarize and staple the last build (Developer ID builds only)
 #   chore desktop:ship      release, notarize and publish to GitHub
 #
-# A release's version is desktop/VERSION plus the repository's commit count, so every
-# build from a new commit has a higher number: 0.1.<n>. The commit and build time are
-# compiled into the binary and shown in the app.
+# A release's version is semantic, from the conventional commit titles under desktop/
+# and webmail/ since the last desktop-v* tag (scripts/release.py next-version): a feat
+# raises the minor version, anything else the patch. macOS's build number
+# (CFBundleVersion) is the repository's commit count, which only ever grows. The
+# commit and build time are compiled into the binary and shown in the app.
 #
 # chores.yml exports OUTPUT (where raw command output goes). Wails' Taskfiles read
 # a variable of the same name as the build's output path, so it is unset here.
@@ -31,7 +33,9 @@ vars:
   APP_NAME: RESTMail
   INSTALL_DIR: '{{.DESKTOP_INSTALL_DIR | default (print .HOME "/Applications")}}'
   APP_VERSION:
-    sh: 'echo "$(tr -d "[:space:]" < desktop/VERSION).$(git rev-list --count HEAD)"'
+    sh: python3 desktop/scripts/release.py next-version
+  APP_BUILD:
+    sh: git rev-list --count HEAD
   APP_COMMIT:
     sh: 'git rev-parse HEAD'
   APP_DIRTY:
@@ -74,7 +78,7 @@ tasks:
     cmds:
       - 'env -u OUTPUT -u VERBOSE "{{.WAILS3}}" task darwin:package APP_VERSION={{.APP_VERSION}}{{.APP_DIRTY}} APP_COMMIT={{.APP_COMMIT}}{{.APP_DIRTY}} APP_BUILT={{.APP_BUILT}}'
       - /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
-      - /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
+      - /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{.APP_BUILD}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
       - python3 scripts/release.py stamp --version "{{.APP_VERSION}}{{.APP_DIRTY}}" --commit "{{.APP_COMMIT}}{{.APP_DIRTY}}" --built "{{.APP_BUILT}}" --output bin/release.json
       - cp bin/release.json "bin/{{.APP_NAME}}.app/Contents/Resources/release.json"
       - sh scripts/sign.sh "bin/{{.APP_NAME}}.app"

@@ -174,6 +174,95 @@ class DesktopWorkflowTests(unittest.TestCase):
         )
 
 
+class SemanticVersionTests(unittest.TestCase):
+    def test_a_feature_raises_the_minor_version_and_resets_the_patch(self):
+        self.assertEqual(
+            RELEASE.bump("0.3.4", ["fix(desktop): x", "feat(desktop): y"]), "0.4.0"
+        )
+
+    def test_fixes_and_other_changes_raise_only_the_patch(self):
+        self.assertEqual(
+            RELEASE.bump("0.3.4", ["fix(desktop): x", "build(desktop): y"]), "0.3.5"
+        )
+
+    def test_a_breaking_change_raises_the_minor_version_before_1_0(self):
+        self.assertEqual(RELEASE.bump("0.3.4", ["fix(desktop)!: x"]), "0.4.0")
+        self.assertEqual(RELEASE.bump("1.3.4", ["feat!: x"]), "2.0.0")
+
+    def test_no_commits_keep_the_version(self):
+        self.assertEqual(RELEASE.bump("0.3.4", []), "0.3.4")
+
+    def test_a_feature_title_must_be_conventional(self):
+        self.assertEqual(RELEASE.bump("0.3.4", ["feature flags: tidy"]), "0.3.5")
+
+
+class NextVersionTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.git("init", "-q")
+        self.git("config", "user.email", "release@example.test")
+        self.git("config", "user.name", "Release test")
+        self.commit("desktop/start.txt", "feat(desktop): first")
+
+    def git(self, *args):
+        return subprocess.check_output(
+            ["git", *args], cwd=self.root, text=True, stderr=subprocess.PIPE
+        ).strip()
+
+    def commit(self, name, message, body=None):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body or message)
+        self.git("add", name)
+        self.git("commit", "-qm", message)
+        return self.git("rev-parse", "HEAD")
+
+    def next_version(self):
+        result = subprocess.run(
+            [os.sys.executable, str(SCRIPT), "next-version"],
+            cwd=self.root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def test_the_first_release_is_0_1_0(self):
+        self.assertEqual(self.next_version(), "0.1.0")
+
+    def test_server_commits_do_not_move_the_version(self):
+        self.git("tag", "desktop-v0.2.0")
+        self.commit("internal/server.go", "feat(api): server feature")
+        self.assertEqual(self.next_version(), "0.2.0")
+
+    def test_a_desktop_feature_raises_the_minor_version(self):
+        self.git("tag", "desktop-v0.2.0")
+        self.commit("desktop/fix.txt", "fix(desktop): a fix")
+        self.assertEqual(self.next_version(), "0.2.1")
+        self.commit("webmail/feature.txt", "feat(webmail): a feature")
+        self.assertEqual(self.next_version(), "0.3.0")
+
+    def test_released_commits_rebased_onto_a_newer_base_are_not_counted_again(self):
+        base = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-qb", "released")
+        self.commit("desktop/feature.txt", "feat(desktop): shipped feature")
+        self.git("tag", "desktop-v0.2.0")
+        self.git("checkout", "-q", base)
+        self.git("checkout", "-qb", "rebased")
+        self.commit("server.txt", "chore: newer main")
+        self.git("cherry-pick", "desktop-v0.2.0")
+        self.assertEqual(self.next_version(), "0.2.0")
+        self.commit("desktop/fix.txt", "fix(desktop): after release")
+        self.assertEqual(self.next_version(), "0.2.1")
+
+    def test_the_highest_semantic_tag_wins(self):
+        self.git("tag", "desktop-v0.9.0")
+        self.git("tag", "desktop-v0.10.0")
+        self.git("tag", "desktop-v0.10.0-rc1")
+        self.commit("desktop/fix.txt", "fix(desktop): x")
+        self.assertEqual(self.next_version(), "0.10.1")
+
+
 class ReleaseNotesTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

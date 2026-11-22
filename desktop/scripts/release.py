@@ -62,6 +62,63 @@ def release_notes(revision="HEAD", exclude_tag=None):
     )
 
 
+SEMVER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+RELEASE_TAG = re.compile(r"desktop-v\d+\.\d+\.\d+")
+FEATURE = re.compile(r"feat(\([^)]*\))?!?:")
+BREAKING = re.compile(r"[a-z]+(\([^)]*\))?!:")
+FIRST_VERSION = "0.1.0"
+
+
+def bump(version, subjects):
+    """The semantic version after `version` for these conventional commit titles.
+
+    A breaking change raises the major version (the minor one while the app is 0.x),
+    a feature raises the minor version, and anything else raises the patch. No
+    commits leave the version unchanged.
+    """
+    major, minor, patch = (int(part) for part in SEMVER.fullmatch(version).groups())
+    subjects = list(subjects)
+    if not subjects:
+        return version
+    if any(BREAKING.match(subject) for subject in subjects):
+        return f"{major}.{minor + 1}.0" if major == 0 else f"{major + 1}.0.0"
+    if any(FEATURE.match(subject) for subject in subjects):
+        return f"{major}.{minor + 1}.0"
+    return f"{major}.{minor}.{patch + 1}"
+
+
+def previous_release_tag():
+    tags = output("git", "tag", "--list", "desktop-v*", "--sort=-version:refname")
+    return next((tag for tag in tags.splitlines() if RELEASE_TAG.fullmatch(tag)), None)
+
+
+def unreleased_subjects(tag, revision="HEAD"):
+    """Titles of the desktop and webmail commits in `revision` that `tag` lacks.
+
+    `git cherry` compares patches, not hashes, so commits that were released and
+    then rebased onto a newer main are not counted a second time.
+    """
+    subjects = []
+    for line in output("git", "cherry", tag, revision).splitlines():
+        if not line.startswith("+ "):
+            continue
+        commit = line[2:]
+        touched = output(
+            "git", "diff-tree", "--no-commit-id", "--name-only", "-r", commit,
+            "--", ":/desktop", ":/webmail",
+        )
+        if touched:
+            subjects.append(output("git", "log", "-1", "--format=%s", commit))
+    return subjects
+
+
+def next_version(revision="HEAD"):
+    tag = previous_release_tag()
+    if tag is None:
+        return FIRST_VERSION
+    return bump(tag.removeprefix("desktop-v"), unreleased_subjects(tag, revision))
+
+
 def fetch_with_retries(command, attempts=3, delay=5, run=subprocess.run, sleep=time.sleep):
     """Runs a git fetch, retrying a failure: this Mac's GitHub SSH and TLS connections
     fail intermittently, and one dropped connection must not lose a finished build."""
@@ -211,6 +268,7 @@ def main():
         command = commands.add_parser(name)
         command.add_argument("--install-dir", type=Path, required=True)
     commands.add_parser("notes")
+    commands.add_parser("next-version")
     publishing = commands.add_parser("publish")
     publishing.add_argument("--build-dir", type=Path, required=True)
     stamp = commands.add_parser("stamp")
@@ -228,6 +286,8 @@ def main():
             print(installed_notes(args.install_dir))
         elif args.command == "notes":
             print(release_notes())
+        elif args.command == "next-version":
+            print(next_version())
         else:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(
