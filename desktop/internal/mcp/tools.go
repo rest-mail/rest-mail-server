@@ -45,6 +45,16 @@ type TOTPArgs struct {
 	Code string `json:"code"`
 }
 
+type SignOutArgs struct {
+	DeleteLocalData bool `json:"delete_local_data,omitempty"`
+}
+
+type LocalSearchArgs struct {
+	AccountID uint   `json:"account_id,omitempty"`
+	Query     string `json:"query"`
+	Folder    string `json:"folder,omitempty"`
+}
+
 type ListMessagesArgs struct {
 	AccountID uint   `json:"account_id,omitempty"`
 	Folder    string `json:"folder"`
@@ -212,7 +222,7 @@ func (server *Server) registerTools() {
 	domainTool[EmptyArgs](server, "session_status", "Get the signed-in server and email, never credentials")
 	domainTool[SignInArgs](server, "sign_in", "Sign in to a REST Mail server")
 	domainTool[TOTPArgs](server, "submit_totp", "Complete two-factor sign-in")
-	domainTool[EmptyArgs](server, "sign_out", "Sign out and clear saved credentials")
+	domainTool[SignOutArgs](server, "sign_out", "Sign out and clear saved credentials; optionally delete_local_data to remove cached mail")
 	domainTool[EmptyArgs](server, "thunderbird_profiles", "Discover read-only Thunderbird profiles, accounts and folders; poll while scanning for message counts")
 	domainTool[thunderbird.Selection](server, "thunderbird_import", "Start a background import of selected Thunderbird folder IDs into a REST Mail account; rerun safely to resume using server deduplication")
 	domainTool[ImportStatusArgs](server, "import_status", "Read persisted import progress and summary, or cancel the current import with cancel=true")
@@ -220,6 +230,9 @@ func (server *Server) registerTools() {
 	domainTool[ListMessagesArgs](server, "list_messages", "List a folder's messages with paging and query")
 	domainTool[MessageArgs](server, "get_message", "Read a message")
 	domainTool[SearchArgs](server, "search", "Search messages on the server")
+	domainTool[LocalSearchArgs](server, "local_search", "Search the local SQLite FTS5 index with ranked highlighted snippets; supports from:, to:, subject:, has:attachment, is:unread, before:, after:, in:")
+	domainTool[AccountArgs](server, "index_status", "Get indexed message/body counts, store bytes, completeness, offline state and last sync time")
+	domainTool[AccountArgs](server, "reindex", "Restart resumable header and body backfill without deleting cached mail")
 	domainTool[ComposeArgs](server, "send_message", "Send a message to the supplied recipients")
 	domainTool[ComposeArgs](server, "save_draft", "Save a message as a draft")
 	domainTool[FlagsArgs](server, "set_flags", "Set seen and flagged states; omitted flags stay unchanged")
