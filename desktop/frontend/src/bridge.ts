@@ -1,4 +1,5 @@
 import type { RuntimeEvents } from './session';
+import { getTheme, listThemes, setTheme } from './appearance/tools';
 
 export interface UIRequest { id: string; action: string; args?: Record<string, unknown>; window?: string }
 export interface BridgeOptions {
@@ -56,6 +57,9 @@ export async function handleUIRequest(request: UIRequest, options: BridgeOptions
   tagInteractiveElements();
   const args = request.args ?? {};
   switch (request.action) {
+    case 'themeList': return listThemes();
+    case 'themeGet': return getTheme();
+    case 'themeSet': return setTheme(args);
     case 'tabs': return options.tabs?.() ?? [];
     case 'snapshot': return {
       route: options.route(), title: document.title,
