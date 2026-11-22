@@ -398,7 +398,7 @@ chore config:check      # fail if config.env drifted from its manifest
 
 ### Prerequisites
 
-- Go 1.26.10+
+- Go 1.26.11+
 - Node.js 18+ and npm
 - Docker
 - [Task](https://taskfile.dev/)
