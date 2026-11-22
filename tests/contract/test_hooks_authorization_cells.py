@@ -201,9 +201,42 @@ class GatewaySignInAuthorizationHooks(unittest.TestCase):
                 for status in (201, 400, 422):
                     with self.subTest(principal=principal, status=status):
                         request = self.request(credential, status)
-                        before = copy.deepcopy(request)
+                        expected = copy.deepcopy(request)
+                        body = json.loads(expected["request"]["body"])
+                        if isinstance(body, dict):
+                            body.update(address=self.app["address"], password=self.app["secret"], client_ip=self.module.CONTRACT_MAIL_CLIENT_IP)
+                            expected["request"]["body"] = json.dumps(body)
                         self.module.sign_in_a_mail_client(request)
-                        self.assertEqual(request, before)
+                        self.assertEqual(request, expected)
+            self.assertEqual(fixture.call_count, len(credentials) * 2)
+
+    def test_authorization_cells_keep_the_protocol_refusal(self):
+        request = self.request(None, 422)
+        request["request"]["body"] = json.dumps({"protocol": "pop3"})
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "principals", return_value={"app_password": self.app}),
+        ):
+            self.module.sign_in_a_mail_client(request)
+        self.assertEqual(json.loads(request["request"]["body"]), {
+            "protocol": "pop3", "address": self.app["address"], "password": self.app["secret"],
+            "client_ip": self.module.CONTRACT_MAIL_CLIENT_IP,
+        })
+        self.assertEqual(request["request"]["headers"], {})
+        self.assertEqual(request["expected"], {"statusCode": "422"})
+
+    def test_authorization_cells_keep_nonobject_body_shapes(self):
+        with (
+            patch.dict(os.environ, {"CONTRACT_AUTHORIZATION": "1"}),
+            patch.object(self.module, "principals") as fixture,
+        ):
+            for body in (None, [], "invalid", 7):
+                with self.subTest(body=body):
+                    request = self.request(None, 201)
+                    request["request"]["body"] = json.dumps(body)
+                    original = copy.deepcopy(request)
+                    self.module.sign_in_a_mail_client(request)
+                    self.assertEqual(request, original)
             fixture.assert_not_called()
 
     def test_authorization_example_replays_get_body_credentials_without_changing_the_contract(self):
