@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"os"
 
 	"log"
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiproxy"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/localmail"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -70,18 +73,40 @@ func main() {
 
 	// Desktop core: share this manager and client with native integrations, including MCP.
 	sessionManager := newDesktopSession()
-	mailClient := apiclient.New(sessionManager)
-	imports := newImports(sessionManager)
+	config, err := os.UserConfigDir()
+	if err != nil {
+		log.Fatal("Could not locate local mail storage")
+	}
+	localMail, err := localmail.New(sessionManager, config, currentInstance())
+	if err != nil {
+		log.Fatal("Could not create local mail storage")
+	}
+	defer localMail.Close()
+	sessionManager.SetOnRemove(localMail.Forget)
+	mailClient := apiclient.New(localMail)
+	imports := newImports(sessionManager, localMail)
 	defer imports.service.Close()
 	options.Services = append(options.Services, application.NewService(imports))
 	mailStreams := &MailStreams{manager: sessionManager}
 	application.RegisterEvent[SessionStatus]("session:changed")
-	options.Services = append(options.Services, application.NewService(NewSession(sessionManager)))
+	sessionService := NewSession(sessionManager)
+	sessionService.onChange = func() {
+		go func() {
+			if err := localMail.Activate(); err != nil {
+				log.Print("Local mail storage unavailable")
+			}
+		}()
+	}
+	options.Services = append(options.Services, application.NewService(sessionService))
+	options.Services = append(options.Services, application.NewService(&LocalMail{service: localMail, manager: sessionManager}))
 	options.Services = append(options.Services, application.NewService(&Accounts{manager: sessionManager}))
 	options.Services = append(options.Services, application.NewService(mailStreams))
-	options.Assets.Middleware = apiproxy.New(sessionManager)
+	options.Assets.Middleware = apiproxy.New(localMail)
 	// End desktop core.
 	app := application.New(options)
+	localContext, stopLocal := context.WithCancel(context.Background())
+	go localMail.Run(localContext)
+	app.OnShutdown(stopLocal)
 	app.OnShutdown(sessionManager.Close)
 	app.OnShutdown(mailStreams.Close)
 	app.Event.On("session:changed", func(event *application.CustomEvent) {
@@ -131,7 +156,7 @@ func main() {
 	})
 
 	// Run the application. This blocks until the application has been exited.
-	err := app.Run()
+	err = app.Run()
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {

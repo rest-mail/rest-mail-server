@@ -20,9 +20,11 @@ import (
 const activeAccount = "active-account"
 
 type credential struct {
-	Server       string `json:"server"`
-	Email        string `json:"email"`
-	RefreshToken string `json:"refresh_token,omitempty"`
+	Server        string   `json:"server"`
+	Email         string   `json:"email"`
+	RefreshToken  string   `json:"refresh_token,omitempty"`
+	AccountID     uint     `json:"account_id,omitempty"`
+	SetupRequired []string `json:"setup_required,omitempty"`
 }
 
 type pendingLogin struct {
@@ -109,7 +111,7 @@ func (manager *Manager) Status() SessionStatus {
 }
 
 func (manager *Manager) statusLocked() SessionStatus {
-	if manager.access == "" {
+	if manager.access == "" && (manager.current.RefreshToken == "" || manager.accountID == 0) {
 		return SessionStatus{}
 	}
 	return SessionStatus{SignedIn: true, Server: manager.current.Server, Email: manager.current.Email, AccountID: manager.accountID, SetupRequired: slices.Clone(manager.setup)}
@@ -188,6 +190,8 @@ func (manager *Manager) acceptLocked(saved credential, response apitypes.LoginRe
 		return errors.New("server did not return a native session")
 	}
 	saved.RefreshToken = response.RefreshToken
+	saved.AccountID = response.User.ID
+	saved.SetupRequired = slices.Clone(response.SetupRequired)
 	manager.secrets[response.AccessToken] = struct{}{}
 	manager.secrets[response.RefreshToken] = struct{}{}
 	encoded, err := json.Marshal(saved)
@@ -276,6 +280,8 @@ func (manager *Manager) Restore(ctx context.Context) error {
 		return errors.New("invalid saved credential")
 	}
 	manager.current = full
+	manager.accountID = full.AccountID
+	manager.setup = slices.Clone(full.SetupRequired)
 	manager.secrets[full.RefreshToken] = struct{}{}
 	return manager.refreshLocked(ctx)
 }
@@ -357,11 +363,11 @@ func (manager *Manager) DoRequest(ctx context.Context, incoming *http.Request) (
 		manager.mu.Unlock()
 		return nil, errors.New("the import server changed; sign in to the original server and rerun")
 	}
-	if manager.access == "" {
+	if manager.access == "" && manager.current.RefreshToken == "" {
 		manager.mu.Unlock()
 		return nil, ErrSignedOut
 	}
-	if time.Now().After(manager.expires) {
+	if manager.access == "" || time.Now().After(manager.expires) {
 		if err := manager.refreshLocked(ctx); err != nil {
 			manager.mu.Unlock()
 			return nil, err

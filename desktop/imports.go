@@ -8,19 +8,26 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rest-mail/rest-mail-server/desktop/internal/localmail"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/mailbackend"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/thunderbird"
 	shared "github.com/rest-mail/rest-mail-server/pkg/mailimport"
 )
 
-type Imports struct{ service *thunderbird.Service }
+type Imports struct {
+	service *thunderbird.Service
+	local   *localmail.Service
+}
 
-func newImports(manager *mailbackend.Manager) *Imports {
+func newImports(manager *mailbackend.Manager, local ...*localmail.Service) *Imports {
 	config, _ := os.UserConfigDir()
 	name := "import-progress.json"
 	if instance := currentInstance(); instance != "" {
 		name = "import-progress-" + instance + ".json"
+	}
+	if len(local) > 0 && currentInstance() != "" {
+		config = local[0].Root()
 	}
 	service := thunderbird.New(nil, filepath.Join(config, "REST Mail", name))
 	service.Prepare = func(account uint32) (shared.Request, error) {
@@ -29,10 +36,18 @@ func newImports(manager *mailbackend.Manager) *Imports {
 			return nil, errors.New("sign in to a REST Mail server before importing")
 		}
 		return func(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-			return manager.Manager.Do(session.BindServer(ctx, status.Server), method, path, body)
+			response, err := manager.Manager.Do(session.BindServer(ctx, status.Server), method, path, body)
+			if err == nil && response.StatusCode >= 200 && response.StatusCode < 300 && len(local) > 0 {
+				local[0].Wake(uint(account))
+			}
+			return response, err
 		}, nil
 	}
-	return &Imports{service: service}
+	imports := &Imports{service: service}
+	if len(local) > 0 {
+		imports.local = local[0]
+	}
+	return imports
 }
 
 func (imports *Imports) Profiles() thunderbird.Catalog { return imports.service.Profiles() }
