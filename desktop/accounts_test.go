@@ -2,11 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	keyring "github.com/zalando/go-keyring"
 )
 
@@ -41,5 +46,55 @@ func TestWailsAccountsNeverExposeStoredPasswords(t *testing.T) {
 	}
 	if _, err := keyring.Get("REST Mail", "imap:4503599627370497"); err != keyring.ErrNotFound {
 		t.Fatal("Wails removal retained password")
+	}
+}
+
+func TestNamedTestCopyDoesNotRestoreOwnerAccounts(t *testing.T) {
+	keyring.MockInit()
+	if err := keyring.Set("REST Mail", "active-account", `{"server":"https://owner.test","email":"owner@owner.test"}`); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(isolatedInstanceEnv, "themes")
+	manager := newDesktopSession()
+	defer manager.Close()
+	if err := manager.Restore(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if manager.Status().SignedIn || len(manager.ListAccounts()) != 0 {
+		t.Fatal("test copy restored owner accounts")
+	}
+	if _, err := keyring.Get("REST Mail", "active-account"); err != keyring.ErrNotFound {
+		t.Fatal("test copy did not start with an ephemeral credential store")
+	}
+}
+
+func TestNamedTestCopySignInAndRestoreAvoidSystemKeyring(t *testing.T) {
+	keyring.MockInitWithError(errors.New("system keyring must not be called"))
+	t.Cleanup(keyring.MockInit)
+	t.Setenv(isolatedInstanceEnv, "themes")
+	manager := newDesktopSession()
+	defer manager.Close()
+	if err := manager.Restore(t.Context()); err != nil {
+		t.Fatalf("empty test-copy restore reached system keyring: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/api/v1/auth/login", "/api/v1/auth/refresh":
+			_, _ = io.WriteString(writer, `{"data":{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600,"user":{"id":42,"email":"test@example.test"}}}`)
+		default:
+			_, _ = io.WriteString(writer, `{"data":[]}`)
+		}
+	}))
+	t.Cleanup(server.Close)
+	if _, err := manager.SignIn(strings.Replace(server.URL, "127.0.0.1", "localhost", 1), "test@example.test", "test-password"); err != nil {
+		t.Fatalf("test-copy sign-in reached system keyring: %v", err)
+	}
+	if !manager.Status().SignedIn {
+		t.Fatal("test-copy sign-in did not create an ephemeral session")
+	}
+	restored := session.New()
+	if err := restored.Restore(t.Context()); err != nil || !restored.Status().SignedIn {
+		t.Fatalf("test-copy credential restore failed: %v", err)
 	}
 }
