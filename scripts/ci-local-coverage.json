@@ -132,6 +132,10 @@
     }
   },
   "test-api": {
+    "Set up Node.js for generated-client drift checks": {
+      "sha256": "ca0760bdf188f61e95d1bd25a9526c4aff8204cc427ad6cf390d3f2dd6328755",
+      "local": "Go tests"
+    },
     "Set up Python": {
       "sha256": "8c22eb245f396185d302396a5fc8202e4bb1c86b20085c2cfc57ced074892746",
       "local": "Python environment"

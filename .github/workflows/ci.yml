@@ -1141,6 +1141,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Set up Node.js for generated-client drift checks
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: admin/package.json
+
       # Every shard lists the same tests and takes those whose position in the
       # sorted list falls to it, so together the shards run each test once.
       - name: Choose this shard's tests
