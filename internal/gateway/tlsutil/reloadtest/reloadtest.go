@@ -34,6 +34,7 @@ type Pair struct {
 	CertPath string
 	KeyPath  string
 	Config   *tls.Config
+	CA       *mtlstest.CA
 }
 
 // New writes a throwaway pair for host and returns the serving config for it.
@@ -41,7 +42,12 @@ func New(t *testing.T, host string) *Pair {
 	t.Helper()
 	dir := t.TempDir()
 	p := &Pair{CertPath: filepath.Join(dir, "tls.crt"), KeyPath: filepath.Join(dir, "tls.key")}
-	cert, key := issue(t, host)
+	ca, err := mtlstest.NewCA("listener reload CA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.CA = ca
+	cert, key := p.issue(t, host)
 	writeFile(t, p.KeyPath, key)
 	writeFile(t, p.CertPath, cert)
 	loader, err := tlsfiles.New(p.CertPath, p.KeyPath, 0)
@@ -67,7 +73,7 @@ func (p *Pair) Serial(t *testing.T) string {
 // each file is written beside its target and renamed over it, key first.
 func (p *Pair) Renew(t *testing.T, host string) string {
 	t.Helper()
-	cert, key := issue(t, host)
+	cert, key := p.issue(t, host)
 	writeFile(t, p.KeyPath, key)
 	writeFile(t, p.CertPath, cert)
 	return serialOf(t, cert)
@@ -91,36 +97,70 @@ func PeerSerial(t *testing.T, state tls.ConnectionState) string {
 // Prove runs the renewal scenario against one listener. connect opens a new
 // connection, completes the TLS handshake through the listener's own path
 // (implicit TLS or STARTTLS) and returns the client's view of it.
-func Prove(t *testing.T, host string, p *Pair, connect func(t *testing.T) tls.ConnectionState) {
+func Prove(t *testing.T, host string, p *Pair, connect func(t *testing.T) *tls.Conn, ping Step) {
 	t.Helper()
-	if got, want := PeerSerial(t, connect(t)), p.Serial(t); got != want {
+	established := connect(t)
+	defer func() { _ = established.Close() }()
+	verify := func(conn *tls.Conn) string {
+		t.Helper()
+		state := conn.ConnectionState()
+		roots := x509.NewCertPool()
+		roots.AddCert(p.CA.Cert)
+		intermediates := x509.NewCertPool()
+		for _, cert := range state.PeerCertificates[1:] {
+			intermediates.AddCert(cert)
+		}
+		if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{DNSName: host, Roots: roots, Intermediates: intermediates}); err != nil {
+			t.Fatalf("served certificate name/chain: %v", err)
+		}
+		return PeerSerial(t, state)
+	}
+	fresh := func() string {
+		t.Helper()
+		conn := connect(t)
+		defer func() { _ = conn.Close() }()
+		return verify(conn)
+	}
+	if got, want := verify(established), p.Serial(t); got != want {
 		t.Fatalf("first connection served serial %s, want the installed certificate %s", got, want)
 	}
+	Exchange(t, established, ping)
 
 	renewed := p.Renew(t, host)
-	if got := PeerSerial(t, connect(t)); got != renewed {
+	if got := fresh(); got != renewed {
 		t.Fatalf("after renewal a new connection served serial %s, want the renewed certificate %s", got, renewed)
 	}
+	Exchange(t, established, ping)
 
-	failing := Metric(t, "restmail_tls_cert_reload_failing")
-	failures := Metric(t, "restmail_tls_cert_reload_failures_total")
-	p.Break(t)
-	if got := PeerSerial(t, connect(t)); got != renewed {
-		t.Fatalf("after a broken renewal a new connection served serial %s, want the last good certificate %s", got, renewed)
-	}
-	if got := Metric(t, "restmail_tls_cert_reload_failing") - failing; got != 1 {
-		t.Fatalf("restmail_tls_cert_reload_failing moved by %v after a broken renewal, want 1", got)
-	}
-	if got := Metric(t, "restmail_tls_cert_reload_failures_total") - failures; got != 1 {
-		t.Fatalf("restmail_tls_cert_reload_failures_total moved by %v after a broken renewal, want 1", got)
-	}
-
-	fixed := p.Renew(t, host)
-	if got := PeerSerial(t, connect(t)); got != fixed {
-		t.Fatalf("after a repaired renewal a new connection served serial %s, want %s", got, fixed)
-	}
-	if got := Metric(t, "restmail_tls_cert_reload_failing") - failing; got != 0 {
-		t.Fatalf("restmail_tls_cert_reload_failing stayed %v above its baseline after a repaired renewal", got)
+	for _, control := range []string{"missing", "invalid"} {
+		t.Run(control+" replacement", func(t *testing.T) {
+			failing := Metric(t, "restmail_tls_cert_reload_failing")
+			failures := Metric(t, "restmail_tls_cert_reload_failures_total")
+			if control == "missing" {
+				if err := os.Remove(p.CertPath); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				p.Break(t)
+			}
+			if got := fresh(); got != renewed {
+				t.Fatalf("after %s replacement served %s, want last good %s", control, got, renewed)
+			}
+			Exchange(t, established, ping)
+			if got := Metric(t, "restmail_tls_cert_reload_failing") - failing; got != 1 {
+				t.Fatalf("reload failing moved by %v, want 1", got)
+			}
+			if got := Metric(t, "restmail_tls_cert_reload_failures_total") - failures; got != 1 {
+				t.Fatalf("reload failures moved by %v, want 1", got)
+			}
+			renewed = p.Renew(t, host)
+			if got := fresh(); got != renewed {
+				t.Fatalf("repaired replacement served %s, want %s", got, renewed)
+			}
+			if got := Metric(t, "restmail_tls_cert_reload_failing") - failing; got != 0 {
+				t.Fatalf("reload failing stayed %v above baseline", got)
+			}
+		})
 	}
 }
 
@@ -145,29 +185,38 @@ type Step struct {
 }
 
 // ImplicitTLS dials a port that starts TLS on connect (465, 993, 995).
-func ImplicitTLS(t *testing.T, port int, host string) tls.ConnectionState {
+func ImplicitTLS(t *testing.T, port int, host string, greeting ...Step) *tls.Conn {
 	t.Helper()
 	conn, err := dial(t, port)
 	if err != nil {
 		t.Fatalf("dial %d: %v", port, err)
 	}
-	defer func() { _ = conn.Close() }()
 	client := tls.Client(conn, clientConfig(host))
 	if err := client.Handshake(); err != nil {
 		t.Fatalf("TLS handshake on port %d: %v", port, err)
 	}
-	return client.ConnectionState()
+	Exchange(t, client, greeting...)
+	return client
 }
 
 // StartTLS dials a cleartext port, runs the dialogue that ends in the
 // protocol's TLS upgrade command, then completes the handshake.
-func StartTLS(t *testing.T, port int, host string, dialogue ...Step) tls.ConnectionState {
+func StartTLS(t *testing.T, port int, host string, dialogue ...Step) *tls.Conn {
 	t.Helper()
 	conn, err := dial(t, port)
 	if err != nil {
 		t.Fatalf("dial %d: %v", port, err)
 	}
-	defer func() { _ = conn.Close() }()
+	Exchange(t, conn, dialogue...)
+	client := tls.Client(conn, clientConfig(host))
+	if err := client.Handshake(); err != nil {
+		t.Fatalf("TLS handshake after upgrade on port %d: %v", port, err)
+	}
+	return client
+}
+
+func Exchange(t *testing.T, conn net.Conn, dialogue ...Step) {
+	t.Helper()
 	r := bufio.NewReader(conn)
 	for _, step := range dialogue {
 		if step.Send != "" {
@@ -188,11 +237,6 @@ func StartTLS(t *testing.T, port int, host string, dialogue ...Step) tls.Connect
 	if r.Buffered() > 0 {
 		t.Fatal("server sent data after the upgrade reply")
 	}
-	client := tls.Client(conn, clientConfig(host))
-	if err := client.Handshake(); err != nil {
-		t.Fatalf("TLS handshake after upgrade on port %d: %v", port, err)
-	}
-	return client.ConnectionState()
 }
 
 func dial(t *testing.T, port int) (net.Conn, error) {
@@ -214,9 +258,7 @@ func dial(t *testing.T, port int) (net.Conn, error) {
 }
 
 func clientConfig(host string) *tls.Config {
-	// The certificates are throwaway; the test compares serial numbers, so
-	// chain verification would only retest crypto/tls.
-	return &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} //nolint:gosec // test client compares serials
+	return &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} //nolint:gosec // Prove verifies the name and chain against the fixture CA
 }
 
 // Metric reads an unlabelled counter or gauge from the default registry, the
@@ -244,17 +286,9 @@ func Metric(t *testing.T, name string) float64 {
 	return 0
 }
 
-func issue(t *testing.T, host string) (certPEM, keyPEM []byte) {
+func (p *Pair) issue(t *testing.T, host string) (certPEM, keyPEM []byte) {
 	t.Helper()
-	paths, err := mtlstest.Write(t.TempDir(), host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	certPEM, err = os.ReadFile(paths.ServerCert)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyPEM, err = os.ReadFile(paths.ServerKey)
+	certPEM, keyPEM, err := p.CA.IssueServer(host, []string{host}, nil, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

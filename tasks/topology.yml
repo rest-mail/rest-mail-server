@@ -204,6 +204,12 @@ tasks:
         export CONTRACT_INTERNAL_ENDPOINT=$("${CHORE_BIN:-chore}" topology:endpoint TOPOLOGY={{.TOPOLOGY}} -- internal)
         "${CHORE_BIN:-chore}" test:contract-own-data {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
 
+  tls-reload:
+    desc: "Prove live certificate replacement on every supported TLS listener in TOPOLOGY"
+    dotenv: []
+    cmds:
+      - python3 -B {{.ROOT_DIR}}/scripts/tls_reload_probe.py --topology "{{.TOPOLOGY}}"
+
   down:
     desc: "Remove everything TOPOLOGY made, by its label: containers, networks, volumes and the files it wrote. Nothing unlabelled is touched"
     dotenv: []

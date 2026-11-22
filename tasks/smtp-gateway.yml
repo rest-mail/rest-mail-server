@@ -258,7 +258,8 @@ tasks:
           --network container:{{.SMTP_GATEWAY_CONTAINER_NAME}} \
           -v {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
           --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim \
-          -c "printf '$conf' > /tmp/front.conf && exec nginx -e /dev/stderr -c /tmp/front.conf -g 'daemon off; pid /tmp/front.pid;'" >"$OUTPUT" 2>&1
+          -c "$(cat "{{.TASKFILE_DIR}}/tls-front-reload.sh")" tls-front "$conf" \
+          {{.SMTP_GATEWAY_TLS_CERT_PATH}} {{.SMTP_GATEWAY_TLS_KEY_PATH}} >"$OUTPUT" 2>&1
 
   down:
     desc: Stop and remove smtp-gateway and its HTTPS front (preserves the logs volume)

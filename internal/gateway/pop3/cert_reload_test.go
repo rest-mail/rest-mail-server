@@ -29,11 +29,11 @@ func TestPOP3ListenersServeRenewedCertificate(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
 
 	t.Run("STLS", func(t *testing.T) {
-		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
+		reloadtest.Prove(t, host, pair, func(t *testing.T) *tls.Conn {
 			return reloadtest.StartTLS(t, ports.POP3, host,
 				reloadtest.Step{Until: "+OK"},
 				reloadtest.Step{Send: "STLS", Until: "+OK"})
-		})
+		}, reloadtest.Step{Send: "CAPA", Until: "."})
 	})
 	t.Run("implicit TLS", func(t *testing.T) {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -46,8 +46,8 @@ func TestPOP3ListenersServeRenewedCertificate(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = server.Close() })
 		port := listener.Addr().(*net.TCPAddr).Port
-		reloadtest.Prove(t, host, pair, func(t *testing.T) tls.ConnectionState {
-			return reloadtest.ImplicitTLS(t, port, host)
-		})
+		reloadtest.Prove(t, host, pair, func(t *testing.T) *tls.Conn {
+			return reloadtest.ImplicitTLS(t, port, host, reloadtest.Step{Until: "+OK"})
+		}, reloadtest.Step{Send: "CAPA", Until: "."})
 	})
 }

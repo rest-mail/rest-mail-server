@@ -129,12 +129,12 @@ that moves the count. The rest need harnesses and decisions first.
 | AC | Bucket | What is missing |
 |---|---|---|
 | AC01 integration/ownership model documented and upheld | **P** | uploaded certificate keeps its issuer; renewal selects only its own |
-| AC02 renewed material consumed by every service | H | live reload |
+| AC02 renewed material consumed by every service | R | `TestIMAPListenersServeRenewedCertificate`, `TestPOP3ListenersServeRenewedCertificate`, `TestSMTPListenersServeRenewedCertificate` and `TestAPIHTTPSListenerAndGatewayClientServeRenewedCertificates`: verified name/chain, retained traffic, missing/invalid replacement and reported failures. `scripts/release_fresh_start.py` additionally exercises six supported listeners on the exact release images, including the HTTPS front's graceful reload. Local proof is available; merge/CI receipt and the external-fixture topology run remain pending. |
 | AC03 real ACME issuance and deliberate renewal failure | X | ACME staging on rest-mail.com |
 | AC01 Pulumi adoption with no replacement | H | Pulumi preview on the stack |
 | AC02 staging and preview isolation | D + H | isolation contract decision, then a real install |
 | AC03 backup demonstrated by a restore drill | H | RPO/RTO decision, then the drill |
-| AC04 release artifacts have SBOM and fresh-start evidence | H | image build + scan policy |
+| AC04 release artifacts have SBOM and fresh-start evidence | R | `scripts/release_evidence.py` collects all seven images, CycloneDX SBOMs and complete scans; `ReleaseEvidenceTests` refuses missing evaluation, wrong digest and missing/failed fresh-start evidence. `scripts/release_fresh_start.py` runs the real eight-operation baseline on those images. The documented policy currently refuses findings; no exemption was added. See [the evidence recipe](release-evidence.md) and #2104's run comments. |
 | AC05 installed cluster stages one to three run | H | cluster |
 | AC06 promotion gated on fresh matching receipts | **P** | gate + 21 refusal tests; not yet wired to a release workflow |
 
