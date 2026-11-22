@@ -14,12 +14,15 @@ import (
 	"sync"
 
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/instance"
 	keyring "github.com/zalando/go-keyring"
 )
 
 const IDBase uint = 1 << 52
 const maxFolderSlot uint = (1 << 20) - 1
-const keychainService = "REST Mail"
+
+var keychainService = instance.KeychainService()
+
 const metadataKey = "imap-accounts-v1"
 
 type Account struct {
