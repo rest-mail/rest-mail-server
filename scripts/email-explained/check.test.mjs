@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { anchorsOf, checkGuide, checkOutside, checkOutsideLinks, EXCEPTIONS, linksOf, outsideLinks, readExceptions } from "./check.mjs";
+import { addedLinks, anchorsOf, checkGuide, checkOutside, checkOutsideLinks, CHECKED_WHEN_ADDED, dailyLinks, EXCEPTIONS, linksOf, outsideLinks, readExceptions } from "./check.mjs";
 
 const chapter = (body, front = "title: Open relay\npart: How it goes wrong\nsummary: How it happens.") => `---\n${front}\n---\n\n# Open relay\n\n${body}\n\n## Sources\n\n- [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)\n`;
 
@@ -184,6 +184,7 @@ const WHERE = "docs/email-explained/guides/why-mail-goes-to-spam.md:44";
 
 /** checkOutsideLinks for one link, which answers every request with status. */
 async function verdict(context, status, exceptions) {
+  context.mock.restoreAll();
   context.mock.method(globalThis, "fetch", async () => new Response("<p>page</p>", { status, headers: { "content-type": "text/html" } }));
   return checkOutsideLinks(new Map([["https://lookup.example/", [WHERE]]]), exceptions, TODAY, { concurrency: 1 });
 }
@@ -281,7 +282,7 @@ test("node check.mjs --external exits 1 on an unlisted refusal and 0 when an exc
   try {
     const stub = join(dir, "refuse.mjs");
     // Not HTML, so the anchors in the pages that answer are not looked for.
-    await writeFile(stub, 'globalThis.fetch = async (url) => new Response("no robots", { status: String(url).startsWith("https://www.rfc-editor.org/") ? 403 : 200, headers: { "content-type": "text/plain" } });\n');
+    await writeFile(stub, 'globalThis.fetch = async (url) => new Response("no robots", { status: String(url).startsWith("https://www.postfix.org/") ? 403 : 200, headers: { "content-type": "text/plain" } });\n');
     const run = async (exceptions) => {
       const file = join(dir, "exceptions.json");
       await writeFile(file, JSON.stringify(exceptions));
@@ -298,12 +299,66 @@ test("node check.mjs --external exits 1 on an unlisted refusal and 0 when an exc
     const unlisted = await run([]);
     assert.equal(unlisted.code, 1, unlisted.stdout);
     const pages = refusedPages(unlisted.stdout);
-    assert.ok(pages.length > 0, `the guide cites no rfc-editor.org page to refuse:\n${unlisted.stdout}`);
+    assert.ok(pages.length > 0, `the guide cites no postfix.org page to refuse:\n${unlisted.stdout}`);
 
     const far = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
     const listed = await run(pages.map((url) => ({ url, reason: "Stand-in refusal for this test.", expires: far })));
     assert.equal(listed.code, 0, listed.stdout);
     assert.match(listed.stdout, new RegExp(`refused to be checked \\(${pages.length} by exception`));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("RFC links are checked when added, not daily", () => {
+  const links = new Map([
+    ["https://www.rfc-editor.org/rfc/rfc5321", ["a.md:1"]],
+    ["https://www.rfc-editor.org/rfc/rfc5321#section-4.5.3", ["a.md:2"]],
+    ["https://www.rfc-editor.org/info/rfc5321", ["a.md:3"]],
+    ["https://www.postfix.org/postconf.5.html", ["a.md:4"]],
+  ]);
+  assert.ok(CHECKED_WHEN_ADDED.test("https://www.rfc-editor.org/rfc/rfc7208"));
+  assert.deepEqual([...dailyLinks(links).keys()], ["https://www.rfc-editor.org/info/rfc5321", "https://www.postfix.org/postconf.5.html"]);
+});
+
+test("--new-since checks every link that was not there before, RFC links and new anchors included", () => {
+  const before = new Map([["https://www.rfc-editor.org/rfc/rfc5321", ["a.md:1"]], ["https://www.postfix.org/postconf.5.html", ["a.md:2"]]]);
+  const current = new Map([
+    ["https://www.rfc-editor.org/rfc/rfc5321", ["a.md:1"]],
+    ["https://www.rfc-editor.org/rfc/rfc5321#section-4.5.3", ["a.md:5"]],
+    ["https://www.rfc-editor.org/rfc/rfc7208", ["b.md:9"]],
+    ["https://www.postfix.org/postconf.5.html", ["a.md:2"]],
+  ]);
+  assert.deepEqual([...addedLinks(current, before).keys()], ["https://www.rfc-editor.org/rfc/rfc5321#section-4.5.3", "https://www.rfc-editor.org/rfc/rfc7208"]);
+  assert.deepEqual([...addedLinks(before, before).keys()], []);
+});
+
+test("node check.mjs --external never asks rfc-editor.org daily, and --new-since HEAD asks nothing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "outside-check-"));
+  try {
+    const stub = join(dir, "count.mjs");
+    const asked = join(dir, "asked.txt");
+    await writeFile(stub, `import { appendFileSync } from "node:fs";\nglobalThis.fetch = async (url) => { appendFileSync(${JSON.stringify(asked)}, String(url) + "\\n"); return new Response("ok", { status: String(url).startsWith("https://www.rfc-editor.org/") ? 403 : 200, headers: { "content-type": "text/plain" } }); };\n`);
+    const script = fileURLToPath(new URL("check.mjs", import.meta.url));
+    const run = async (...args) => {
+      await writeFile(asked, "");
+      try {
+        const { stdout } = await promisify(execFile)(process.execPath, ["--import", stub, script, "--external", "--exceptions", join(dir, "none.json"), ...args], { maxBuffer: 1 << 24 });
+        return { code: 0, stdout, asked: (await readFile(asked, "utf8")).split("\n").filter(Boolean) };
+      } catch (error) {
+        return { code: error.code, stdout: error.stdout, asked: (await readFile(asked, "utf8")).split("\n").filter(Boolean) };
+      }
+    };
+    await writeFile(join(dir, "none.json"), "[]");
+    const daily = await run();
+    assert.equal(daily.code, 0, daily.stdout);
+    assert.ok(daily.asked.length > 0, "the daily check asked no outside page");
+    assert.deepEqual(daily.asked.filter((url) => url.startsWith("https://www.rfc-editor.org/rfc/")), []);
+    assert.match(daily.stdout, /\(daily; [1-9]\d* RFC links are checked when added\)/);
+    const none = await run("--new-since", "HEAD");
+    assert.equal(none.code, 0, none.stdout);
+    assert.deepEqual(none.asked, []);
+    assert.match(none.stdout, /^0 outside links on 0 pages \(added since HEAD\)/m);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -316,13 +371,13 @@ test("node check.mjs --external exits 1 on an unlisted refusal and 0 when an exc
 const live = process.env.EMAIL_EXPLAINED_LIVE_LINKS === "1" ? {} : { skip: "set EMAIL_EXPLAINED_LIVE_LINKS=1 to ask real sites" };
 
 test("live: a page that is there passes the outside check", live, async () => {
-  const links = new Map([["https://www.rfc-editor.org/rfc/rfc5321", ["live-test"]]]);
+  const links = new Map([["https://github.com/rest-mail/rest-mail-server", ["live-test"]]]);
   const { failures, broken, refused } = await checkOutsideLinks(links, [], new Date().toISOString().slice(0, 10), { concurrency: 1 });
   assert.deepEqual({ failures, broken, refused }, { failures: [], broken: [], refused: [] });
 });
 
 test("live: a page that is not there fails the outside check", live, async () => {
-  const links = new Map([["https://www.rfc-editor.org/rfc/rfc5321-no-such-page", ["live-test"]]]);
+  const links = new Map([["https://github.com/rest-mail/rest-mail-server/no-such-page", ["live-test"]]]);
   const { failures } = await checkOutsideLinks(links, [], new Date().toISOString().slice(0, 10), { concurrency: 1 });
-  assert.deepEqual(failures, ["broken: https://www.rfc-editor.org/rfc/rfc5321-no-such-page: HTTP 404  (live-test)"]);
+  assert.deepEqual(failures, ["broken: https://github.com/rest-mail/rest-mail-server/no-such-page: HTTP 404  (live-test)"]);
 });

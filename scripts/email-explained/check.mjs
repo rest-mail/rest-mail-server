@@ -6,12 +6,20 @@
 //   node check.mjs --archify <archify.mjs>  and every diagram source is valid
 //   node check.mjs --external               and every outside link still answers
 //                  [--exceptions <file>]    (default outside-link-exceptions.json)
+//                  [--new-since <ref>]      only the outside links added since ref,
+//                                           RFC links included: run it when you add links
 //
 // The guide's own checks need nothing but the repository. Outside links change
 // on other people's schedules, so CI checks those daily and when the guide is
 // published (scheduled.yml, email-explained.yml), not on every PR. A site that
 // refuses to be checked (HTTP 401, 403, 429) passes only through a dated,
 // reasoned exception in outside-link-exceptions.json (#2120).
+//
+// RFC links (www.rfc-editor.org/rfc/...) are checked when they are added, not
+// daily: a published RFC never changes, so a link that answered once keeps
+// answering, and rfc-editor.org refuses GitHub's runners (HTTP 403, #2199).
+// Whoever adds one runs `node check.mjs --external --new-since origin/main`
+// from their own machine before the pull request.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { get as httpGet } from "node:http";
@@ -175,6 +183,19 @@ export function checkGuide({ pages, repo, diagramFiles, archify, look }) {
     else if (look && drawnIn !== look) problem(`diagrams/${image}`, null, `was not drawn in the current look (look.mjs): run svg.mjs ${source[1]}`);
   }
   return problems;
+}
+
+/** Outside links checked when they are added rather than daily: published RFCs. */
+export const CHECKED_WHEN_ADDED = /^https:\/\/www\.rfc-editor\.org\/rfc\//;
+
+/** The links the daily check asks about: all but those checked when added. */
+export function dailyLinks(links) {
+  return new Map([...links].filter(([href]) => !CHECKED_WHEN_ADDED.test(href)));
+}
+
+/** The links in `current` that `before` does not have, anchor included: a new section link is checked too. */
+export function addedLinks(current, before) {
+  return new Map([...current].filter(([href]) => !before.has(href)));
 }
 
 /** Every outside link in the guide, and where each one is used. */
@@ -370,7 +391,7 @@ async function markdownFiles(dir, base = dir) {
 
 async function main() {
   const { values } = parseArgs({
-    options: { archify: { type: "string" }, external: { type: "boolean", default: false }, exceptions: { type: "string", default: EXCEPTIONS } },
+    options: { archify: { type: "string" }, external: { type: "boolean", default: false }, exceptions: { type: "string", default: EXCEPTIONS }, "new-since": { type: "string" } },
   });
   const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
   const guide = join(root, GUIDE);
@@ -412,12 +433,25 @@ async function main() {
 
   let failed = problems.length > 0;
   if (values.external) {
-    const links = outsideLinks(pages);
+    const all = outsideLinks(pages);
+    let links;
+    let scope;
+    if (values["new-since"]) {
+      const ref = values["new-since"];
+      const files = execFileSync("git", ["-C", root, "ls-tree", "-r", "--name-only", ref, "--", GUIDE], { encoding: "utf8" })
+        .split("\n").filter((path) => path.endsWith(".md") && !SKIP.has(posix.basename(path)));
+      const before = new Map(files.map((path) => [posix.relative(GUIDE, path), execFileSync("git", ["-C", root, "show", `${ref}:${path}`], { encoding: "utf8", maxBuffer: 1 << 26 })]));
+      links = addedLinks(all, outsideLinks(before));
+      scope = `added since ${ref}`;
+    } else {
+      links = dailyLinks(all);
+      scope = `daily; ${all.size - links.size} RFC links are checked when added`;
+    }
     const today = new Date().toISOString().slice(0, 10);
     const { broken, refused, pages: asked, failures, excused } = await checkOutsideLinks(links, await exceptionEntries(values.exceptions), today);
     for (const line of excused) console.log(line);
     for (const line of failures) console.log(line);
-    console.log(`${links.size} outside links on ${asked} pages: ${broken.length} broken, ${refused.length} refused to be checked (${excused.length} by exception, ${relative(root, values.exceptions)}): ${failures.length} failing`);
+    console.log(`${links.size} outside links on ${asked} pages (${scope}): ${broken.length} broken, ${refused.length} refused to be checked (${excused.length} by exception, ${relative(root, values.exceptions)}): ${failures.length} failing`);
     failed ||= failures.length > 0;
   }
   process.exitCode = failed ? 1 : 0;

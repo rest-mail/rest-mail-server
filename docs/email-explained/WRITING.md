@@ -100,6 +100,20 @@ runs daily (`scheduled.yml`) and when the guide is published
 - a site that refuses to be checked (HTTP 401, 403 or 429) with no exception;
 - an exception without a reason, without an expiry date, or past its date.
 
+RFC links (`https://www.rfc-editor.org/rfc/...`) are the exception to the daily
+check: they are checked when you add them, then left alone. A published RFC
+never changes, so a link and section anchor that answered once keep answering,
+and rfc-editor.org refuses GitHub's runners anyway. When you add or change an
+outside link, RFC or not, run from your own machine, before the pull request:
+
+```sh
+cd scripts/email-explained
+node check.mjs --external --new-since origin/main
+```
+
+It asks about every outside link the guide has now and did not have at
+`origin/main`, section anchors included, and fails as the daily check would.
+
 Some sites turn away robots while a person gets the page. Open the link
 yourself, and if it is sound, add an exception to
 [`scripts/email-explained/outside-link-exceptions.json`](../../scripts/email-explained/outside-link-exceptions.json):
