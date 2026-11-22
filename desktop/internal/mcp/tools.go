@@ -11,10 +11,15 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/thunderbird"
 )
 
 type EmptyArgs struct {
 	Window string `json:"window,omitempty"`
+}
+
+type ImportStatusArgs struct {
+	Cancel bool `json:"cancel,omitempty"`
 }
 
 type MenuArgs struct {
@@ -185,6 +190,9 @@ func (server *Server) registerTools() {
 	domainTool[SignInArgs](server, "sign_in", "Sign in to a REST Mail server")
 	domainTool[TOTPArgs](server, "submit_totp", "Complete two-factor sign-in")
 	domainTool[EmptyArgs](server, "sign_out", "Sign out and clear saved credentials")
+	domainTool[EmptyArgs](server, "thunderbird_profiles", "Discover read-only Thunderbird profiles, accounts and folders; poll while scanning for message counts")
+	domainTool[thunderbird.Selection](server, "thunderbird_import", "Start a background import of selected Thunderbird folder IDs into a REST Mail account; rerun safely to resume using server deduplication")
+	domainTool[ImportStatusArgs](server, "import_status", "Read persisted import progress and summary, or cancel the current import with cancel=true")
 	domainTool[AccountArgs](server, "list_folders", "List mail folders; account_id optionally selects a configured account")
 	domainTool[ListMessagesArgs](server, "list_messages", "List a folder's messages with paging and query")
 	domainTool[MessageArgs](server, "get_message", "Read a message")

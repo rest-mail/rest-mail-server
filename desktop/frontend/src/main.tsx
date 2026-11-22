@@ -14,6 +14,7 @@ async function launch() {
   let serverHost = '';
   configureMailPlatform({
     desktop: true, fetch: transport, streamURL: mock?.streamURL,
+    importThunderbird: () => window.dispatchEvent(new Event('desktop:import-thunderbird')),
     serverHost: () => serverHost,
     restoreSession: async () => {
       const status = await binding.Status();

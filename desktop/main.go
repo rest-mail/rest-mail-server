@@ -71,6 +71,9 @@ func main() {
 	// Desktop core: share this manager and client with native integrations, including MCP.
 	sessionManager := newDesktopSession()
 	mailClient := apiclient.New(sessionManager)
+	imports := newImports(sessionManager)
+	defer imports.service.Close()
+	options.Services = append(options.Services, application.NewService(imports))
 	application.RegisterEvent[SessionStatus]("session:changed")
 	options.Services = append(options.Services, application.NewService(NewSession(sessionManager)))
 	options.Services = append(options.Services, application.NewService(&Accounts{manager: sessionManager}))
@@ -81,7 +84,7 @@ func main() {
 	nativeUI.install(app)
 
 	// Embedded MCP service registration.
-	stopMCP := startMCP(app, sessionManager, mailClient, nativeUI)
+	stopMCP := startMCP(app, sessionManager, mailClient, nativeUI, imports)
 	app.OnShutdown(stopMCP)
 	defer stopMCP()
 	// End embedded MCP service registration.

@@ -128,6 +128,56 @@ At least 32px of outer padding surrounds the composition. Taller setup or error
 states scroll as one block without shrinking the braces. Sign-in uses a compact
 48px logo and the same type scale as the mailbox.
 
+## Import from Thunderbird
+
+Choose **File → Import from Thunderbird…** (⇧⌘I on macOS), or open the
+sidebar's **More tools → Import from Thunderbird…**. Select a detected profile,
+the source accounts and folders to copy, and a destination REST Mail account.
+Use the folder filter to find a specific folder in a large profile.
+Direct IMAP accounts cannot be import destinations. Thunderbird should be quit
+first; the sheet warns when it detects a running Thunderbird process. An IMAP
+cache contains only messages Thunderbird has downloaded for offline use.
+
+Profiles are discovered from `~/Library/Thunderbird/profiles.ini` on macOS,
+`%APPDATA%/Thunderbird/profiles.ini` on Windows, and `~/.thunderbird/profiles.ini`
+or `~/.config/thunderbird/profiles.ini` on Linux. Both relative and absolute
+profile paths are supported. `Mail` and `ImapMail` are inspected read-only;
+`.sbd` directories retain nesting and `.msf` indexes and symlinks are excluded.
+Counts scan in the background with bounded memory, so a large profile remains
+selectable while its message counts are being computed.
+
+Inbox maps to `INBOX`; Sent, Drafts, Trash and Archives map to `Sent`, `Drafts`,
+`Trash` and `Archive`. Nested folders keep their hierarchy. Mozilla read,
+answered, flagged and IMAP-deleted bits become IMAP flags; expunged messages are
+skipped. `From_` timestamps take precedence over the Date header. Mozilla mailbox
+metadata is stripped after extraction so changing source flags does not change
+the imported message octets. The shared streaming reader and API uploader live
+in `../pkg/mailimport`; the console importer retains its original flags and
+validation behavior through a compatibility wrapper.
+
+Imports run one bounded message at a time (32 MiB maximum), in background jobs
+with message and byte progress, cancellation and failure reasons. A malformed or
+oversized message stops its source folder, with an explicit folder failure;
+other selected folders continue. The source is never modified. Changed source
+size or modification time is reported and requires a fresh discovery/restart.
+The progress checkpoint is an atomic, private `import-progress.json` file under
+the REST Mail configuration directory, with an instance suffix for test copies.
+Reopening the sheet restores the previous folder selection and summary. Rerun
+the same selection to resume: files are rescanned from the beginning, and the
+server skips existing copies using Message-ID plus exact octets. This is not a
+byte-offset resume and does not retry failures automatically. Server import
+sessions record each run; changing the signed-in server stops uploads rather
+than redirecting historical mail to a different server.
+
+MCP tools use the same import service:
+
+- `thunderbird_profiles`: discover profiles and folders; poll while `scanning`
+  is true to receive complete counts. Account labels avoid exposing addresses.
+- `thunderbird_import`: provide `profile_id`, `folders` (IDs returned by
+  discovery), and numeric destination `account_id`; returns immediately.
+- `import_status`: retrieve persisted progress and summary; pass `cancel: true`
+  to cancel the active job. The job outlives the MCP request and sheet.
+
 ## Frontend validation
 
 ```sh

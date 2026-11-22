@@ -13,6 +13,7 @@ type Command struct {
 
 var Commands = []Command{
 	{ID: "new-message", Group: "File", Label: "New Message", Accelerator: "CmdOrCtrl+n"},
+	{ID: "import-thunderbird", Group: "File", Label: "Import from Thunderbird…", Accelerator: "CmdOrCtrl+Shift+i"},
 	{ID: "close-window", Group: "File", Label: "Close Window", Accelerator: "CmdOrCtrl+w"},
 	{ID: "refresh", Group: "View", Label: "Refresh", Accelerator: "CmdOrCtrl+Shift+n"},
 	{ID: "view.layout.columns", Group: "View", Label: "Three Columns", Accelerator: "CmdOrCtrl+Alt+1", Checkable: true},
