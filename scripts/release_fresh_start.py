@@ -16,6 +16,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,6 +24,7 @@ import release_evidence as evidence
 import tls_reload_probe
 
 FRONT_IMAGE = "nginxinc/nginx-unprivileged:1.30-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6"
+RELOAD_REPORT_TIMEOUT = 10
 
 
 def wait_http(endpoint):
@@ -43,6 +45,19 @@ def endpoint(container, port):
     if not published.startswith("127.0.0.1:"):
         raise ValueError(f"container did not publish a private loopback port: {container}")
     return "http://" + published
+
+
+def wait_reload_reports(phase, previous, observe, handshake):
+    deadline = time.monotonic() + RELOAD_REPORT_TIMEOUT
+    while True:
+        current = observe()
+        pending = [name for name, count in previous.items() if current[name] <= count]
+        if not pending:
+            return current
+        if time.monotonic() >= deadline:
+            raise ValueError(f"{', '.join(pending)} did not report the {phase} replacement")
+        time.sleep(1)
+        handshake()
 
 
 def reload_tls(directory, running, front):
@@ -79,13 +94,32 @@ def reload_tls(directory, running, front):
                 listener.update(client_cert=str(directory / "imap-gateway/internal-imap.crt"),
                                 client_key=str(directory / "imap-gateway/internal-imap.key"))
             plan["listeners"].append(listener)
-    tls_reload_probe.inside(plan)
-    for container in (*running.values(), front):
-        if container.endswith(("-api", "-smtp-gateway", "-imap-gateway", "-pop3-gateway", "-https-front")):
+    listeners = [running[name] for name in ("api", "smtp-gateway", "imap-gateway", "pop3-gateway")] + [front]
+    started = ["docker", "inspect", "--format", "{{.State.StartedAt}}", *listeners]
+    before = evidence.run(started).stdout
+
+    def failures():
+        counts = {}
+        for container in listeners:
             logs = evidence.run(["docker", "logs", container])
-            if (logs.stdout + logs.stderr).count("certificate reload failed") < 2:
-                raise ValueError(f"{container} did not report both missing and invalid replacement")
+            counts[container] = (logs.stdout + logs.stderr).count("certificate reload failed")
+        return counts
+
+    last = failures()
+
+    def after_phase(phase):
+        def handshake():
+            for listener in plan["listeners"]:
+                tls_reload_probe.fresh_leaf(listener, phase)
+
+        current = wait_reload_reports(phase, last, failures, handshake) if phase in ("missing", "invalid") else failures()
+        last.update(current)
+
+    observations = tls_reload_probe.inside(plan, after_phase)
+    if evidence.run(started).stdout != before:
+        raise ValueError("a listener container restarted during TLS reload")
     print("release-evidence tls-reload listeners=6 phases=5 missing=reported invalid=reported", flush=True)
+    return observations
 
 
 def main(argv=None):
@@ -99,6 +133,8 @@ def main(argv=None):
     if set(builds["images"]) != set(evidence.RELEASE_IMAGES):
         parser.error("all seven release images must have built successfully")
     evidence.invalidate_fresh_start(args.directory, builds["commit"])
+    tls_receipt = args.directory / "tls-reload.json"
+    evidence.write_json(tls_receipt, {"commit": builds["commit"], "exit_code": 1})
     network = args.project + "-network"
     containers = []
     network_created = False
@@ -196,10 +232,20 @@ def main(argv=None):
                           command=["-c", (evidence.ROOT / "tasks/tls-front-reload.sh").read_text(), "tls-front",
                                    "events {}\nstream { server { listen 443 ssl; ssl_certificate /certs/public.crt; ssl_certificate_key /certs/public.key; proxy_pass api:8080; } }\n",
                                    "/certs/public.crt", "/certs/public.key"])
-            reload_tls(directory, running, front)
-            result = evidence.fresh_start(SimpleNamespace(directory=args.directory, endpoint=api_endpoint,
-                                                          container=[f"{name}={container}" for name, container in running.items()]))
+            try:
+                result = evidence.fresh_start(SimpleNamespace(directory=args.directory, endpoint=api_endpoint,
+                                                              container=[f"{name}={container}" for name, container in running.items()]))
+            finally:
+                if evidence.image_ids(running) != builds["images"]:
+                    raise ValueError("TLS reload containers must run exactly the seven built image configurations")
+                observations = reload_tls(directory, running, front)
+                if evidence.image_ids(running) != builds["images"]:
+                    raise ValueError("running images changed during TLS reload")
+                evidence.write_json(tls_receipt, {"commit": builds["commit"], "images": builds["images"],
+                                                "at": datetime.now(timezone.utc).isoformat(), "exit_code": 0,
+                                                "observations": observations})
         except (OSError, ValueError, subprocess.CalledProcessError, evidence.cluster_e2e.StepFailed) as error:
+            result = 1
             print(f"release-fresh-start failed: {error}", file=sys.stderr)
         finally:
             for container in containers:

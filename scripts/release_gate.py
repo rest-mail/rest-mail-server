@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a release promotion that the installed-cluster receipts do not cover (#2104, AC06).
+"""Refuse promotion without complete, fresh, exact-image receipts (#2104, AC06).
 
 scripts/cluster_e2e.py writes one receipt line per step to receipts.txt:
 the commit, the image digests the pods ran (the kubelet's imageID), the step,
@@ -21,6 +21,10 @@ On a pass it prints one "release-gate authorized" line and exits 0.
         --commit <full 40-character SHA> \\
         --image api=sha256:<hex> --image smtp-gateway=sha256:<hex> ... (all seven)
 
+The separate --evidence-directory mode gates Docker image version publication
+on release-image scan, fresh-start and listener reload receipts. It does not
+authorize the installed-cluster stages above or substitute for their receipts.
+
 What this does not do: it does not run the stages, fetch receipts or read the
 registry. The digests it compares against are the ones given on the command
 line. cluster-e2e.yml today installs images it builds itself (tag ci), not the
@@ -32,6 +36,8 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
+import math
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -132,7 +138,9 @@ def check(lines: list[str], commit: str, expected: dict[str, str], steps: tuple[
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="release_gate.py", description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--receipts", required=True, help="cluster-e2e receipts.txt")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--receipts", help="cluster-e2e receipts.txt")
+    source.add_argument("--evidence-directory", type=Path, help="CI release-image receipt artifact")
     parser.add_argument("--commit", required=True, help="the full commit SHA being released")
     parser.add_argument("--image", action="append", default=[], metavar="NAME=sha256:HEX",
                         help="a released image's digest; one for each of " + ", ".join(RELEASE_IMAGES))
@@ -142,7 +150,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if not COMMIT.fullmatch(args.commit):
         parser.error("--commit must be a full 40-character lower-case SHA")
-    if args.max_age <= 0:
+    if not math.isfinite(args.max_age) or args.max_age <= 0:
         parser.error("--max-age must be positive")
     expected = {}
     for item in args.image:
@@ -165,12 +173,40 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
+def check_image_receipts(directory, commit, expected, now, max_age):
+    import release_evidence
+
+    try:
+        builds = json.loads((directory / "builds.json").read_text())
+        if builds["registry_images"] != expected:
+            return ["wrong digest: evidence names different registry images than the build artifacts"]
+        if builds["platform"] != "linux/amd64":
+            return ["wrong platform: CI requires native linux/amd64 evidence"]
+        configs = {name: release_evidence.registry_config(directory, name, digest, builds["platform"])
+                   for name, digest in expected.items()}
+        reasons = release_evidence.check(directory, commit, configs)
+        for filename in [*(f"{name}.json" for name in RELEASE_IMAGES), "fresh-start.json", "tls-reload.json"]:
+            receipt = json.loads((directory / filename).read_text())
+            at = datetime.fromisoformat(receipt["at"])
+            if at.tzinfo is None or not now - max_age <= at <= now:
+                reasons.append(f"stale: {filename} completion is outside the release age bound")
+            if filename == "tls-reload.json":
+                release_evidence.check_tls_receipt(receipt, commit, configs)
+        return reasons
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        return [f"missing or malformed evidence: {error}"]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    path = Path(args.receipts)
-    lines = path.read_text().splitlines() if path.is_file() else []
-    reasons, run = check(lines, args.commit, args.expected, load_steps(), args.now,
-                         timedelta(hours=args.max_age))
+    max_age = timedelta(hours=args.max_age)
+    if args.evidence_directory is not None:
+        reasons = check_image_receipts(args.evidence_directory, args.commit, args.expected, args.now, max_age)
+        run = "release-image-evidence"
+    else:
+        path = Path(args.receipts)
+        lines = path.read_text().splitlines() if path.is_file() else []
+        reasons, run = check(lines, args.commit, args.expected, load_steps(), args.now, max_age)
     if reasons:
         for reason in reasons:
             print(f"release-gate refused: {reason}", file=sys.stderr)

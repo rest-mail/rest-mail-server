@@ -285,10 +285,10 @@ class Docker:
             capture_output=True,
         )
 
-    def save(self, image, platform, volume):
+    def save(self, image, platform, volume, reference=None):
         """docker save, piped into the scan's volume."""
         with subprocess.Popen(
-            ["docker", "save", self.tag(image, platform)],
+            ["docker", "save", reference or self.tag(image, platform)],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         ) as saving:

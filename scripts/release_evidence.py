@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect and check local release-image evidence without publishing anything.
+"""Collect and check local or registry-built release-image evidence.
 
 See docs/release-evidence.md for the policy, digest boundary and fresh-start recipe.
 """
@@ -19,10 +19,17 @@ from types import SimpleNamespace
 
 import cluster_e2e
 import image_scan
+import tls_reload_probe
 from release_gate import COMMIT, DIGEST, RELEASE_IMAGES
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = "restmail-fixable-high-critical-v1"
+BASELINE_OPERATIONS = {"apiRoot", "describeServer", "getHealth", "getPublicStatus", "openapiDocument",
+                       "openapiSpec", "recoveryEmailLink", "swaggerUI"}
+TLS_LISTENERS = {
+    "API internal mTLS": "api", "IMAP implicit TLS": "mail.release.test", "POP3 implicit TLS": "mail.release.test",
+    "SMTP submission TLS": "mail.release.test", "SMTP STARTTLS": "mail.release.test", "API HTTPS front": "mail.release.test",
+}
 
 
 def sha256(path):
@@ -85,6 +92,23 @@ def conformance_counts(path):
     return observed
 
 
+def baseline_operations(spec, junit):
+    import yaml
+
+    description = json.loads(spec.read_text())
+    base = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+    operations = cluster_e2e.contract_operations(description, cluster_e2e.internal_operations(base))
+    if not BASELINE_OPERATIONS.issubset(operations):
+        raise ValueError("fresh-start description omits required baseline operations")
+    observed_paths = {case.get("name", "").partition(" > ")[0] for case in ElementTree.parse(junit).iter("testcase")
+                      if case.get("classname") == "vertrag.GET"}
+    expected_paths = {path for path, methods in description["paths"].items()
+                      if methods.get("get", {}).get("operationId") in operations}
+    if not expected_paths.issubset(observed_paths):
+        raise ValueError("fresh-start baseline has operations without recorded exchanges")
+    return operations
+
+
 def check(directory, commit, expected):
     reasons = []
     try:
@@ -126,14 +150,13 @@ def check(directory, commit, expected):
             reasons.append("fresh-start report bytes differ from the recorded evidence")
         if fresh["exit_code"] != 0 or counts[0] <= 0 or counts[1:] != (0, 0) or list(counts) != fresh["counts"]:
             reasons.append("fresh-start evidence is failed, empty, skipped or inconsistent")
-        import yaml
-        base = yaml.safe_load((ROOT / "vertrag.yml").read_text())
-        operations = cluster_e2e.contract_operations(json.loads(spec.read_text()), cluster_e2e.internal_operations(base))
-        if not operations or fresh["operations"] != operations:
+        operations = baseline_operations(spec, junit)
+        if fresh["operations"] != operations:
             reasons.append("fresh-start evidence does not cover the declared baseline operations")
         if counts[0] < len(operations):
             reasons.append("fresh-start baseline has operations without recorded exchanges")
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, image_scan.WorkflowError, cluster_e2e.StepFailed) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, ElementTree.ParseError,
+            image_scan.WorkflowError, cluster_e2e.StepFailed) as error:
         reasons.append(f"missing or malformed evidence: {error}")
     return reasons
 
@@ -152,6 +175,69 @@ def image_ids(containers):
     return actual
 
 
+def registry_digests(directory):
+    digests = {path.stem: path.read_text().strip() for path in directory.glob("*.digest")}
+    if set(digests) != set(RELEASE_IMAGES) or not all(DIGEST.fullmatch(value) for value in digests.values()):
+        raise ValueError("build artifacts must name exactly all seven registry digests")
+    return digests
+
+
+def platform_manifest(index, platform):
+    system, architecture = platform.split("/")
+    manifests = [entry["digest"] for entry in index["manifests"]
+                 if (entry.get("platform", {}).get("os"), entry.get("platform", {}).get("architecture")) == (system, architecture)]
+    if len(manifests) != 1 or not DIGEST.fullmatch(manifests[0]):
+        raise ValueError(f"image index does not name one {platform} manifest")
+    return manifests[0]
+
+
+def registry_config(directory, name, index_digest, platform):
+    index = directory / f"{name}.index.json"
+    manifest = directory / f"{name}.manifest.json"
+    if "sha256:" + sha256(index) != index_digest:
+        raise ValueError(f"{name}: index bytes differ from the build digest")
+    if "sha256:" + sha256(manifest) != platform_manifest(json.loads(index.read_bytes()), platform):
+        raise ValueError(f"{name}: manifest bytes differ from the build digest chain")
+    config = json.loads(manifest.read_bytes())["config"]["digest"]
+    if not DIGEST.fullmatch(config):
+        raise ValueError(f"{name}: invalid platform configuration digest")
+    return config
+
+
+def inspect_registry(directory, repository, name, digest, platform):
+    index = directory / f"{name}.index.json"
+    manifest = directory / f"{name}.manifest.json"
+    def fetch(path, expected):
+        reference = f"{repository}@{expected}"
+        raw = subprocess.run(["docker", "buildx", "imagetools", "inspect", "--raw", reference], check=True, capture_output=True)
+        path.write_bytes(raw.stdout)
+    fetch(index, digest)
+    fetch(manifest, platform_manifest(json.loads(index.read_bytes()), platform))
+    config = registry_config(directory, name, digest, platform)
+    reference = f"{repository}@{digest}"
+    run(["docker", "pull", "--platform", platform, reference])
+    if run(["docker", "image", "inspect", "--format", "{{.Id}}", reference]).stdout.strip() != config:
+        raise ValueError(f"{name}: Docker pulled a different configuration than the build manifest names")
+    return config
+
+
+def check_tls_receipt(receipt, commit, images):
+    if receipt["exit_code"] != 0 or receipt["commit"] != commit or receipt["images"] != images:
+        raise ValueError("failed TLS reload or a different commit or running image digest")
+    observations = receipt["observations"]
+    expected = {(listener, phase) for listener in TLS_LISTENERS for phase in tls_reload_probe.PHASES}
+    if len(observations) != len(expected) or {(entry["listener"], entry["phase"]) for entry in observations} != expected:
+        raise ValueError("TLS reload did not observe every listener and phase")
+    fingerprints = {}
+    for entry in observations:
+        listener = entry["listener"]
+        leaf, original = entry["leaf_sha256"], entry["original_leaf_sha256"]
+        if (entry["hostname"] != TLS_LISTENERS[listener] or leaf == original
+                or not all(re.fullmatch(r"[0-9a-f]{64}", fingerprint) for fingerprint in (leaf, original))
+                or fingerprints.setdefault(listener, (leaf, original)) != (leaf, original)):
+            raise ValueError(f"TLS reload observed inconsistent name or certificate fingerprints for {listener}")
+
+
 def collect(args):
     if run(["git", "status", "--porcelain"], cwd=ROOT).stdout.strip():
         raise ValueError("release images require a clean committed checkout")
@@ -164,20 +250,26 @@ def collect(args):
     commit = image_scan.head_commit(ROOT)
     docker = image_scan.Docker(args.tag_prefix, args.label)
     builds = {"commit": commit, "platform": args.platform, "images": {}}
+    registry = registry_digests(args.registry_digests) if args.registry_digests else None
+    if registry is not None:
+        builds["registry_images"] = registry
     write_json(directory / "builds.json", builds)
     failed = False
     for image in image_scan.read_matrix(workflow):
         volume = f"{args.tag_prefix.replace('/', '-')}{image.name}-scan"
         try:
-            built = docker.build(ROOT, image, args.platform, commit)
-            (directory / f"{image.name}.build.log").write_text(built.stdout + built.stderr)
-            if built.returncode:
-                raise ValueError(f"build exited {built.returncode}")
-            digest = run(["docker", "image", "inspect", "--format", "{{.Id}}", docker.tag(image, args.platform)]).stdout.strip()
+            if registry is not None:
+                digest = inspect_registry(directory, f"{args.registry_prefix}/{image.name}", image.name, registry[image.name], args.platform)
+            else:
+                built = docker.build(ROOT, image, args.platform, commit)
+                (directory / f"{image.name}.build.log").write_text(built.stdout + built.stderr)
+                if built.returncode:
+                    raise ValueError(f"build exited {built.returncode}")
+                digest = run(["docker", "image", "inspect", "--format", "{{.Id}}", docker.tag(image, args.platform)]).stdout.strip()
             builds["images"][image.name] = digest
             write_json(directory / "builds.json", builds)
             prepared = docker.prepare(volume, b"")
-            if prepared.returncode or docker.save(image, args.platform, volume).returncode:
+            if prepared.returncode or docker.save(image, args.platform, volume, reference=digest if registry is not None else None).returncode:
                 raise ValueError("could not save the exact image for scanning")
             cache = f"{args.tag_prefix.replace('/', '-')}trivy-cache"
             docker._create_volume(cache)
@@ -198,11 +290,14 @@ def collect(args):
             evaluation = evaluate(json.loads(scan_path.read_text()), (ROOT / ".trivyignore").read_text())
             write_json(directory / f"{image.name}.json", {
                 "commit": commit, "image_digest": digest, "scanner": image_scan.TRIVY_IMAGE,
+                "at": datetime.now(timezone.utc).isoformat(),
                 "scan": scan_path.name, "scan_sha256": sha256(scan_path),
                 "sbom": sbom_path.name, "sbom_sha256": sha256(sbom_path), "evaluation": evaluation})
             print(f"release-evidence collected image={image.name} digest={digest} policy={evaluation['verdict']} findings={len(evaluation['observed'])}", flush=True)
+            if evaluation["blocked"]:
+                print(f"release-evidence policy refused {image.name}: {','.join(evaluation['blocked'])}", file=sys.stderr, flush=True)
             failed |= evaluation["verdict"] != "pass"
-        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
             print(f"release-evidence collection failed image={image.name}: {error}", file=sys.stderr, flush=True)
             failed = True
         finally:
@@ -229,8 +324,6 @@ def fresh_start(args):
     detail = stages.contract_examples()
     if image_ids(containers) != before:
         raise ValueError("running images changed during fresh-start baseline")
-    import yaml
-    base = yaml.safe_load((ROOT / "vertrag.yml").read_text())
     spec = args.directory / "contract/openapi.json"
     junit = args.directory / "contract/examples.xml"
     counts = conformance_counts(junit)
@@ -239,7 +332,7 @@ def fresh_start(args):
     write_json(args.directory / "fresh-start.json", {
         "commit": builds["commit"], "images": before, "at": datetime.now(timezone.utc).isoformat(),
         "exit_code": 0, "counts": list(counts), "junit_sha256": sha256(junit), "spec_sha256": sha256(spec),
-        "operations": cluster_e2e.contract_operations(json.loads(spec.read_text()), cluster_e2e.internal_operations(base))})
+        "operations": baseline_operations(spec, junit)})
     print(f"release-evidence fresh-start {detail}")
     return 0
 
@@ -257,6 +350,8 @@ def main(argv=None):
     collecting.add_argument("--platform", choices=("linux/amd64", "linux/arm64"))
     collecting.add_argument("--tag-prefix", default="restmail-release-evidence-")
     collecting.add_argument("--label", default="rest-mail.run=release-evidence")
+    collecting.add_argument("--registry-digests", type=Path)
+    collecting.add_argument("--registry-prefix")
     fresh = commands.add_parser("fresh-start")
     fresh.add_argument("--directory", required=True, type=Path)
     fresh.add_argument("--endpoint", required=True)
@@ -268,6 +363,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "collect":
+            if bool(args.registry_prefix) != bool(args.registry_digests):
+                raise ValueError("registry collection requires both --registry-prefix and --registry-digests")
             return collect(args)
         if args.command == "fresh-start":
             return fresh_start(args)
