@@ -302,9 +302,13 @@ RESTMAIL_DESKTOP_INSTANCE=polish desktop/bin/RESTMail.app/Contents/MacOS/RESTMai
 
 The name is lowercase letters, digits and dashes, up to 32 characters; anything
 else is ignored and the launch joins the single running copy.
-Named test copies also use a separate OS keychain service,
-`REST Mail test copy <name>`, for REST Mail sessions and IMAP account metadata and
-passwords. They never restore, refresh or replace the installed copy's credentials.
+Valid named test copies use an ephemeral in-process credential store: they never
+restore, rotate, write, or delete the owner's OS-keychain credentials. Test-copy
+sign-ins are deliberately not retained after shutdown. Normal launches still use
+the system keychain. For native visual tests, change only the generated test
+bundle's `Contents/Info.plist` identifier before signing that test copy, to isolate
+WebKit website data and preferences. Never change the release bundle identifier,
+`com.restmail.desktop`, or the source `build/darwin/Info.plist` for this purpose.
 
 The equivalent setting is `RESTMAIL_DESKTOP_MCP_DISCOVERY=/absolute/path.json`.
 Use that exact file when reading the URL and token; it is removed on orderly
