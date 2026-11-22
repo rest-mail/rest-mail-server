@@ -9,6 +9,8 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/localmail"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/localstore"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/thunderbird"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
@@ -34,6 +36,12 @@ type MailClient interface {
 }
 
 type MailDomain struct {
+	Local interface {
+		LocalSearch(context.Context, uint, string, string) (localstore.Results, error)
+		IndexStatus(context.Context, uint) (localmail.IndexStatus, error)
+		Reindex(context.Context, uint) error
+		ForgetAll() error
+	}
 	Imports interface {
 		Profiles() thunderbird.Catalog
 		Start(thunderbird.Selection) (thunderbird.Status, error)
@@ -127,6 +135,15 @@ func (domain *MailDomain) Call(ctx context.Context, name string, data json.RawMe
 		}
 		return map[string]any{"ok": true}, domain.session.SubmitTOTP(args.Code)
 	case "sign_out":
+		args, err := decodeArgs[SignOutArgs](data)
+		if err != nil {
+			return nil, err
+		}
+		if args.DeleteLocalData && domain.Local != nil {
+			if err := domain.Local.ForgetAll(); err != nil {
+				return nil, err
+			}
+		}
 		return map[string]any{"ok": true}, domain.session.SignOut()
 	}
 	status := domain.session.Status()
@@ -154,6 +171,22 @@ func (domain *MailDomain) Call(ctx context.Context, name string, data json.RawMe
 		}
 	}
 	switch name {
+	case "local_search", "index_status", "reindex":
+		if domain.Local == nil {
+			return nil, errors.New("local mail index unavailable")
+		}
+		switch name {
+		case "local_search":
+			args, err := decodeArgs[LocalSearchArgs](data)
+			if err != nil {
+				return nil, err
+			}
+			return domain.Local.LocalSearch(ctx, status.AccountID, args.Query, args.Folder)
+		case "index_status":
+			return domain.Local.IndexStatus(ctx, status.AccountID)
+		default:
+			return map[string]bool{"ok": true}, domain.Local.Reindex(ctx, status.AccountID)
+		}
 	case "list_folders":
 		return domain.mail.ListFolders(ctx, status.AccountID)
 	case "list_messages":
