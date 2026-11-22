@@ -5,6 +5,7 @@ import { fontFamilies, fontStack, monoFamilies, type FontFamily } from './fonts'
 import { builtInThemes, themeByName, type Theme } from './themes';
 import './appearance.css';
 import { LocalStorageSettings } from '../localMail';
+import { AboutRelease } from '../About';
 
 const specimen = 'Good things in your inbox.';
 const categories = [{ key: 'colours', label: 'Colours', detail: 'Surfaces, accents & atmosphere' }, { key: 'typefaces', label: 'Typography', detail: 'Display, interface, reading & code' }, { key: 'shape', label: 'Shape & rhythm', detail: 'Corners, spacing & type scale' }] as const;
@@ -62,7 +63,7 @@ export function AppearanceSettings() {
   return <div className="appearance-settings" role="dialog" aria-modal="true" aria-labelledby="appearance-title" ref={dialog} data-testid="appearance-settings">
     <header className="appearance-windowbar"><span>Settings</span><button ref={done} data-testid="appearance-done" onClick={appearanceSettings.close}><ArrowLeft size={14} /> Back to app <kbd>esc</kbd></button></header>
     <div className="appearance-workspace">
-      <nav className="appearance-nav" aria-label="Settings sections"><button className="appearance-nav-current" aria-current="page"><Paintbrush size={16} /> Appearance <ChevronRight size={14} /></button><LocalStorageSettings /><div className="appearance-nav-note"><span aria-hidden="true">Aa.</span><p>A mail client.<br />A thousand personalities.</p><small>Only on this device.<br />Made entirely yours.</small></div></nav>
+      <nav className="appearance-nav" aria-label="Settings sections"><button className="appearance-nav-current" aria-current="page"><Paintbrush size={16} /> Appearance <ChevronRight size={14} /></button><LocalStorageSettings /><div className="appearance-nav-note"><span aria-hidden="true">Aa.</span><p>A mail client.<br />A thousand personalities.</p><small>Only on this device.<br />Made entirely yours.</small><AboutRelease /></div></nav>
       <main className="appearance-main">
         <div className="appearance-hero"><div><h1 id="appearance-title">Make yourself<br />at home.</h1><p>Ten starting points. Twenty typefaces.<br />Endless ways to make mail feel like yours.</p><span className="appearance-current"><i /> Live now <b>{selected}</b></span></div><div className="appearance-preview-wrap"><div className="appearance-preview-label"><span><Mail size={12} /> Live preview</span></div><ThemePreview theme={theme} /></div></div>
         <div className="appearance-sectionbar"><div role="tablist" aria-label="Appearance sections">{([['collection', 'The collection'], ['remix', 'Remix studio'], ['saved', `Your themes${state.saved.length ? ` · ${state.saved.length}` : ''}`]] as const).map(([id, label]) => <button role="tab" key={id} id={`appearance-tab-${id}`} aria-controls={`appearance-panel-${id}`} data-testid={`appearance-${id}`} aria-selected={section === id} onClick={() => { setSection(id); setNotice(''); }}>{label}</button>)}</div><button className="appearance-surprise" data-testid="appearance-surprise" onClick={surprise}><Shuffle size={14} /> Surprise me</button></div>
