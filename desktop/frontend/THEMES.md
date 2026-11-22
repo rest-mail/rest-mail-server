@@ -39,7 +39,7 @@ under **Your themes**. Deleting a saved snapshot leaves the current visual resul
 as Custom. **Reset to theme** restores the current colour preset's original
 typefaces, shape, and accent, clearing all overrides and remix sources.
 
-Settings use versioned desktop-only localStorage keys, separately scoped by server
+Settings use desktop-only localStorage keys, separately scoped by server
 host and case-normalized signed-in email. Sign-out preserves the visual treatment
 for the sign-in screen, but hides personal saved themes and switches writes to a
 guest preference scope. Storage corruption falls back safely to REST Mail. Custom
