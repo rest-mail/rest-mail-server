@@ -5,7 +5,7 @@ import { createDesktopTransport } from './transport';
 import { openNativeMailStream } from './mailStream';
 import { prepareScreenshotDocument, registerUIBridge } from './bridge';
 import './desktop.css';
-import { appearance } from './appearance/engine';
+import { appearance, appearanceSettings } from './appearance/engine';
 
 async function launch() {
   appearance.init();
@@ -56,8 +56,10 @@ async function launch() {
   registerUIBridge(events, {
     windowName,
     tabs: tabs.list,
-    route: () => !useAuthStore.getState().isAuthenticated ? '/signin' : useAuthStore.getState().setupRequired.length ? `/setup/${useAuthStore.getState().setupRequired[0]}` : tabs.get().active !== 'mail' ? `/compose/${tabs.get().active}` : `/${useUIStore.getState().view}`,
+    route: () => appearanceSettings.get() ? '/settings/appearance' : !useAuthStore.getState().isAuthenticated ? '/signin' : useAuthStore.getState().setupRequired.length ? `/setup/${useAuthStore.getState().setupRequired[0]}` : tabs.get().active !== 'mail' ? `/compose/${tabs.get().active}` : `/${useUIStore.getState().view}`,
     navigate: async route => {
+      if (route === '/settings' || route === '/settings/appearance') { appearanceSettings.open(); return; }
+      appearanceSettings.close();
       if (route === '/signin') { await binding.SignOut(); return; }
       if (!useAuthStore.getState().isAuthenticated) throw new Error('Sign in first');
       if (route !== '/compose') tabs.select('mail');
