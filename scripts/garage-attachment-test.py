@@ -62,7 +62,14 @@ def main():
             env = dict(os.environ, RESTMAIL_TEST_GARAGE_ENDPOINT="http://127.0.0.1:3900",
                        RESTMAIL_TEST_GARAGE_ACCESS_KEY=access, RESTMAIL_TEST_GARAGE_SECRET_KEY=secret,
                        RESTMAIL_REQUIRE_GARAGE="1", GOMAXPROCS="1")
-            subprocess.run(["go", "test", "-p", "1", "./internal/attachmentstore", "-run", "^TestS3Garage$", "-count=1", "-v"], env=env, check=True, timeout=240)
+            # Build the test binary first, with the machine's normal parallelism: under
+            # GOMAXPROCS=1 on a busy runner, compiling the S3 client alone used the whole
+            # 240 s limit, so the test timed out before it ran (#2229). The 240 s limit
+            # now covers only the test against Garage, which it was meant to bound.
+            binary = os.path.join(tempfile.mkdtemp(prefix="garage-test-"), "attachmentstore.test")
+            subprocess.run(["go", "test", "-c", "-o", binary, "./internal/attachmentstore"], check=True)
+            subprocess.run([binary, "-test.run", "^TestS3Garage$", "-test.count=1", "-test.v"],
+                           env=env, cwd="internal/attachmentstore", check=True, timeout=240)
         except Exception:
             subprocess.run(["docker", "logs", "--tail", "60", name], check=False)
             raise
