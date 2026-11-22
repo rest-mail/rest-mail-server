@@ -33,6 +33,7 @@ describe('Thunderbird import sheet', () => {
   it('shows discovered folders, totals, mappings and running warning without preselecting mail', async () => {
     render(<ThunderbirdImportSheet onClose={vi.fn()} />);
     expect(await screen.findByText('Thunderbird is running.')).toBeTruthy();
+    expect(screen.queryByText('BRING YOUR MAIL WITH YOU')).toBeNull();
     expect(screen.getByText('→ Archive/2024')).toBeTruthy();
     expect((screen.getByTestId('thunderbird-start') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('0 folders selected')).toBeTruthy();
@@ -53,7 +54,8 @@ describe('Thunderbird import sheet', () => {
     fireEvent.click(screen.getByTestId('thunderbird-cancel'));
     expect(await screen.findByText('Import cancelled')).toBeTruthy();
     expect(Call.ByName).toHaveBeenCalledWith('main.Imports.Status', true);
-    expect(screen.getByText('Run again safely')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Import again' })).toBeTruthy();
+    expect(screen.getByText(/existing copies are skipped by the server/)).toBeTruthy();
   });
 
   it('reopens saved selections and shows duplicate, failure and expunged summaries', async () => {
@@ -63,7 +65,7 @@ describe('Thunderbird import sheet', () => {
     expect((screen.getByTestId('thunderbird-folder-Mail/Local Folders/Inbox') as HTMLInputElement).checked).toBe(true);
     expect(screen.getByText('1 expunged skipped')).toBeTruthy();
     expect(screen.getByText(/Server refused message/)).toBeTruthy();
-    expect(screen.getByText('Run again safely')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Import again' })).toBeTruthy();
   });
 
   it('polls live progress through completion', async () => {
