@@ -63,6 +63,7 @@ export function runNativeCommand(action: string, windowName = 'main') {
   if (action === 'view.layout.columns' || action === 'view.layout.stacked') { layoutPreferences.select(action === 'view.layout.columns' ? 'columns' : 'stacked'); return; }
   if (action === 'view.pane.folders') { layoutPreferences.toggleFolders(); return; }
   if (action === 'view.pane.reader') { layoutPreferences.toggleReader(); return; }
+  if (action === 'import-thunderbird') { window.dispatchEvent(new Event('desktop:import-thunderbird')); return; }
   if (action === 'settings') { tabs.select('mail'); useUIStore.getState().setView('settings'); return; }
   if (action === 'refresh') { void mail.refresh().catch(report); return; }
   if (tabs.get().active !== 'mail' || useUIStore.getState().view !== 'mail' || !mail.selectedMessage || mail.loadingMessage || mail.selectedMessage.is_draft) return;

@@ -319,6 +319,7 @@ export function Sidebar() {
       <details open={desktop ? undefined : true} className={desktop ? 'desktop-sidebar-tools' : 'contents'}>
       {desktop && <summary data-testid="sidebar-tools"><ChevronRight size={16} aria-hidden="true" />More tools</summary>}
       <div className="px-1.5 py-1.5 space-y-px shrink-0">
+        {desktop && mailPlatform().importThunderbird && <button data-testid="import-thunderbird" onClick={() => { mailPlatform().importThunderbird?.(); setMobileOpen(false); }} className="w-full text-left px-2.5 h-[30px] flex items-center gap-2 rounded-2xl font-mono text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"><Indicator active={false} />Import from Thunderbird…</button>}
         {([
           { view: 'scheduled' as const, label: 'scheduled' },
           { view: 'vacation' as const, label: 'vacation' },

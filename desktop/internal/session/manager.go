@@ -353,6 +353,10 @@ func (manager *Manager) Do(ctx context.Context, method, path string, body io.Rea
 func (manager *Manager) DoRequest(ctx context.Context, incoming *http.Request) (*http.Response, error) {
 	defer manager.notify()
 	manager.mu.Lock()
+	if expected, ok := ctx.Value(serverBinding{}).(string); ok && expected != manager.current.Server {
+		manager.mu.Unlock()
+		return nil, errors.New("the import server changed; sign in to the original server and rerun")
+	}
 	if manager.access == "" {
 		manager.mu.Unlock()
 		return nil, ErrSignedOut

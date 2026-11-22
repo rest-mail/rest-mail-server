@@ -19,6 +19,7 @@ import (
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	shared "github.com/rest-mail/rest-mail-server/pkg/mailimport"
 )
 
 const importMailUsage = `restmail import-maildir / import-mbox — import historical mail through the public API
@@ -275,39 +276,15 @@ func finishImportSession(session *importSessionRun, o output, report map[string]
 }
 
 func postImportedMessage(ctx context.Context, client *http.Client, base *url.URL, token string, account uint32, session string, message apitypes.ImportMessageBody) (apitypes.ImportMessageResult, int, error) {
-	var zero apitypes.ImportMessageResult
-	body, err := json.Marshal(message)
-	if err != nil {
-		return zero, 0, errors.New("could not encode the import")
-	}
-	target := base.String() + "/api/v1/accounts/" + strconv.FormatUint(uint64(account), 10) + "/messages/import"
-	if session != "" {
-		target += "?import_session=" + url.QueryEscape(session)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
-	if err != nil {
-		return zero, 0, errors.New("could not prepare the import")
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	noRedirect := *client
-	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := noRedirect.Do(req)
-	if err != nil {
-		return zero, 0, errors.New("the import request failed")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return zero, resp.StatusCode, nil
-	}
-	var result endpoint.Data[apitypes.ImportMessageResult]
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
-	if err := decoder.Decode(&result); err != nil {
-		return zero, resp.StatusCode, errors.New("the server returned an invalid import response")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return zero, resp.StatusCode, errors.New("the server returned trailing import response data")
-	}
-	return result.Data, resp.StatusCode, nil
+	return shared.Post(ctx, func(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, method, base.String()+path, body)
+		if err != nil {
+			return nil, errors.New("could not prepare the import")
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		noRedirect := *client
+		noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		return noRedirect.Do(req)
+	}, account, session, message)
 }
