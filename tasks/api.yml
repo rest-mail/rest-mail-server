@@ -67,15 +67,15 @@ vars:
   # API_INTERNAL_MTLS_VOLUME; `up` copies the API's to /certs/internal-*.
   API_INTERNAL_MTLS: '{{.API_INTERNAL_MTLS | default "false"}}'
   API_INTERNAL_MTLS_PORT: '{{.API_INTERNAL_MTLS_PORT | default "8443"}}'
-  # Go build tags for the dev image's build, empty for a normal one. Only the
+  # Go build tags, empty for a normal build. Only the
   # contract fault run sets them (faultinject,fault_<name>: tests/contract/faults.yml).
   API_BUILD_TAGS: '{{.API_BUILD_TAGS | default ""}}'
   # Go coverage of the running API (#655), for the test topology only. When
-  # "true" (dev mode only), the container builds ./cmd/api with `go build
-  # -cover` and runs it directly instead of through air, so `docker stop` is a
-  # SIGTERM to the API itself and its counters reach API_COVER_VOLUME, mounted
-  # as GOCOVERDIR. It is a command override on the dev image: the Dockerfile and
-  # the release images are untouched. `coverage:reset` and `coverage:report`
+  # "true", prod builds the instrumented binary in the image; dev builds it
+  # from mounted source instead of through air. Both run the API directly, so
+  # SIGTERM reaches the API and its counters reach API_COVER_VOLUME, mounted
+  # as GOCOVERDIR. Release builds keep coverage off. The collector uses the
+  # same Go toolchain in a separate image. `coverage:reset` and `coverage:report`
   # below collect it; `chore contract` calls both.
   API_COVER: '{{.API_COVER | default "false"}}'
   API_COVER_VOLUME: '{{.API_CONTAINER_NAME}}-gocover'
@@ -90,8 +90,26 @@ tasks:
     desc: Build the api image (target controlled by MODE — dev or prod)
     cmds:
       - |
+        if [ "${RESTMAIL_PREBUILT_IMAGES:-false}" = true ] && [ "{{.API_MODE}}" = prod ] &&
+          [ "$(docker image inspect -f '{{`{{ index .Config.Labels "rest-mail.mode" }}|{{ index .Config.Labels "rest-mail.api.cover" }}|{{ index .Config.Labels "rest-mail.api.tags" }}`}}' {{.API_IMAGE}} 2>/dev/null)" = 'prod|{{.API_COVER}}|{{.API_BUILD_TAGS}}' ] &&
+          { [ "${RESTMAIL_TOPOLOGY_STORAGE:-false}" != true ] || [ "$(docker image inspect -f '{{`{{ index .Config.Labels "rest-mail.topology-tools" }}`}}' {{.API_IMAGE}} 2>/dev/null)" = true ]; } &&
+          { [ "{{.API_COVER}}" != true ] || docker image inspect {{.API_IMAGE}}-coverage-tools >/dev/null 2>&1; }; then
+          echo "  reusing prebuilt {{.API_IMAGE}}"
+          exit 0
+        fi
         echo "  building {{.API_IMAGE}} (target={{.API_MODE}})"
-        docker build -t {{.API_IMAGE}} --target {{.API_MODE}} -f Dockerfile . >$OUTPUT 2>&1
+        image={{.API_IMAGE}}
+        if [ "{{.API_MODE}}" = prod ] && [ "${RESTMAIL_TOPOLOGY_STORAGE:-false}" = true ]; then image={{.API_IMAGE}}-runtime; fi
+        docker build -t "$image" --target {{.API_MODE}} \
+          --label rest-mail.mode={{.API_MODE}} --label rest-mail.api.cover={{.API_COVER}} --label "rest-mail.api.tags={{.API_BUILD_TAGS}}" \
+          --build-arg API_COVER={{.API_COVER}} --build-arg "API_BUILD_TAGS={{.API_BUILD_TAGS}}" \
+          -f Dockerfile . >$OUTPUT 2>&1 || exit 1
+        if [ "$image" != {{.API_IMAGE}} ]; then
+          docker build -t {{.API_IMAGE}} --build-arg "API_RUNTIME_IMAGE=$image" -f projects/api-topology.Dockerfile . >$OUTPUT 2>&1 || exit 1
+        fi
+        if [ "{{.API_MODE}}" = prod ] && [ "{{.API_COVER}}" = true ]; then
+          docker build -t {{.API_IMAGE}}-coverage-tools --target deps -f Dockerfile . >$OUTPUT 2>&1 || exit 1
+        fi
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   # ════════════════════════════════════════════════════════
@@ -111,20 +129,12 @@ tasks:
         fi
       - |
         echo "  starting api ({{.API_CONTAINER_NAME}} @ {{.API_IP}}, mode={{.API_MODE}}, cover={{.API_COVER}})"
-        # Air executes /app/tmp binaries; Go needs executable build/temp space.
-        # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
-        # the image's preloaded modules as a read-only proxy before the network.
-        # The dev image runs as root, a tmpfs's default owner: podman refuses uid=/gid=.
         if [ "{{.API_MODE}}" = "dev" ]; then
           DEV_FLAGS="--read-only -v $(pwd):/app \
-            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700 \
-            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
-            -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
-            -e GOCACHE=/tmp/go-build-cache \
+            $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.API_CONTAINER_NAME}}-tmp 0 1777 /tmp) \
+            $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.API_CONTAINER_NAME}}-air 0 0700 /app/tmp) \
+            $("{{.TASKFILE_DIR}}/dev-gocache.sh" 0 {{.API_PROJECT}}-devcache) \
             -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
-          if [ -n "${RESTMAIL_DEV_GOCACHE_VOLUME:-}" ]; then
-            DEV_FLAGS="$DEV_FLAGS $("{{.TASKFILE_DIR}}/dev-gocache.sh" 0)"
-          fi
           # Air's go build reads GOFLAGS, so the tags reach the binary it runs.
           if [ -n "{{.API_BUILD_TAGS}}" ]; then
             echo "  building the api with tags {{.API_BUILD_TAGS}}"
@@ -132,9 +142,11 @@ tasks:
           fi
         else
           DEV_FLAGS=""
-          if [ -n "{{.API_BUILD_TAGS}}" ]; then
-            echo "ERROR: API_BUILD_TAGS needs mode=dev; the prod image is built without them" >&2
-            exit 1
+          if [ "${RESTMAIL_TOPOLOGY_STORAGE:-false}" = true ]; then
+            DEV_FLAGS="--read-only \
+              $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.API_CONTAINER_NAME}}-tmp 10001 1777 /tmp) \
+              $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.API_CONTAINER_NAME}}-ssl 10001 0755 /etc/ssl) \
+              $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.API_CONTAINER_NAME}}-ca 10001 0755 /usr/local/share/ca-certificates)"
           fi
         fi
         # A cover build starts with an empty counter volume, so a report holds
@@ -151,15 +163,15 @@ tasks:
         fi
         set --
         if [ "{{.API_COVER}}" = "true" ]; then
-          if [ "{{.API_MODE}}" != "dev" ]; then
-            echo "ERROR: API_COVER=true needs API_MODE=dev: it builds the API from the mounted source" >&2
-            exit 1
-          fi
           docker volume create --label "$RESTMAIL_LABEL" {{.API_COVER_VOLUME}} >$OUTPUT 2>&1 || exit 1
+          COVER_OWNER=0
+          if [ "{{.API_MODE}}" = prod ]; then COVER_OWNER=10001; fi
           docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
-            find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
+            sh -ec 'find /gocover -mindepth 1 -delete; chown "$1:$1" /gocover; chmod 0755 /gocover' _ "$COVER_OWNER" >$OUTPUT 2>&1 || exit 1
           COVER_FLAGS="-v {{.API_COVER_VOLUME}}:/gocover -e GOCOVERDIR=/gocover"
-          set -- sh -c 'go build -cover -o /app/tmp/api ./cmd/api && exec /app/tmp/api'
+          if [ "{{.API_MODE}}" = dev ]; then
+            set -- sh -c 'go build -cover -o /app/tmp/api ./cmd/api && exec /app/tmp/api'
+          fi
         fi
         docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # The testbed dnsmasq must be the ONLY resolver (mounted resolv.conf, not
@@ -183,7 +195,7 @@ tasks:
         # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
         # capabilities (the API binds the unprivileged :8080/:8443, so needs
         # none), plus pid/mem/cpu ceilings. Dev uses a read-only rootfs with
-        # bounded tmpfs mounts for Air and Go; prod retains its CA entrypoint.
+        # disk volumes for Air and Go; prod retains its CA entrypoint.
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --pids-limit 1024 --memory 2g --cpus 2"
@@ -311,7 +323,6 @@ tasks:
         docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
           find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
         docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
-        # It rebuilds before it listens: its build cache is on a tmpfs.
         i=0
         until docker exec {{.API_CONTAINER_NAME}} wget -q -O /dev/null "http://localhost:{{.API_PORT}}/api/health" >/dev/null 2>&1; do
           i=$((i+1))
@@ -335,6 +346,7 @@ tasks:
         rm -rf "$out"
         mkdir -p "$out"
         image=$(docker inspect -f '{{`{{.Image}}`}}' {{.API_CONTAINER_NAME}}) || exit 1
+        if [ "{{.API_MODE}}" = prod ]; then image="{{.API_IMAGE}}-coverage-tools"; fi
         echo "  stopping {{.API_CONTAINER_NAME}} so it writes its coverage counters"
         docker stop -t 60 {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
         # The Go that wrote the counters reads them: the container's own image,

@@ -63,8 +63,13 @@ tasks:
     desc: Build the pop3-gateway image (target {{.POP3_GATEWAY_MODE}})
     cmds:
       - |
+        if [ "${RESTMAIL_PREBUILT_IMAGES:-false}" = true ] && [ "{{.POP3_GATEWAY_MODE}}" = prod ] &&
+          [ "$(docker image inspect -f '{{`{{ index .Config.Labels "rest-mail.mode" }}`}}' {{.POP3_GATEWAY_IMAGE}} 2>/dev/null)" = prod ]; then
+          echo "  reusing prebuilt {{.POP3_GATEWAY_IMAGE}}"
+          exit 0
+        fi
         echo "  building {{.POP3_GATEWAY_IMAGE}} (target {{.POP3_GATEWAY_MODE}})"
-        docker build -t {{.POP3_GATEWAY_IMAGE}} --target {{.POP3_GATEWAY_MODE}} -f projects/pop3-gateway/Dockerfile . >$OUTPUT 2>&1
+        docker build -t {{.POP3_GATEWAY_IMAGE}} --label rest-mail.mode={{.POP3_GATEWAY_MODE}} --target {{.POP3_GATEWAY_MODE}} -f projects/pop3-gateway/Dockerfile . >$OUTPUT 2>&1
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   up:
@@ -80,22 +85,17 @@ tasks:
         fi
       - |
         echo "  starting pop3-gateway ({{.POP3_GATEWAY_CONTAINER_NAME}} @ {{.POP3_GATEWAY_IP}}, mode {{.POP3_GATEWAY_MODE}})"
-        # Air executes /app/tmp binaries; Go needs executable build/temp space.
-        # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
-        # the image's preloaded modules as a read-only proxy before the network.
         if [ "{{.POP3_GATEWAY_MODE}}" = "dev" ]; then
-          TMPFS_OWNER=$("{{.TASKFILE_DIR}}/tmpfs-owner.sh" 10001)
           DEV_FLAGS="--read-only -v $(pwd):/app \
-            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,$TMPFS_OWNER \
-            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
-            -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
-            -e GOCACHE=/tmp/go-build-cache \
+            $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.POP3_GATEWAY_CONTAINER_NAME}}-tmp 10001 1777 /tmp) \
+            $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.POP3_GATEWAY_CONTAINER_NAME}}-air 10001 0700 /app/tmp) \
+            $("{{.TASKFILE_DIR}}/dev-gocache.sh" 10001 {{.POP3_GATEWAY_PROJECT}}-devcache) \
             -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
-          if [ -n "${RESTMAIL_DEV_GOCACHE_VOLUME:-}" ]; then
-            DEV_FLAGS="$DEV_FLAGS $("{{.TASKFILE_DIR}}/dev-gocache.sh" 10001)"
-          fi
         else
           DEV_FLAGS=""
+          if [ "${RESTMAIL_TOPOLOGY_STORAGE:-false}" = true ]; then
+            DEV_FLAGS="--read-only $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.POP3_GATEWAY_CONTAINER_NAME}}-tmp 10001 1777 /tmp)"
+          fi
         fi
         docker rm -f {{.POP3_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # mailnet_only secondary instances skip host-port publishing.
@@ -109,8 +109,8 @@ tasks:
         # pid/mem/cpu ceilings. It binds 995 without NET_BIND_SERVICE because
         # the sysctl below lets any user bind any port in the container's own
         # network namespace (Docker's default too; said here so it is not assumed).
-        # Dev uses a read-only rootfs; Air and Go write only to bounded tmpfs
-        # mounts (in addition to the existing source and data mounts).
+        # Dev uses a read-only rootfs; Air and Go write to disk-backed volumes
+        # (in addition to the existing source and data mounts).
         HARDENING="--security-opt no-new-privileges:true \
           --user 10001:10001 --cap-drop ALL \
           --sysctl net.ipv4.ip_unprivileged_port_start=0 \

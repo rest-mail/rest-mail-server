@@ -23,6 +23,16 @@ env:
   # shares the machine sets its own value: RESTMAIL_LABEL=rest-mail-loop=<name>.
   RESTMAIL_LABEL:
     sh: 'echo "${RESTMAIL_LABEL:-rest-mail.run=local}"'
+  RESTMAIL_FIXTURE_EXEC:
+    sh: 'if [ "${RESTMAIL_SERVICE_MODE:-dev}" = prod ]; then echo restmail-fixtures; else echo "go run ./tests/contract/fixtures"; fi'
+  RESTMAIL_API_EXEC:
+    sh: 'if [ "${RESTMAIL_SERVICE_MODE:-dev}" = prod ]; then echo restmail-api; else echo "go run ./cmd/api"; fi'
+  RESTMAIL_SEED_EXEC:
+    sh: 'if [ "${RESTMAIL_SERVICE_MODE:-dev}" = prod ]; then echo restmail-seed; else echo "go run ./cmd/seed"; fi'
+  RESTMAIL_MIGRATE_EXEC:
+    sh: 'if [ "${RESTMAIL_SERVICE_MODE:-dev}" = prod ]; then echo restmail-migrate; else echo "go run ./cmd/migrate"; fi'
+  RESTMAIL_INSTANCE_EXEC:
+    sh: 'if [ "${RESTMAIL_SERVICE_MODE:-dev}" = prod ]; then echo restmail-instance; else echo "go run ./cmd/instance"; fi'
   OUTPUT:
     sh: '[ -n "$VERBOSE" ] && echo /dev/stdout || echo /dev/null'
   # Per-user toggles live in .env.local (gitignored). `chore project:toggle
@@ -126,7 +136,7 @@ includes:
     taskfile: ./tasks/js-filter.yml
     vars:
       JS_FILTER_PROJECT: '{{.RESTMAIL_PROJECT}}'
-      JS_FILTER_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      JS_FILTER_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       JS_FILTER_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       # Shared with the API (API_JS_FILTER_TOKEN below): the sidecar runs a
       # script only for a request carrying it (#160).
@@ -143,8 +153,8 @@ includes:
       API_IP: '{{.RESTMAIL_API_IP}}'
       API_PORT: '{{.RESTMAIL_API_PORT}}'
       API_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
-      API_MODE: dev
-      API_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      API_MODE: '{{.RESTMAIL_SERVICE_MODE | default "dev"}}'
+      API_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       API_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       API_GARAGE_ENDPOINT: 'http://{{.RESTMAIL_GARAGE_IP | default "10.99.0.44"}}:3900'
       API_DB_HOST: '{{.RESTMAIL_POSTGRES_IP}}'
@@ -176,8 +186,8 @@ includes:
       SMTP_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       SMTP_GATEWAY_IP: '{{.RESTMAIL_SMTP_IP}}'
       SMTP_GATEWAY_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
-      SMTP_GATEWAY_MODE: dev
-      SMTP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      SMTP_GATEWAY_MODE: '{{.RESTMAIL_SERVICE_MODE | default "dev"}}'
+      SMTP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       SMTP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       SMTP_GATEWAY_DB_HOST: '{{.RESTMAIL_POSTGRES_IP}}'
       # API_BASE_URL always targets the PUBLIC listener (token/credential + user
@@ -226,8 +236,8 @@ includes:
       IMAP_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       IMAP_GATEWAY_IP: '{{.RESTMAIL_IMAP_IP}}'
       IMAP_GATEWAY_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
-      IMAP_GATEWAY_MODE: dev
-      IMAP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      IMAP_GATEWAY_MODE: '{{.RESTMAIL_SERVICE_MODE | default "dev"}}'
+      IMAP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       IMAP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       IMAP_GATEWAY_DB_HOST: '{{.RESTMAIL_POSTGRES_IP}}'
       # Public listener for token/user routes; machine routes use the internal one.
@@ -255,8 +265,8 @@ includes:
       POP3_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       POP3_GATEWAY_IP: '{{.RESTMAIL_POP3_IP}}'
       POP3_GATEWAY_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
-      POP3_GATEWAY_MODE: dev
-      POP3_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      POP3_GATEWAY_MODE: '{{.RESTMAIL_SERVICE_MODE | default "dev"}}'
+      POP3_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       POP3_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       POP3_GATEWAY_DB_HOST: '{{.RESTMAIL_POSTGRES_IP}}'
       # Public listener for token/user routes; machine routes use the internal one.
@@ -282,7 +292,7 @@ includes:
       # Overridable so prod can be exercised locally (WEBMAIL_MODE=prod chore …);
       # dev is what the stack runs by default.
       WEBMAIL_MODE: '{{.WEBMAIL_MODE | default "dev"}}'
-      WEBMAIL_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      WEBMAIL_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       WEBMAIL_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       WEBMAIL_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
 
@@ -295,7 +305,7 @@ includes:
       # Overridable so prod can be exercised locally (ADMIN_MODE=prod chore …);
       # dev is what the stack runs by default.
       ADMIN_MODE: '{{.ADMIN_MODE | default "dev"}}'
-      ADMIN_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      ADMIN_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       ADMIN_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       ADMIN_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
 
@@ -814,7 +824,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test
       - task: test:contract-mtls
 
   test:contract-owner-key:
@@ -836,12 +846,12 @@ tasks:
         add)
           # The documented operator action; only the public key crosses.
           python3 -B tests/contract/owner_key.py new |
-            docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./cmd/api owner-key add > "$registered"
+            docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_API_EXEC:-go run ./cmd/api} owner-key add > "$registered"
           ;;
         revoke)
           # Revoked, the key opens nothing, and the seed is deleted.
           fingerprint="$(python3 -c 'import json,sys; [f] = json.load(open(sys.argv[1]))["fingerprints"]; print(f)' "$registered")"
-          docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./cmd/api owner-key revoke --fingerprint "$fingerprint" >/dev/null
+          docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_API_EXEC:-go run ./cmd/api} owner-key revoke --fingerprint "$fingerprint" >/dev/null
           rm -f -- .cache/contract/owner-key.json "$registered"
           ;;
         *)
@@ -863,7 +873,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --held-mail-only
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --held-mail-only
 
   test:contract-queue-entry-fixture:
     desc: Create one disposable held queue target without changing other contract fixtures
@@ -878,7 +888,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --queue-entry-only
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --queue-entry-only
 
   test:contract-mtls:
     desc: Copy the gateways' internal mTLS certificates for the contract run's internal routes (vertrag.yml endpoints)
@@ -910,7 +920,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --retry-only
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --retry-only
 
   test:contract-report-targets:
     desc: 'Top up the held mail a report-only phase consumes (chore test:contract-report-targets -- authorization|ownership); no gate calls this'
@@ -925,7 +935,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --report-targets={{.CLI_ARGS}}
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --report-targets={{.CLI_ARGS}}
 
   test:contract-domain-tenants:
     desc: Prepare the domain administrators of the ownership phase on the disposable topology
@@ -942,7 +952,7 @@ tasks:
           exit 1
         fi
         mkdir -p .cache/contract
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --domain-tenants > .cache/contract/domain-tenants.log
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --domain-tenants > .cache/contract/domain-tenants.log
         sed -n 's/^DOMAIN_TENANTS=//p' .cache/contract/domain-tenants.log > .cache/contract/domain-tenants.json
         test -s .cache/contract/domain-tenants.json
 
@@ -961,7 +971,7 @@ tasks:
           exit 1
         fi
         mkdir -p .cache/contract
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/api-key-fixture.log
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --api-keys > .cache/contract/api-key-fixture.log
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/api-key-fixture.log > .cache/contract/api-key-fixture.json
         python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" --fixture .cache/contract/api-key-fixture.json
 
@@ -982,7 +992,7 @@ tasks:
         # A fixture is good for one run, and an earlier run's results are not this one's.
         rm -rf "${CONTRACT_LIVE_PROOFS:-.cache/contract/live-proofs}"
         mkdir -p .cache/contract
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/live-proofs-api-key.log
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --api-keys > .cache/contract/live-proofs-api-key.log
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/live-proofs-api-key.log > .cache/contract/live-proofs-api-key.json
         owner=1
         cleanup_owner() {
@@ -1013,7 +1023,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --mfa-admin
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --mfa-admin
         python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}"
 
   test:contract-delivery-recipient:
@@ -1029,7 +1039,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --delivery-recipient
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --delivery-recipient
 
   test:contract-link-fixture:
     desc: Prepare the generated link proof only after account-creation probes
@@ -1044,7 +1054,7 @@ tasks:
           echo "contract fixtures require the disposable restmail.test config" >&2
           exit 1
         fi
-        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --link-account-only
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --link-account-only
 
   test:contract-invitation-fixture:
     desc: Prepare a fresh disposable account for an unchanged generated invitation token
@@ -1062,7 +1072,7 @@ tasks:
         # comes in CONTRACT_INVITATION_REQUEST, and the fixture reads it on stdin.
         [ -n "${CONTRACT_INVITATION_REQUEST:-}" ] || { echo "CONTRACT_INVITATION_REQUEST names no token" >&2; exit 1; }
         printf '%s' "$CONTRACT_INVITATION_REQUEST" |
-          docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --invitation-probe
+          docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --invitation-probe
 
   test:e2e:
     desc: 'Run e2e tests against an already-running topology (use `chore e2e` to also bring it up + tear down)'
@@ -1212,6 +1222,7 @@ tasks:
       # signing/publishing under the wrong selector.
       - task: instance:dkim:check
         vars: {CONFIG: '{{.TOPOLOGY_CONFIG | default "restmail.test"}}'}
+      - python3 -B scripts/topology_storage.py --label "$RESTMAIL_LABEL"
 
   e2e:instances:
     desc: Start all three instances together; finish only when every instance answers healthy
@@ -1508,7 +1519,7 @@ tasks:
   db:migrate:
     desc: Run database migrations for the instance (executed inside the api container)
     cmds:
-      - docker exec {{.RESTMAIL_PROJECT}}-api go run ./cmd/migrate
+      - docker exec {{.RESTMAIL_PROJECT}}-api ${RESTMAIL_MIGRATE_EXEC:-go run ./cmd/migrate}
 
   db:seed:
     desc: Seed the selected CONFIG's database with test data (fixture users under its domain)
@@ -1520,7 +1531,7 @@ tasks:
       - |
         docker exec -e SEED_DOMAIN={{.RESTMAIL_HOSTNAME}} \
           {{if .RESTMAIL_SEED_SERVED_DOMAINS}}-e SEED_SERVED_DOMAINS="{{.RESTMAIL_SEED_SERVED_DOMAINS}}" \
-          {{end}}{{.RESTMAIL_PROJECT}}-api go run ./cmd/seed
+          {{end}}{{.RESTMAIL_PROJECT}}-api ${RESTMAIL_SEED_EXEC:-go run ./cmd/seed}
 
   db:reset:
     desc: Drop the postgres data volume, recreate, then seed (destructive)
@@ -2207,7 +2218,7 @@ tasks:
         # manifest — dkim-provision generates it and installs it via the admin
         # API here at runtime.
         docker exec {{.RESTMAIL_PROJECT}}-api \
-          go run ./cmd/instance dkim-provision \
+          ${RESTMAIL_INSTANCE_EXEC:-go run ./cmd/instance} dkim-provision \
             --domain {{.RESTMAIL_HOSTNAME}} \
             --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
             {{if .RESTMAIL_DKIM_SELECTOR}}--selector {{.RESTMAIL_DKIM_SELECTOR}}{{end}} \
@@ -2241,7 +2252,7 @@ tasks:
           bits=$(printf '%s' "$line" | cut -f4)
           slug=$(echo "$name" | cut -d. -f1)
           docker exec {{.RESTMAIL_PROJECT}}-api \
-            go run ./cmd/instance dkim-provision \
+            ${RESTMAIL_INSTANCE_EXEC:-go run ./cmd/instance} dkim-provision \
               --domain "$name" \
               --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
               ${sel:+--selector "$sel"} ${bits:+-bits "$bits"} \
@@ -2262,13 +2273,13 @@ tasks:
       ADMIN_PASS: '{{.ADMIN_PASS | default "admin123!@"}}'
     cmds:
       # Run inside the api container so the API is reachable at localhost:8080
-      # (works for mailnet-only instances) and the manifest is on the shared repo
-      # mount. Exits non-zero — failing the task — on any selector drift.
+      # (works for mailnet-only instances). Stream the host's manifest so the
+      # prebuilt test image needs no source mount. Any selector drift fails.
       - |
-        docker exec {{.RESTMAIL_PROJECT}}-api \
-          go run ./cmd/instance dkim-check \
+        docker exec -i {{.RESTMAIL_PROJECT}}-api \
+          ${RESTMAIL_INSTANCE_EXEC:-go run ./cmd/instance} dkim-check \
             --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
-            {{.CONFIG_DIR}}/manifest.yml
+            /dev/stdin < {{.CONFIG_DIR}}/manifest.yml
 
   # ── Bring-up ──
 

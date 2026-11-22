@@ -51,7 +51,7 @@ tasks:
         # container is still given the strictest profile in the stack:
         #   * no-new-privileges + drop ALL capabilities (binds the unprivileged
         #     :3100, needs none) — no way to gain privilege from a filter.
-        #   * read-only root filesystem with a small noexec/nosuid tmpfs for the
+        #   * read-only root filesystem with a disk-backed volume for the
         #     only writable path a filter could need (/tmp scratch).
         #   * tight pid/mem/cpu ceilings to bound a runaway or abusive filter
         #     (each script also has its own QuickJS memory limit).
@@ -71,7 +71,7 @@ tasks:
         # startup so the API keeps using the testbed-only DNS resolver.
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
-          --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+          --read-only $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.JS_FILTER_CONTAINER_NAME}}-tmp 10001 1777 /tmp) \
           --pids-limit 64 --memory 256m --cpus 0.5"
         mkdir -p {{.ROOT_DIR}}/.cache
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.JS_FILTER_CONTAINER_NAME}}.secrets.env"

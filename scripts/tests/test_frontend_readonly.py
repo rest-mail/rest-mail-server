@@ -34,7 +34,7 @@ with open(os.environ["CAPTURE"], "a") as output:
                     # The final literal block contains the launch for both
                     # modes; the preceding Task deps step runs separately.
                     script = textwrap.dedent(up.split("      - |\n")[-1])
-                    values = {app.upper() + "_MODE": mode}
+                    values = {app.upper() + "_MODE": mode, "TASKFILE_DIR": str(ROOT / "tasks")}
                     script = re.sub(r"{{\.(\w+)}}", lambda match: values.get(
                         match[1], "fixture-" + match[1].lower()), script)
                     self.assertNotIn("{{", script)
@@ -45,8 +45,9 @@ with open(os.environ["CAPTURE"], "a") as output:
                                             env=env, text=True, capture_output=True, timeout=600)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     calls = [json.loads(line) for line in capture.read_text().splitlines()]
-                    self.assertEqual(len(calls), 1)
-                    args = calls[0]
+                    launches = [args for args in calls if args[:2] == ["run", "-d"]]
+                    self.assertEqual(len(launches), 1)
+                    args = launches[0]
                     self.assertEqual(args[:2], ["run", "-d"])
                     self.assertIn("no-new-privileges:true", args)
                     self.assertEqual(args[args.index("--cap-drop") + 1], "ALL")
@@ -55,10 +56,9 @@ with open(os.environ["CAPTURE"], "a") as output:
                     self.assertEqual(args[args.index("--cpus") + 1], "1.5")
                     if mode == "dev":
                         self.assertIn("--read-only", args)
-                        self.assertEqual(args[args.index("--tmpfs") + 1],
-                                         "/tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777")
+                        self.assertNotIn("--tmpfs", args)
                         mounts = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
-                        self.assertEqual(mounts, [f"{temp}/{app}:/app",
+                        self.assertEqual(mounts, [f"fixture-{app}_container_name-tmp:/tmp", f"{temp}/{app}:/app",
                                                  f"fixture-{app}_modules_volume:/app/node_modules"])
                         self.assertIn(f"docker-proxy.{app}.websocket=true", args)
                         self.assertIn(f"VITE_BASE_PATH=fixture-{app}_base_path", args)

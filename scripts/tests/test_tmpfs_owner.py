@@ -63,7 +63,7 @@ class TmpfsOwner(unittest.TestCase):
                 self.assertIn("usage", result.stderr)
 
     def test_no_tmpfs_names_its_owner_directly(self):
-        """Every owned tmpfs asks the helper, so it works on both engines."""
+        """Service scratch uses the disk helper, never engine-specific tmpfs ownership."""
         paths = [*ROOT.glob("tasks/*.yml"), *ROOT.glob(".github/workflows/*.yml"), ROOT / "chores.yml"]
         users = 0
         for path in paths:
@@ -73,16 +73,18 @@ class TmpfsOwner(unittest.TestCase):
                 if "--tmpfs" in line:
                     with self.subTest(path=path.name, line=number):
                         self.assertNotRegex(line, r"\b[ug]id=")
-                if "tmpfs-owner.sh" in line:
+                if "writable-volume.sh" in line:
                     users += 1
-        self.assertGreaterEqual(users, 4)
+        self.assertGreaterEqual(users, 7)
 
     def test_gateway_dev_tmpfs_keeps_mode_0700(self):
+        """The replacement disk mount preserves Air's private owner and permissions."""
         for service in ("imap-gateway", "pop3-gateway", "smtp-gateway"):
             with self.subTest(service=service):
                 source = (ROOT / "tasks" / f"{service}.yml").read_text()
-                self.assertIn('TMPFS_OWNER=$("{{.TASKFILE_DIR}}/tmpfs-owner.sh" 10001)', source)
-                self.assertRegex(source, re.escape("--tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,$TMPFS_OWNER"))
+                prefix = service.upper().replace("-", "_")
+                self.assertIn(f'writable-volume.sh" {{{{.{prefix}_CONTAINER_NAME}}}}-air 10001 0700 /app/tmp', source)
+                self.assertNotIn("--tmpfs", source)
 
 
 if __name__ == "__main__":

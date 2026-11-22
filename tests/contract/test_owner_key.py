@@ -183,8 +183,8 @@ class TheRunRegistersItForTheAuthorizationPhaseOnly(unittest.TestCase):
         task = task[:task.index("\n  test:contract-held-mail-fixture:\n")]
         self.assertIn('"$CONTRACT_FIXTURE_CONFIG" != "restmail.test"', task)
         self.assertIn("python3 -B tests/contract/owner_key.py new |", task)
-        self.assertIn("go run ./cmd/api owner-key add", task)
-        self.assertIn("go run ./cmd/api owner-key revoke --fingerprint", task)
+        self.assertIn("${RESTMAIL_API_EXEC:-go run ./cmd/api} owner-key add", task)
+        self.assertIn("${RESTMAIL_API_EXEC:-go run ./cmd/api} owner-key revoke --fingerprint", task)
         self.assertIn("rm -f -- .cache/contract/owner-key.json", task)
 
 

@@ -31,7 +31,7 @@ class DevReadonlyTests(unittest.TestCase):
             prefix + "_MODE": mode,
             prefix + "_INTERNAL_MTLS": "true",
             prefix + "_API_BASE_URL": "http://192.0.2.20:8080/restmail",
-            # Only the contract fault run builds with tags, and only in dev.
+            # Only the contract fault run builds with tags.
             "API_BUILD_TAGS": "",
             prefix + "_DB_PASS": "fixture-password",
             prefix + "_MASTER_KEY": "fixture-master-key",
@@ -151,20 +151,19 @@ elif args[0] == "inspect":
                     dev, dev_stage = self.launch(service, "dev", directory)
                     prod, prod_stage = self.launch(service, "prod", directory)
                 uid = 0 if service == "api" else 10001
-                # Root owns a tmpfs by default, and podman refuses uid=0,gid=0.
-                owner = "" if uid == 0 else f",uid={uid},gid={uid}"
-                # Off unless a run asks: a person's dev containers keep the bounded tmpfs.
-                self.assertNotIn("/tmp/go-build-cache", [arg.split(":", 1)[-1] for arg in dev["args"]])
-                # A CI run keeps the cache in a volume for each user, over that tmpfs (#1896).
+                prefix = service.replace("-", "_")
+                self.assertIn(f"fixture-{prefix}_project-devcache-{uid}:/cache", dev["args"])
+                self.assertNotIn("--tmpfs", dev["args"])
                 cached, _ = self.launch(service, "dev", directory, RESTMAIL_DEV_GOCACHE_VOLUME="fixture-cache")
-                self.assertIn(f"fixture-cache-{uid}:/tmp/go-build-cache", cached["args"])
+                self.assertIn(f"fixture-cache-{uid}:/cache", cached["args"])
                 prod_cached, _ = self.launch(service, "prod", directory, RESTMAIL_DEV_GOCACHE_VOLUME="fixture-cache")
                 self.assertEqual(prod_cached["args"], prod["args"])
                 flags = shlex.split(f"""--read-only -v {directory}:/app
-                    --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700{owner}
-                    --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777
-                    -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod
-                    -e GOCACHE=/tmp/go-build-cache
+                    -v fixture-{prefix}_container_name-tmp:/tmp
+                    -v fixture-{prefix}_container_name-air:/app/tmp
+                    -v fixture-{prefix}_project-devcache-{uid}:/cache
+                    -e GOPATH=/cache/go -e GOMODCACHE=/cache/go/pkg/mod
+                    -e GOCACHE=/cache/build
                     -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct""")
                 start = dev["args"].index("--read-only")
                 self.assertEqual(dev["args"][start : start + len(flags)], flags)
@@ -176,6 +175,10 @@ elif args[0] == "inspect":
                 )
                 self.assertNotIn("--read-only", prod["args"])
                 self.assertNotIn("--tmpfs", prod["args"])
+                topology, _ = self.launch(service, "prod", directory, RESTMAIL_TOPOLOGY_STORAGE="true")
+                self.assertIn("--read-only", topology["args"])
+                self.assertNotIn("--tmpfs", topology["args"])
+                self.assertIn(f"fixture-{prefix}_container_name-tmp:/tmp", topology["args"])
                 for call in (dev, prod):
                     args = call["args"]
                     self.assertIn(

@@ -189,7 +189,7 @@ class ProbeConfig(unittest.TestCase):
             phase.index("python3 -B tests/contract/probes.py"),
         )
         chores = (ROOT / "chores.yml").read_text()
-        self.assertIn("go run ./tests/contract/fixtures --test-domain=restmail.test --delivery-recipient", chores)
+        self.assertIn("${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --delivery-recipient", chores)
 
     def test_the_held_snooze_date_is_in_the_future_the_server_requires(self):
         until = datetime.fromisoformat(

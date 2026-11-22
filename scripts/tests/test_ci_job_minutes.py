@@ -50,20 +50,24 @@ class DevGoCache(unittest.TestCase):
     def test_a_new_volume_is_handed_to_its_user_and_only_the_flag_is_printed(self):
         result = self.run_script("10001")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "-v fixture-10001:/tmp/go-build-cache\n")
+        self.assertEqual(result.stdout, "-v fixture-10001:/cache\n-e GOPATH=/cache/go -e GOMODCACHE=/cache/go/pkg/mod -e GOCACHE=/cache/build\n")
         calls = self.calls.read_text().splitlines()
         self.assertIn("volume create --label rest-mail.run=local fixture-10001", calls)
-        self.assertIn("run --rm --label rest-mail.run=local -v fixture-10001:/cache alpine:3.20 chown 10001:10001 /cache", calls)
+        self.assertIn('run --rm --label rest-mail.run=local --network none -v fixture-10001:/writable alpine:3.20 sh -ec chown "$1:$1" /writable; chmod "$2" /writable _ 10001 0700', calls)
 
     def test_a_volume_in_use_is_left_alone(self):
         result = self.run_script("0", volume_exists=True)
-        self.assertEqual(result.stdout, "-v fixture-0:/tmp/go-build-cache\n")
+        self.assertEqual(result.stdout, "-v fixture-0:/cache\n-e GOPATH=/cache/go -e GOMODCACHE=/cache/go/pkg/mod -e GOCACHE=/cache/build\n")
         self.assertEqual(self.calls.read_text().splitlines(), ["volume inspect fixture-0"])
 
     def test_it_needs_a_user_and_a_volume(self):
+        """A user is required; an omitted volume now selects a disk-backed default."""
         with patch.dict(os.environ, {"RESTMAIL_DEV_GOCACHE_VOLUME": "inherited-cache"}):
             self.assertEqual(self.run_script().returncode, 2)
-            self.assertNotEqual(self.run_script("0", volume="").returncode, 0)
+            result = self.run_script("0", volume="")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("-v restmail-local-devcache-0:/cache\n", result.stdout)
+            self.assertNotIn("--tmpfs", result.stdout)
 
 
 if __name__ == "__main__":
