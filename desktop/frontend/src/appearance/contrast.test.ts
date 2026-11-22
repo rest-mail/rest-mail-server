@@ -10,11 +10,12 @@ describe.each(builtInThemes)('$name contrast contract (WCAG AA)', theme => {
     }
     it(`control border / ${surface} ≥ 3:1`, () => expect(contrast(palette.border, palette[surface])).toBeGreaterThanOrEqual(3));
   }
-  for (const [text, surface] of [['sidebarInk', 'sidebar'], ['sidebarMuted', 'sidebar'], ['accentInk', 'accent'], ['selectionInk', 'selection'], ['badgeInk', 'badge']] as const) {
+  for (const [text, surface] of [['sidebarInk', 'sidebar'], ['sidebarMuted', 'sidebar'], ['sidebarSelectionInk', 'sidebarSelection'], ['accentInk', 'accent'], ['selectionInk', 'selection'], ['badgeInk', 'badge']] as const) {
     it(`${text} / ${surface} ≥ 4.5:1`, () => expect(contrast(palette[text], palette[surface])).toBeGreaterThanOrEqual(4.5));
   }
   it('unread indicator / list ≥ 3:1', () => expect(contrast(palette.unread, palette.list)).toBeGreaterThanOrEqual(3));
   it('brace / sidebar ≥ 3:1', () => expect(contrast(palette.brace, palette.sidebar)).toBeGreaterThanOrEqual(3));
+  it('selected folder / sidebar ≥ 3:1', () => expect(contrast(palette.sidebarSelection, palette.sidebar)).toBeGreaterThanOrEqual(3));
 });
 
 it('keeps every palette/type/shape combination independent across all 1,000 remixes', () => {

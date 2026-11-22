@@ -13,6 +13,10 @@ describe('desktop appearance engine', () => {
     expect(document.documentElement.style.getPropertyValue('--radius')).toBe('0px');
     expect(document.documentElement.style.getPropertyValue('--desktop-row-height')).toBe('48px');
     expect(contrast(resolveTheme(appearance.get().spec).colours.accentInk, '#ff0088')).toBeGreaterThanOrEqual(4.5);
+    appearance.override({ accent: '#000000' });
+    const colours = resolveTheme(appearance.get().spec).colours;
+    expect(contrast(colours.sidebarSelection, colours.sidebar)).toBeGreaterThanOrEqual(3);
+    expect(contrast(colours.sidebarSelectionInk, colours.sidebarSelection)).toBeGreaterThanOrEqual(4.5);
   });
   it('isolates user and host preferences, restores saved remixes, and retains sign-in appearance', () => {
     appearance.override({ reading: 'Newsreader', radius: 17 });
