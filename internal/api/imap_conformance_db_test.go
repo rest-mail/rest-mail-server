@@ -615,6 +615,13 @@ func TestIMAPAuthenticateMalformedBase64(t *testing.T) {
 	g := newIMAPConformanceGateway(t, false, false)
 	for _, initial := range []bool{false, true} {
 		t.Run(fmt.Sprintf("initial=%t", initial), func(t *testing.T) {
+			// Sessions left open by an earlier subtest close asynchronously
+			// after LOGOUT, so count only sessions this subtest's malformed
+			// exchanges could have created (#2215).
+			var before []uint
+			if err := g.db.Model(&models.GatewaySession{}).Pluck("id", &before).Error; err != nil {
+				t.Fatal(err)
+			}
 			s := g.connect(t, g.address, true)
 			s.line()
 			for _, test := range []struct{ payload, status string }{
@@ -639,7 +646,11 @@ func TestIMAPAuthenticateMalformedBase64(t *testing.T) {
 				requireIMAPStatus(t, s, "SELECT INBOX", "NO")
 			}
 			var sessions int64
-			if err := g.db.Model(&models.GatewaySession{}).Where("closed_at IS NULL").Count(&sessions).Error; err != nil || sessions != 0 {
+			created := g.db.Model(&models.GatewaySession{})
+			if len(before) != 0 {
+				created = created.Where("id NOT IN ?", before)
+			}
+			if err := created.Count(&sessions).Error; err != nil || sessions != 0 {
 				t.Fatalf("malformed AUTH created sessions: %d, %v", sessions, err)
 			}
 			payload := base64.StdEncoding.EncodeToString([]byte("\x00" + g.gatewayFixture.address + "\x00" + g.app.Password))
