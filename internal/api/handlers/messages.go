@@ -3032,9 +3032,15 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		h.recordTrace(ctx, buildTrace(*deliveredTrace))
 	}
 
+	h.notifyArrival(ctx, &msg)
+
+	return &msg, nil
+}
+
+func (h *MessageHandler) notifyArrival(ctx context.Context, msg *models.Message) {
 	// ── SSE notifications ────────────────────────────────────────────
 	if h.broker != nil {
-		h.broker.Publish(ctx, mailbox.ID, SSEEvent{
+		h.broker.Publish(ctx, msg.MailboxID, SSEEvent{
 			Type: "new_message",
 			Data: map[string]interface{}{
 				"message_id": msg.ID,
@@ -3045,8 +3051,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		})
 		var unreadCount int64
 		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ? AND imap_deleted = false",
-			mailbox.ID, "INBOX", false, false).Count(&unreadCount)
-		h.broker.Publish(ctx, mailbox.ID, SSEEvent{
+			msg.MailboxID, "INBOX", false, false).Count(&unreadCount)
+		h.broker.Publish(ctx, msg.MailboxID, SSEEvent{
 			Type: "folder_update",
 			Data: map[string]interface{}{
 				"folder":       "INBOX",
@@ -3057,10 +3063,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// ── Push to phones: only that there is mail, never what it is ───
 	// A message copied in already read (an IMAP COPY or APPEND) is not news.
 	if h.newMail != nil && msg.Folder == "INBOX" && !msg.IsRead {
-		h.newMail.NewMail(mailbox.ID)
+		h.newMail.NewMail(msg.MailboxID)
 	}
-
-	return &msg, nil
 }
 
 func (h *MessageHandler) resolveAccountMailbox(accountID uint, claims *auth.Claims, capability string) (uint, error) {

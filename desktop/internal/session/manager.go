@@ -378,7 +378,7 @@ func (manager *Manager) DoRequest(ctx context.Context, incoming *http.Request) (
 		return nil, errors.New("invalid API request")
 	}
 	request.Header.Set("Authorization", "Bearer "+manager.access)
-	for _, header := range []string{"Content-Type", "Accept", "Idempotency-Key", "Range", "If-Range"} {
+	for _, header := range []string{"Content-Type", "Accept", "Idempotency-Key", "Range", "If-Range", "Last-Event-ID"} {
 		for _, value := range incoming.Header.Values(header) {
 			request.Header.Add(header, value)
 		}

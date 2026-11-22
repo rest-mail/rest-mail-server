@@ -26,6 +26,9 @@ func TestProxyStreamsEventsWhileStreamIsOpen(t *testing.T) {
 		if request.Header.Get("Accept") != "text/event-stream" {
 			t.Errorf("proxy dropped the event-stream Accept header: %q", request.Header.Get("Accept"))
 		}
+		if request.Header.Get("Last-Event-ID") != "73" {
+			t.Errorf("proxy dropped the replay cursor: %q", request.Header.Get("Last-Event-ID"))
+		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		_, _ = fmt.Fprintf(writer, "event: message.new\ndata: {\"folder\":\"INBOX\",\"token\":%q,\"note\":%q}\n\n", accessSecret, "seen "+accessSecret)
 		writer.(http.Flusher).Flush()
@@ -48,6 +51,7 @@ func TestProxyStreamsEventsWhileStreamIsOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.Header.Set("Accept", "text/event-stream")
+	request.Header.Set("Last-Event-ID", "73")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)

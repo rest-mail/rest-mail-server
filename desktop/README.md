@@ -194,6 +194,58 @@ Regenerate TypeScript bindings after changing a registered Go service:
 cd desktop && wails3 generate bindings -clean=true -ts -i
 ```
 
+## Local mail delivery stack
+
+On macOS with Docker Desktop, Go, and the existing desktop fixture database:
+
+```sh
+chore desktop:devstack:up
+chore desktop:devstack:down
+```
+
+Sign the desktop into **http://localhost:18081** (use `localhost`, not an HTTP
+IP literal: the desktop permits HTTP only for localhost). The API itself binds
+only `127.0.0.1:18081`. The original API at `127.0.0.1:18080` stays running and
+is never stopped or replaced. Both APIs retain the existing `pg-desktop-dev`
+database on host port **55480**, never host port 5432.
+
+The smallest complete delivery path needs an API, the SMTP gateway's queue
+worker, and its HTTPS front, not the full reference-server topology. These three
+containers have their own labelled Docker network. `desktop.test` resolves only
+inside that network to the SMTP gateway and its HTTPS front, so ordinary queued
+mail follows real SMTP discovery and verified RESTMAIL HTTPS delivery back into
+the API. No host DNS or production delivery code is changed. Only the API's HTTP
+port is published, on loopback; SMTP, HTTPS and the internal API stay private to
+the network, and gateway metrics/submission listeners are disabled.
+
+`up` builds the API and gateway from this checkout and generates certificates
+with the repository's `go run ./cmd/instance mtls-issue` command. Delivery and
+submission use separate client certificates, and the internal API requires mTLS.
+The generated CA is trusted only by this development stack. The private network
+is the explicit trusted peer for RESTMAIL deliveries. The script activates the
+existing `desktop.test` domain with a development certificate if necessary and
+disables **only its inbound greylist filter**, avoiding the default five-minute
+delay between local test accounts; other pipeline filters remain intact. These
+two fixture configuration changes persist after `down`.
+
+The prerequisite fixture files under `/tmp/restmail-devserver` are reused, never
+rewritten: `secrets.env` (JWT/master keys), `admin.pw`, `totp.secret`, and
+`setup-user.pw`. No reseeding, password rotation, or setup-account enrollment is
+performed. The admin authenticates with its existing password and TOTP to
+configure the fixture; its existing grants also allow API sends from
+`setup@desktop.test` without completing that account's first-run setup. Use
+`/tmp/restmail-devserver/seed.py` only when intentionally creating a new fixture,
+not on each stack start.
+
+Resource IDs, certificates, binaries and the mode-0600 environment file live in
+`/tmp/restmail-desktop-devstack` (mode 0700). Repeated `up` is a no-op for a live
+stack. `down` checks ownership labels and stops/removes only the recorded container
+and network IDs; it never stops PostgreSQL, another REST Mail process, or removes
+database volumes. Keep the state directory so its CA survives restarts. Optional
+overrides must be passed consistently, e.g.
+`chore desktop:devstack:up -- --state /tmp/my-desktop-stack --port 18082`.
+After changing stack code, run `down`, then `up` to rebuild.
+
 ## Desktop automation (MCP)
 
 Development builds enable the embedded MCP server automatically. Production builds
@@ -250,6 +302,9 @@ RESTMAIL_DESKTOP_INSTANCE=polish desktop/bin/RESTMail.app/Contents/MacOS/RESTMai
 
 The name is lowercase letters, digits and dashes, up to 32 characters; anything
 else is ignored and the launch joins the single running copy.
+Named test copies also use a separate OS keychain service,
+`REST Mail test copy <name>`, for REST Mail sessions and IMAP account metadata and
+passwords. They never restore, refresh or replace the installed copy's credentials.
 
 The equivalent setting is `RESTMAIL_DESKTOP_MCP_DISCOVERY=/absolute/path.json`.
 Use that exact file when reading the URL and token; it is removed on orderly
@@ -296,10 +351,26 @@ or quitting asks to save it through the existing draft API. A failed save keeps
 the tab open. Send closes its tab and refreshes the mailbox. Reader and compose
 content use the full pane width; these layout changes are desktop-only.
 
-The Dock badge shows unread Inbox messages. New Inbox events use native macOS
-notifications after authorization; only sender and subject are included. Clicking
-a notification opens its message. The focused reader's current message is never
-notified, and browser notifications are disabled in the desktop app.
+The Dock badge equals the active account's unread Inbox count. After startup or
+sign-in, once folders load and notification permission resolves, one notification
+says “You have N unread messages” (nothing is posted for zero). New Inbox arrivals
+are coalesced in a fixed two-second window: one message shows its sender and
+subject and opens that message when clicked; several show “N new messages” and
+up to three distinct first senders, and open the Inbox. Unread summaries also
+open the Inbox. Notification bodies never contain mail body text or HTML.
+Messages already visible in the focused reader are excluded at arrival and again
+before posting. Duplicate SSE deliveries are counted once; sign-out, account
+switching and teardown cancel pending batches. Native authorization is checked
+before every post, and browser notifications remain disabled in the desktop app.
+Named test copies log successful native notification payloads and Dock badge
+updates, allowing verification when screen sharing suppresses macOS banners.
+
+Desktop account events use a Go-owned SSE connection and Wails runtime events,
+not EventSource over the webview's custom asset scheme, which can buffer until
+the response closes. The bridge keeps credentials in Go, sanitizes event data,
+reconnects with Last-Event-ID, and refreshes folders on reconnect. Subscriptions
+are cancelled on component teardown, sign-out and application shutdown. Browser
+webmail continues to use its native EventSource connection.
 
 Drop files anywhere in the signed-in window to attach them to the active compose
 tab, or create a new tab when Mail is active. The Attach picker follows the same

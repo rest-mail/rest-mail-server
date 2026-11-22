@@ -74,13 +74,21 @@ func main() {
 	imports := newImports(sessionManager)
 	defer imports.service.Close()
 	options.Services = append(options.Services, application.NewService(imports))
+	mailStreams := &MailStreams{manager: sessionManager}
 	application.RegisterEvent[SessionStatus]("session:changed")
 	options.Services = append(options.Services, application.NewService(NewSession(sessionManager)))
 	options.Services = append(options.Services, application.NewService(&Accounts{manager: sessionManager}))
+	options.Services = append(options.Services, application.NewService(mailStreams))
 	options.Assets.Middleware = apiproxy.New(sessionManager)
 	// End desktop core.
 	app := application.New(options)
 	app.OnShutdown(sessionManager.Close)
+	app.OnShutdown(mailStreams.Close)
+	app.Event.On("session:changed", func(event *application.CustomEvent) {
+		if status, ok := event.Data.(SessionStatus); ok && !status.SignedIn {
+			mailStreams.Close()
+		}
+	})
 	nativeUI.install(app)
 
 	// Embedded MCP service registration.

@@ -783,6 +783,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			continue
 		}
 
+		if h.localDelivery != nil {
+			h.localDelivery.notifyArrival(r.Context(), &msg)
+		}
+
 		// The trace links to the first delivered recipient row (one trace per
 		// pipeline run; a RESTMAIL delivery may fan out to several mailboxes).
 		if verdict.delivered != nil && verdict.delivered.MessageID == nil {
