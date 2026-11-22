@@ -2,6 +2,7 @@ import ReactDOM from 'react-dom/client';
 import { configureMailPlatform } from '@webmail/platform';
 import { session, runtimeEvents, nativeFiles, identity } from './session';
 import { createDesktopTransport } from './transport';
+import { openNativeMailStream } from './mailStream';
 import { prepareScreenshotDocument, registerUIBridge } from './bridge';
 import './desktop.css';
 
@@ -15,6 +16,7 @@ async function launch() {
   configureMailPlatform({
     desktop: true, fetch: transport, streamURL: mock?.streamURL,
     importThunderbird: () => window.dispatchEvent(new Event('desktop:import-thunderbird')),
+    openStream: mock ? undefined : openNativeMailStream,
     serverHost: () => serverHost,
     restoreSession: async () => {
       const status = await binding.Status();

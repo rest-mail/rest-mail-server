@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
+	"os"
 	"sync"
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/attachments"
@@ -30,19 +30,21 @@ type ComposeStatus struct {
 }
 
 type Native struct {
-	app           *application.App
-	dock          *dock.DockService
-	notifications *notifications.NotificationService
-	mutex         sync.Mutex
-	states        map[string]native.State
-	compose       map[string]*composeTab
-	closed        map[string]bool
-	items         map[string]*application.MenuItem
-	settings      *application.MenuItem
-	quitting      bool
-	notified      map[int]bool
-	files         attachments.Holder
-	dropSequence  uint64
+	app            *application.App
+	dock           *dock.DockService
+	notifications  *notifications.NotificationService
+	mutex          sync.Mutex
+	states         map[string]native.State
+	compose        map[string]*composeTab
+	closed         map[string]bool
+	items          map[string]*application.MenuItem
+	settings       *application.MenuItem
+	quitting       bool
+	notified       map[int]bool
+	noticeTargets  map[string]int
+	noticeSequence uint64
+	files          attachments.Holder
+	dropSequence   uint64
 }
 
 func newNative() *Native {
@@ -63,12 +65,9 @@ func (service *Native) ServiceStartup(ctx context.Context, options application.S
 		if result.Error != nil || result.Response.ActionIdentifier != notifications.DefaultActionIdentifier {
 			return
 		}
-		identifier, err := strconv.Atoi(result.Response.ID)
-		if err != nil || identifier <= 0 {
-			return
-		}
 		service.mutex.Lock()
-		valid := service.notified[identifier] && service.states["main"].SignedIn
+		identifier, known := service.noticeTargets[result.Response.ID]
+		valid := known && service.states["main"].SignedIn
 		service.mutex.Unlock()
 		if !valid {
 			return
@@ -76,7 +75,11 @@ func (service *Native) ServiceStartup(ctx context.Context, options application.S
 		if window, exists := service.app.Window.GetByName("main"); exists {
 			window.Show().Restore()
 			window.Focus()
-			service.app.Event.Emit("native:open-message", identifier)
+			if identifier > 0 {
+				service.app.Event.Emit("native:open-message", identifier)
+			} else {
+				service.app.Event.Emit("native:open-inbox")
+			}
 		}
 	})
 	return nil
@@ -171,6 +174,7 @@ func (service *Native) SyncState(name string, state native.State) {
 	service.states[name] = state
 	if name == "main" && !state.SignedIn {
 		service.notified = make(map[int]bool)
+		service.noticeTargets = nil
 		for draft := range service.compose {
 			service.files.Clear(draft)
 		}
@@ -346,6 +350,9 @@ func (service *Native) SetUnread(unread int) error {
 		return nil
 	}
 	label := native.BadgeLabel(unread)
+	if os.Getenv("RESTMAIL_DESKTOP_INSTANCE") != "" {
+		log.Printf("Dock badge: unread=%d label=%q", unread, label)
+	}
 	if label == "" {
 		return service.dock.RemoveBadge()
 	}
@@ -360,35 +367,67 @@ func (service *Native) RequestNotificationPermission() (bool, error) {
 }
 
 func (service *Native) NewMail(identifier int, sender string, subject string) error {
-	if identifier <= 0 || service.notifications == nil {
+	return service.NewMailBatch([]native.MailNotice{{ID: identifier, Sender: sender, Subject: subject}})
+}
+
+func (service *Native) NewMailBatch(messages []native.MailNotice) error {
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	window, exists := service.app.Window.GetByName("main")
+	accepted := []native.MailNotice{}
+	seen := map[int]bool{}
+	for _, message := range messages {
+		if !seen[message.ID] && native.ShouldNotify(service.states["main"], message.ID, exists && window.IsFocused(), service.notified[message.ID]) {
+			accepted = append(accepted, message)
+			seen[message.ID] = true
+		}
+	}
+	if len(accepted) == 0 {
 		return nil
 	}
+	posted, err := service.postNotification(native.NewMailNotification(accepted))
+	if posted {
+		for _, message := range accepted {
+			service.notified[message.ID] = true
+		}
+	}
+	return err
+}
+
+func (service *Native) UnreadSummary(unread int) error {
 	service.mutex.Lock()
+	defer service.mutex.Unlock()
 	state := service.states["main"]
-	duplicate := service.notified[identifier]
-	service.mutex.Unlock()
-	window, exists := service.app.Window.GetByName("main")
-	if !native.ShouldNotify(state, identifier, exists && window.IsFocused(), duplicate) {
+	if !state.SignedIn {
 		return nil
+	}
+	window, exists := service.app.Window.GetByName("main")
+	if exists && window.IsFocused() && state.Viewing && state.MessageID > 0 && !state.Read {
+		unread--
+	}
+	_, err := service.postNotification(native.UnreadNotification(unread))
+	return err
+}
+
+func (service *Native) postNotification(notice native.MailNotification) (bool, error) {
+	if service.notifications == nil || notice.Title == "" {
+		return false, nil
 	}
 	allowed, err := service.notifications.CheckNotificationAuthorization()
 	if err != nil || !allowed {
-		return err
+		return false, err
 	}
-	if sender == "" {
-		sender = "Unknown sender"
-	}
-	if subject == "" {
-		subject = "(No subject)"
-	}
-	err = service.notifications.SendNotification(notifications.NotificationOptions{ID: strconv.Itoa(identifier), Title: sender, Body: subject})
+	service.noticeSequence++
+	identifier := fmt.Sprintf("mail-%d", service.noticeSequence)
+	err = service.notifications.SendNotification(notifications.NotificationOptions{ID: identifier, Title: notice.Title, Body: notice.Body})
 	if err == nil {
-		service.mutex.Lock()
-		if len(service.notified) >= 512 {
-			service.notified = make(map[int]bool)
+		if service.noticeTargets == nil {
+			service.noticeTargets = make(map[string]int)
 		}
-		service.notified[identifier] = true
-		service.mutex.Unlock()
+		service.noticeTargets[identifier] = notice.MessageID
+		if os.Getenv("RESTMAIL_DESKTOP_INSTANCE") != "" {
+			log.Printf("Native notification posted: id=%q title=%q body=%q message_id=%d", identifier, notice.Title, notice.Body, notice.MessageID)
+		}
 	}
-	return err
+	return err == nil, err
 }

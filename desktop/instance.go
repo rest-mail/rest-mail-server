@@ -2,15 +2,13 @@ package main
 
 import (
 	"os"
-	"regexp"
-	"strings"
+
+	desktopinstance "github.com/rest-mail/rest-mail-server/desktop/internal/instance"
 )
 
 // isolatedInstanceEnv names a separate, clearly labelled copy of the app for
 // automated testing. It is unset for everyone else, so REST Mail runs once.
 const isolatedInstanceEnv = "RESTMAIL_DESKTOP_INSTANCE"
-
-var instanceNamePattern = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
 
 // singleInstanceID names the lock that keeps one copy of REST Mail running.
 // Opening the app again, from any location, brings the running window forward.
@@ -25,11 +23,7 @@ func singleInstanceID(instance string) string {
 
 // isolatedInstanceName is the validated test instance name, or "" when none.
 func isolatedInstanceName(instance string) string {
-	instance = strings.TrimSpace(instance)
-	if !instanceNamePattern.MatchString(instance) {
-		return ""
-	}
-	return instance
+	return desktopinstance.Name(instance)
 }
 
 func windowTitle(base, instance string) string {

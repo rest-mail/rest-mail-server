@@ -1,8 +1,12 @@
 package session
 
-import "errors"
+import (
+	"errors"
 
-const KeychainService = "REST Mail"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/instance"
+)
+
+var KeychainService = instance.KeychainService()
 
 var ErrSignedOut = errors.New("not signed in")
 

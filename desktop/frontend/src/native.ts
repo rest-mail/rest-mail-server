@@ -7,6 +7,7 @@ import type { RuntimeEvents } from './session';
 import { toast } from 'sonner';
 import { tabs, type HeldAttachment } from './tabs';
 import { layoutPreferences } from './layout';
+import { createMailNotificationBatch } from './notifications';
 
 const invoke = <Result,>(method: string, ...args: unknown[]) => Call.ByName(`main.Native.${method}`, ...args) as Promise<Result>;
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : 'Native action failed');
@@ -46,9 +47,12 @@ export function notificationMetadata(event: SSEEvent) {
   return { id, sender: typeof sender === 'string' ? sender : '', subject: typeof subject === 'string' ? subject : '' };
 }
 
+let notificationBatch: ReturnType<typeof createMailNotificationBatch> | undefined;
+
 export function handleNativeMailEvent(event: SSEEvent) {
   const metadata = notificationMetadata(event);
-  if (metadata) void invoke('NewMail', metadata.id, metadata.sender, metadata.subject).catch(report);
+  const auth = useAuthStore.getState();
+  if (metadata && auth.isAuthenticated && !auth.setupRequired.length) notificationBatch?.add(metadata);
 }
 
 export function runNativeCommand(action: string, windowName = 'main') {
@@ -74,8 +78,18 @@ export function runNativeCommand(action: string, windowName = 'main') {
 
 export function installNative(events: RuntimeEvents, windowName: string) {
   let permissionRequested = false;
+  let permissionReady = false;
+  let permissionAllowed = false;
+  let summaryPending = true;
+  let generation = 0;
+  let disposed = false;
+  let lastAccount: number | null = null;
   let lastUnread = -1;
   let lastState = '';
+  const batch = createMailNotificationBatch(messages => {
+    void invoke('NewMailBatch', messages).catch(report);
+  }, id => document.hasFocus() && tabs.get().active === 'mail' && useUIStore.getState().view === 'mail' && !useMailStore.getState().loadingMessage && useMailStore.getState().selectedMessage?.id === id);
+  if (windowName === 'main') notificationBatch = batch;
   const sync = () => {
     const auth = useAuthStore.getState();
     const mail = useMailStore.getState();
@@ -86,10 +100,31 @@ export function installNative(events: RuntimeEvents, windowName: string) {
     const serialized = JSON.stringify(state);
     if (lastState !== serialized) { lastState = serialized; void invoke('SyncState', windowName, state).catch(report); }
     if (windowName !== 'main') return;
+    if (!signedIn || mail.activeAccountId !== lastAccount) batch.clear();
+    lastAccount = mail.activeAccountId;
     const unread = signedIn ? inboxUnread(mail.folders) : 0;
     if (unread !== lastUnread) { lastUnread = unread; void invoke('SetUnread', unread).catch(report); }
-    if (signedIn && !permissionRequested) { permissionRequested = true; void invoke('RequestNotificationPermission').catch(report); }
-    if (!signedIn) permissionRequested = false;
+    if (signedIn && !permissionRequested) {
+      permissionRequested = true;
+      const requestedGeneration = ++generation;
+      void invoke<boolean>('RequestNotificationPermission').then(allowed => {
+        if (disposed || generation !== requestedGeneration) return;
+        permissionAllowed = allowed;
+        permissionReady = true;
+        sync();
+      }).catch(report);
+    }
+    if (!signedIn) {
+      if (permissionRequested) generation++;
+      permissionRequested = false;
+      permissionReady = false;
+      permissionAllowed = false;
+      summaryPending = true;
+    }
+    if (signedIn && summaryPending && permissionReady && !mail.loadingFolders && mail.folders.some(folder => folder.name.toUpperCase() === 'INBOX')) {
+      summaryPending = false;
+      if (permissionAllowed && unread > 0) void invoke('UnreadSummary', unread).catch(report);
+    }
   };
   const unsubscribe = [
     useAuthStore.subscribe(sync), useMailStore.subscribe(sync), useUIStore.subscribe(sync), tabs.subscribe(sync), layoutPreferences.subscribe(sync),
@@ -112,6 +147,12 @@ export function installNative(events: RuntimeEvents, windowName: string) {
       useUIStore.getState().setView('mail');
       await useMailStore.getState().selectMessage(Number(data));
     }),
+    events.on('native:open-inbox', async () => {
+      if (windowName !== 'main' || !useAuthStore.getState().isAuthenticated) return;
+      tabs.select('mail');
+      useUIStore.getState().setView('mail');
+      await useMailStore.getState().selectFolder('INBOX');
+    }),
   ];
   const focusChanged = () => { queueMicrotask(sync); };
   const keyDown = (event: KeyboardEvent) => {
@@ -124,6 +165,9 @@ export function installNative(events: RuntimeEvents, windowName: string) {
   window.addEventListener('focus', sync);
   sync();
   return () => {
+    disposed = true;
+    batch.clear();
+    if (notificationBatch === batch) notificationBatch = undefined;
     unsubscribe.forEach(stop => stop());
     document.removeEventListener('focusin', focusChanged);
     document.removeEventListener('focusout', focusChanged);

@@ -14,6 +14,7 @@ export interface MailPlatform {
   mailboxActive?: () => boolean;
   fetch?: typeof fetch;
   streamURL?: (url: string) => string;
+  openStream?: (accountId: number, onEvent: (event: SSEEvent) => void) => () => void;
   serverHost?: () => string;
   canSendAttachments?: boolean;
   restoreSession?: () => Promise<(User & { setup_required?: SetupStep[] }) | null>;
