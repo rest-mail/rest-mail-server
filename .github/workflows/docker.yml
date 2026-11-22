@@ -97,8 +97,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          push: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ !startsWith(github.ref, 'refs/tags/v') && steps.meta.outputs.tags || '' }}
+          outputs: ${{ startsWith(github.ref, 'refs/tags/v') && format('type=image,name={0}/{1},push-by-digest=true,name-canonical=true,push=true', env.IMAGE_PREFIX, matrix.image) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           # What the binary reports about itself (internal/version). Without
           # these every image said "dev": the Dockerfile's ARG defaults to it,
@@ -117,6 +118,34 @@ jobs:
           # Dev images from main keep the default (minimal provenance, no SBOM).
           sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
           provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || '' }}
+
+      - name: Record the built registry digest
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          mkdir -p "$RUNNER_TEMP/release-digests"
+          printf '%s\n' "$DIGEST" > "$RUNNER_TEMP/release-digests/$IMAGE.digest"
+
+      - name: Upload the built registry digest
+        id: upload-digest
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-digest-${{ github.run_attempt }}-${{ matrix.image }}
+          path: ${{ runner.temp }}/release-digests/${{ matrix.image }}.digest
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload the built registry digest (second try)
+        if: steps.upload-digest.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-digest-${{ github.run_attempt }}-${{ matrix.image }}
+          path: ${{ runner.temp }}/release-digests/${{ matrix.image }}.digest
+          if-no-files-found: error
+          overwrite: true
 
       # Scan exactly what was pushed: the image by digest, once per platform.
       # Every finding is reported (code scanning on main, the job summary
@@ -202,3 +231,131 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           # Also in the log, where the job's failure points.
           cat trivy-"${IMAGE}"-*.txt 2>/dev/null || true
+
+  release-evidence:
+    name: Release image evidence
+    needs: build-and-push
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-python
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the same-attempt build digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-digest-${{ github.run_attempt }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-digests
+
+      - name: Collect scans and CycloneDX SBOMs from the built images
+        id: collect
+        timeout-minutes: 12
+        run: |
+          project="restmail-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 scripts/release_evidence.py collect --platform linux/amd64 \
+            --directory "$RUNNER_TEMP/release-evidence" --registry-prefix "$IMAGE_PREFIX" \
+            --registry-digests "$RUNNER_TEMP/release-digests" --tag-prefix "$project/" \
+            --label "restmail-release-evidence=$project"
+
+      - name: Probe TLS renewal and the fresh-start baseline
+        if: ${{ !cancelled() && steps.collect.outcome != 'skipped' }}
+        timeout-minutes: 10
+        run: |
+          python3 scripts/release_fresh_start.py --directory "$RUNNER_TEMP/release-evidence" \
+            --project "restmail-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+      - name: Tear down release evidence resources
+        if: ${{ always() }}
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          label="label=restmail-release-evidence=restmail-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          status=0
+          docker ps -aq --filter "$label" | xargs -r docker rm -fv || status=1
+          docker network ls -q --filter "$label" | xargs -r docker network rm || status=1
+          docker volume ls -q --filter "$label" | xargs -r docker volume rm || status=1
+          exit "$status"
+
+      - name: Upload the release image receipt
+        id: upload-receipt
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-image-receipt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-evidence
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload the release image receipt (second try)
+        if: always() && steps.upload-receipt.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-image-receipt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-evidence
+          if-no-files-found: error
+          overwrite: true
+
+  promote-release-images:
+    name: Promote release images
+    needs: [build-and-push, release-evidence]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-python
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the same-attempt build digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-digest-${{ github.run_attempt }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-digests
+
+      - name: Download the same-attempt release image receipt
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-image-receipt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-evidence
+
+      - name: Gate and promote release images
+        env:
+          RELEASE_DIGESTS: ${{ runner.temp }}/release-digests
+          RELEASE_EVIDENCE: ${{ runner.temp }}/release-evidence
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]
+          tag=${GITHUB_REF_NAME#v}
+          tag=${tag%%+*}
+          images=()
+          for file in "$RELEASE_DIGESTS"/*.digest; do
+            name=$(basename "$file" .digest)
+            images+=(--image "$name=$(cat "$file")")
+          done
+          python3 scripts/release_gate.py --evidence-directory "$RELEASE_EVIDENCE" --commit "$GITHUB_SHA" "${images[@]}"
+          for ((index=1; index<${#images[@]}; index+=2)); do
+            name=${images[index]%%=*}
+            digest=${images[index]#*=}
+            docker buildx imagetools create --tag "$IMAGE_PREFIX/$name:$tag" "$IMAGE_PREFIX/$name@$digest"
+          done

@@ -67,6 +67,8 @@ KEPT_HOSTED = {
     ("email-explained.yml", "preflight"): "the only other job uses docker buildx, so nothing to pick for",
     ("email-explained.yml", "publish"): "docker/build-push-action and buildx, which the pool cannot run",
     ("docker.yml", "build-and-push"): "docker/build-push-action and buildx, which the pool cannot run",
+    ("docker.yml", "release-evidence"): "buildx and a live Docker topology, kept off the memory-constrained pool",
+    ("docker.yml", "promote-release-images"): "buildx copies the authorized multi-platform indices",
     ("cluster-e2e.yml", "install"): "kind needs a privileged Docker the pool's podman sidecar does not give; it picks for the rest",
     ("contract-compat.yml", "newest-main"): "the workflow's only job: no earlier job to pick in",
     ("contract-faults.yml", "finding-issues"): "its workflow has no early job to pick in",

@@ -1,9 +1,9 @@
-# Local release-image evidence
+# Release-image evidence
 
-This is the local proof for #2104 AC02 and the inherited #2118 AC04. It builds
-production runtime images, publishes nothing, and changes no release workflow.
-The installed-cluster promotion gate remains `scripts/release_gate.py`; this
-recipe does not claim AC05, AC06, public ACME acceptance, or a release promotion.
+The Docker workflow collects evidence for #2104 AC02 and the inherited AC04
+and uses it to gate versioned image publication. The same checks can run locally
+without publishing anything. This does not run or replace the installed-cluster
+stages, the external fixture TLS topology, or public ACME acceptance.
 
 ## Certificate reload checks
 
@@ -43,6 +43,9 @@ POP3 TLS, SMTP submission TLS and SMTP STARTTLS. Each has five observed phases:
 renewed, missing, repaired, invalid and recovered. Client IMAP 143 and POP3 110
 are deliberately not enabled by the shipped commands; their library STARTTLS
 paths remain covered by the Go checks, not invented as deployed listeners.
+For missing and invalid material the probe requires a new failure report from
+each affected service. It repeats verified handshakes while waiting up to two
+more five-second reload intervals for those reports.
 CA trust pools do not reload: these checks retain each original issuer and
 replace leaves. Trust-anchor rotation still requires coordinated restart.
 
@@ -86,13 +89,55 @@ Policy ID: `restmail-fixable-high-critical-v1`.
   selection used by `cluster_e2e.Stages.contract_examples`. A new failed run
   invalidates any previous successful receipt.
 
-**Digest boundary:** local-only runs use Docker's image configuration digest
-(`docker image inspect .Id`). It binds the configuration and root filesystem
-layer content; both Trivy reports carry this exact ImageID. It is not a registry
-index/manifest digest, and must not be passed off as one in the AC06 cluster
-promotion receipts. Publishing/index attestation and workflow wiring remain
-separate work. Both release platforms can be collected and exercised, each in
-its own directory; emulated runtime checks are not native-host performance proof.
+**Digest boundary:** both Trivy reports and the running containers identify
+Docker's image configuration digest (`docker image inspect .Id`). CI also saves
+the exact registry index and native platform manifest bytes. The promotion gate
+hashes those bytes to bind the tested configuration to the build's index digest;
+it never substitutes the configuration digest for the index digest.
+
+## CI receipt and image promotion
+
+`Docker Build & Push` runs on its existing main and version-tag pushes, never
+on pull requests. Each matrix leg uploads `release-digest-<attempt>-<image>`
+before running the existing fixable HIGH/CRITICAL gates on amd64 and arm64.
+Tag builds push only by digest at this point, not under the SemVer name. Main
+keeps its existing development tags.
+
+The `Release image evidence` job downloads those seven digests in the same run
+and attempt. `Collect scans and CycloneDX SBOMs from the built images` pulls the
+native amd64 configurations sequentially; it does not rebuild them. `Probe TLS
+renewal and the fresh-start baseline` starts one isolated topology and records
+eight required public GET operations and the six live TLS listeners. The two
+runtime checks and the scan policy are independent: a finding does not erase the
+runtime diagnostics. The job has bounded step times, tears down its own labeled
+containers, network and volumes, and uploads `release-image-receipt-<attempt>`
+even on failure if evidence exists. The receipt contains:
+
+- `builds.json`, the seven `*.index.json` and `*.manifest.json` digest links;
+- seven each of `*.scan.json`, `*.sbom.json` and `*.json` policy evaluations,
+  plus scanner logs;
+- `fresh-start.json`, the served OpenAPI, Vertrag JUnit/HTML/logs under
+  `contract/`, `tls-reload.json` with observed original/replacement fingerprints,
+  and disposable topology container logs. Private keys are not uploaded.
+
+`Gate and promote release images` downloads the receipt and the separate build
+digests. Both upstream jobs must succeed. `release_gate.py --evidence-directory`
+refuses missing, failed, stale or mismatched evidence before any version tag is
+written. It checks the full commit, exact seven registry indices and the scan,
+fresh-start and reload receipts (maximum age 26 hours). It then copies each
+authorized multi-platform index to its version name without rebuilding. The
+seven registry writes are not an atomic transaction; a registry outage can
+interrupt publication. If rerunning, rerun **all** jobs so every input has the
+same run attempt. The separate GitHub CLI release and Helm workflow are unchanged.
+The stronger installed-cluster `--receipts` gate still requires all installed
+stages (AC05); this image receipt is not a replacement for those receipts.
+
+`ReleasePromotionWorkflowTests` executes the actual workflow promotion step with
+a recorder instead of writing to a registry. It proves refusal with missing,
+stale, failed, tampered and wrong-digest input, and that removing the gate lets
+seven writes through despite a missing SBOM. It also verifies the successful
+command names the authorized digests and checks that the build cannot publish
+SemVer before both prerequisite jobs pass.
 
 ## Reproduce the evidence
 
@@ -121,11 +166,15 @@ The runner creates an owned private Docker bridge, a new tmpfs-backed
 PostgreSQL 16 database and all seven exact images. Only random loopback ports
 are published. Its generated secrets and separate public/internal CAs belong
 only to that install; services receive only their selected leaf material,
-never CA keys. It exercises TLS reload, then the existing real eight-operation
-fresh-start conformance baseline, saving the actual Vertrag reports and all
+never CA keys. It exercises the real eight-operation fresh-start baseline and
+TLS reload, saving the actual Vertrag reports, observed handshakes and all
 container logs. Containers, anonymous volumes, temporary keys and the owned
 network are removed on exit. Built images and the scan cache remain for explicit
 owned-resource cleanup after inspection.
+
+On Docker Desktop for Mac, if its `/var/folders` file share does not propagate
+atomic certificate replacements, add `TMPDIR=/private/tmp` to the
+`release_fresh_start.py` command. The Linux CI topology uses native bind mounts.
 
 Check against the image identities Docker actually holds, not an unverified
 claim copied from a scan. Example in Bash:
@@ -149,6 +198,7 @@ and refuses to remove a network whose creation failed.
 ```sh
 python3 -m unittest discover -s scripts/tests -p 'test_release_evidence.py'
 python3 -m unittest discover -s scripts/tests -p 'test_release_fresh_start.py'
+python3 -m unittest discover -s scripts/tests -p 'test_release_promotion_workflow.py'
 python3 -m unittest discover -s scripts/tests -p 'test_tls*reload*.py'
 ```
 

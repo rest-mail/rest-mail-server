@@ -281,6 +281,8 @@ READ_BY_A_LATER_JOB = {
     "example-proofs-handlers-${{ matrix.shard }}",
     "coverage-part-handlers-${{ matrix.shard }}",
     "live-example-proofs",
+    "release-digest-${{ github.run_attempt }}-${{ matrix.image }}",
+    "release-image-receipt-${{ github.run_attempt }}",
 }
 
 
@@ -377,7 +379,8 @@ class ArtifactUploadTests(unittest.TestCase):
             if pattern not in READ_BY_A_LATER_JOB_THAT_CAN_DO_WITHOUT
         ]
         self.assertEqual(
-            set(wanted), {"example-proofs-*", "coverage-part-*", "live-example-proofs"}
+            set(wanted), {"example-proofs-*", "coverage-part-*", "live-example-proofs",
+                          "release-digest-${{ github.run_attempt }}-*", "release-image-receipt-${{ github.run_attempt }}"}
         )
         for pattern in wanted:
             with self.subTest(pattern=pattern):

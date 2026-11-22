@@ -18,6 +18,10 @@ spec.loader.exec_module(evidence)
 COMMIT = "a" * 40
 IMAGES = {name: "sha256:" + f"{index:064x}" for index, name in enumerate(evidence.RELEASE_IMAGES, 1)}
 FINDING = {"VulnerabilityID": "CVE-2025-1234", "Severity": "HIGH", "FixedVersion": "2.0"}
+BASELINE_PATHS = {"/api": "apiRoot", "/api/v1/server": "describeServer", "/api/health": "getHealth",
+                  "/api/v1/status": "getPublicStatus", "/api/docs/openapi.json": "openapiDocument",
+                  "/api/docs/openapi.yaml": "openapiSpec", "/api/v1/auth/recovery-email/link": "recoveryEmailLink",
+                  "/api/docs": "swaggerUI"}
 
 
 class ReleaseEvidenceTests(unittest.TestCase):
@@ -40,10 +44,12 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 "evaluation": evidence.evaluate(scan, (evidence.ROOT / ".trivyignore").read_text())})
         contract = self.directory / "contract"
         contract.mkdir()
-        (contract / "examples.xml").write_text('<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase name="health"/></testsuite>')
-        evidence.write_json(contract / "openapi.json", {"paths": {"/api/health": {"get": {"operationId": "health", "security": []}}}})
+        cases = "".join(f'<testcase classname="vertrag.GET" name="{path} &gt; example &gt; 200"/>' for path in BASELINE_PATHS)
+        (contract / "examples.xml").write_text(f'<testsuite tests="8" failures="0" errors="0" skipped="0">{cases}</testsuite>')
+        evidence.write_json(contract / "openapi.json", {"paths": {
+            path: {"get": {"operationId": operation, "security": []}} for path, operation in BASELINE_PATHS.items()}})
         evidence.write_json(self.directory / "fresh-start.json", {
-            "commit": COMMIT, "images": IMAGES, "exit_code": 0, "counts": [1, 0, 0], "operations": ["health"],
+            "commit": COMMIT, "images": IMAGES, "exit_code": 0, "counts": [8, 0, 0], "operations": sorted(BASELINE_PATHS.values()),
             "junit_sha256": evidence.sha256(contract / "examples.xml"), "spec_sha256": evidence.sha256(contract / "openapi.json")})
 
     def change(self, name, mutate):
@@ -111,6 +117,12 @@ class ReleaseEvidenceTests(unittest.TestCase):
     def test_fresh_start_operation_omission_is_refused(self):
         self.change("fresh-start.json", lambda value: value.update(operations=[]))
         self.refused("baseline operations")
+
+    def test_single_repeated_exchange_cannot_cover_eight_operations(self):
+        junit = self.directory / "contract/examples.xml"
+        junit.write_text(junit.read_text().replace('/api/v1/server &gt;', '/api/health &gt;'))
+        self.change("fresh-start.json", lambda value: value.update(junit_sha256=evidence.sha256(junit)))
+        self.refused("operations without recorded exchanges")
 
     def test_other_commit_is_refused(self):
         self.assertTrue(evidence.check(self.directory, "b" * 40, IMAGES))

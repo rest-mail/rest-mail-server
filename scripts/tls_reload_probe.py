@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 HELPER = "python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90"
+PHASES = ("renewed", "missing", "repaired", "invalid", "recovered")
 
 
 def dialogue(connection, command, until):
@@ -79,8 +80,17 @@ def publish(path, data, metadata):
     replacement.replace(path)
 
 
-def inside(plan):
-    originals, established = {}, []
+def fresh_leaf(listener, phase):
+    with connect(listener) as connection:
+        got = hashlib.sha256(connection.getpeercert(binary_form=True)).hexdigest()
+        if got != listener["expected_sha256"]:
+            raise ValueError(f"{listener['name']} {phase}: fingerprint {got}, want {listener['expected_sha256']}")
+        ping(connection, listener["protocol"])
+    return got
+
+
+def inside(plan, after_phase=None):
+    originals, established, observations = {}, [], []
     try:
         for pair in plan["pairs"]:
             for key in ("cert", "key"):
@@ -88,12 +98,15 @@ def inside(plan):
                 originals[str(path)] = (path.read_bytes(), path.stat())
         for listener in plan["listeners"]:
             connection = connect(listener)
+            original = hashlib.sha256(connection.getpeercert(binary_form=True)).hexdigest()
+            established.append((listener, connection, original))
+            if original == listener["expected_sha256"]:
+                raise ValueError(f"{listener['name']}: already serves the replacement leaf")
             ping(connection, listener["protocol"])
-            established.append((listener, connection))
         for pair in plan["pairs"]:
             for key in ("key", "cert"):
                 publish(Path(pair[key]), base64.b64decode(pair["new_" + key]), originals[pair[key]][1])
-        for phase in ("renewed", "missing", "repaired", "invalid", "recovered"):
+        for phase in PHASES:
             if phase in ("missing", "invalid"):
                 for pair in plan["pairs"]:
                     path = Path(pair["cert"])
@@ -105,17 +118,18 @@ def inside(plan):
                 for pair in plan["pairs"]:
                     publish(Path(pair["cert"]), base64.b64decode(pair["new_cert"]), originals[pair["cert"]][1])
             time.sleep(6)
-            for listener, old in established:
-                with connect(listener) as connection:
-                    got = hashlib.sha256(connection.getpeercert(binary_form=True)).hexdigest()
-                    if got != listener["expected_sha256"]:
-                        raise ValueError(f"{listener['name']} {phase}: fingerprint {got}, want {listener['expected_sha256']}")
-                    ping(connection, listener["protocol"])
+            for listener, old, original in established:
+                got = fresh_leaf(listener, phase)
                 if listener["name"] != "API HTTPS front":
                     ping(old, listener["protocol"])
+                observations.append({"listener": listener["name"], "phase": phase, "hostname": listener["hostname"],
+                                     "leaf_sha256": got, "original_leaf_sha256": original})
                 print(f"tls-reload pass listener={listener['name']} phase={phase} name={listener['hostname']} leaf_sha256={got}", flush=True)
+            if after_phase:
+                after_phase(phase)
+        return observations
     finally:
-        for _, connection in established:
+        for _, connection, _ in established:
             connection.close()
         for path, (data, metadata) in originals.items():
             held = Path(path).with_name(Path(path).name + ".reload-held")

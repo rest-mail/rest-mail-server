@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -43,6 +43,20 @@ class ReleaseFreshStartTests(unittest.TestCase):
 
     def test_https_front_uses_the_pinned_release_nginx_base(self):
         self.assertIn("FROM " + fresh.FRONT_IMAGE + " AS prod", (fresh.evidence.ROOT / "admin/Dockerfile").read_text())
+
+    def test_reload_report_may_follow_a_later_verified_handshake(self):
+        observe = Mock(side_effect=[{"api": 1, "smtp": 2}, {"api": 2, "smtp": 2}])
+        handshake = Mock()
+        with patch.object(fresh.time, "sleep"):
+            self.assertEqual(fresh.wait_reload_reports("invalid", {"api": 1, "smtp": 1}, observe, handshake),
+                             {"api": 2, "smtp": 2})
+        handshake.assert_called_once_with()
+
+    def test_reload_report_without_a_new_failure_is_refused(self):
+        observe = Mock(return_value={"api": 1, "smtp": 2})
+        with patch.object(fresh.time, "monotonic", side_effect=[0, 5, 10]), patch.object(fresh.time, "sleep"):
+            with self.assertRaisesRegex(ValueError, "api did not report the invalid replacement"):
+                fresh.wait_reload_reports("invalid", {"api": 1, "smtp": 1}, observe, Mock())
 
 
 if __name__ == "__main__":
