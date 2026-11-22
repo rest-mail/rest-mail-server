@@ -5,8 +5,10 @@ import { createDesktopTransport } from './transport';
 import { openNativeMailStream } from './mailStream';
 import { prepareScreenshotDocument, registerUIBridge } from './bridge';
 import './desktop.css';
+import { appearance } from './appearance/engine';
 
 async function launch() {
+  appearance.init();
   const windowName = 'main';
   const mock = import.meta.env.DESKTOP_MOCK ? await import('../dev/session') : null;
   const binding = mock?.session ?? session;
