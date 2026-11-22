@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@wailsio/runtime', () => ({ Call: { ByName: vi.fn().mockResolvedValue(undefined) } }));
 import { Call } from '@wailsio/runtime';
 import { tabs } from './tabs';
@@ -10,14 +10,15 @@ import type { MessageDetail } from '@webmail/types';
 import { handleNativeMailEvent, inboxUnread, installNative, isEditing, native, notificationMetadata, registerMessageAction, runNativeCommand } from './native';
 
 describe('native mail integration', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    vi.clearAllMocks(); configureMailPlatform({ desktop: true });
+    vi.clearAllMocks(); vi.mocked(Call.ByName).mockResolvedValue(true); configureMailPlatform({ desktop: true });
     tabs.clear();
     document.body.innerHTML = '';
     useAuthStore.setState({ isAuthenticated: true, setupRequired: [] });
     useUIStore.setState({ view: 'mail', composeState: null });
-    useMailStore.setState({ selectedMessage: { id: 42, is_read: false, is_flagged: false, is_draft: false } as MessageDetail, loadingMessage: false, activeAccountId: 1, folders: [] });
+    useMailStore.setState({ selectedMessage: { id: 42, is_read: false, is_flagged: false, is_draft: false } as MessageDetail, loadingMessage: false, loadingFolders: false, activeAccountId: 1, folders: [] });
   });
   it('detects inputs and nested rich editors without mistaking reader text for editing', () => {
     document.body.innerHTML = '<input><textarea></textarea><select></select><div contenteditable="true"><p><span>Editor</span></p></div><article>Reader</article>';
@@ -83,21 +84,71 @@ describe('native mail integration', () => {
     expect(inboxUnread([])).toBe(0);
   });
   it('passes only sender and subject from the SSE event to native notifications', () => {
+    vi.useFakeTimers();
+    useMailStore.setState({ selectedMessage: null });
+    const stop = installNative({ on: () => () => {}, emit: vi.fn() }, 'main');
     const event = { type: 'new_message', data: { message_id: 42, folder: 'INBOX', sender: 'friend@test.invalid', subject: 'Hello', body_text: 'PRIVATE BODY', body_html: '<p>PRIVATE</p>', token: 'never' } };
     expect(notificationMetadata(event)).toEqual({ id: 42, sender: 'friend@test.invalid', subject: 'Hello' });
     handleNativeMailEvent(event);
-    expect(Call.ByName).toHaveBeenCalledWith('main.Native.NewMail', 42, 'friend@test.invalid', 'Hello');
+    vi.advanceTimersByTime(2000);
+    expect(Call.ByName).toHaveBeenCalledWith('main.Native.NewMailBatch', [{ id: 42, sender: 'friend@test.invalid', subject: 'Hello' }]);
     expect(JSON.stringify(vi.mocked(Call.ByName).mock.calls)).not.toContain('PRIVATE');
     for (const data of [{ message_id: 42, folder: 'Sent' }, { message_id: -1 }, { message_id: 'bad' }, {}]) expect(notificationMetadata({ type: 'new_message', data })).toBeNull();
     expect(notificationMetadata({ type: 'folder_update', data: {} })).toBeNull();
+    stop();
+  });
+  it('counts startup unread only after folders load and permission resolves, once per sign-in', async () => {
+    useMailStore.setState({ loadingFolders: true });
+    const stop = installNative({ on: () => () => {}, emit: vi.fn() }, 'main');
+    await Promise.resolve();
+    expect(Call.ByName).not.toHaveBeenCalledWith('main.Native.UnreadSummary', expect.anything());
+    useMailStore.setState({ loadingFolders: false, folders: [{ name: 'INBOX', unread: 3 }, { name: 'Sent', unread: 7 }] as never });
+    expect(Call.ByName).toHaveBeenCalledWith('main.Native.UnreadSummary', 3);
+    useMailStore.setState({ folders: [{ name: 'INBOX', unread: 4 }] as never });
+    expect(vi.mocked(Call.ByName).mock.calls.filter(call => call[0] === 'main.Native.UnreadSummary')).toHaveLength(1);
+    expect(Call.ByName).toHaveBeenCalledWith('main.Native.SetUnread', 4);
+    useAuthStore.setState({ isAuthenticated: false });
+    expect(Call.ByName).toHaveBeenCalledWith('main.Native.SetUnread', 0);
+    useAuthStore.setState({ isAuthenticated: true });
+    await Promise.resolve();
+    expect(Call.ByName).toHaveBeenCalledWith('main.Native.UnreadSummary', 4);
+    stop();
+  });
+  it('does not announce an empty Inbox or denied permission', async () => {
+    useMailStore.setState({ folders: [{ name: 'INBOX', unread: 3 }] as never });
+    vi.mocked(Call.ByName).mockResolvedValue(false);
+    const stop = installNative({ on: () => () => {}, emit: vi.fn() }, 'main');
+    await Promise.resolve();
+    expect(vi.mocked(Call.ByName).mock.calls.filter(call => call[0] === 'main.Native.UnreadSummary')).toHaveLength(0);
+    stop();
+    vi.mocked(Call.ByName).mockResolvedValue(true);
+    useMailStore.setState({ folders: [{ name: 'INBOX', unread: 0 }] as never });
+    const stopEmpty = installNative({ on: () => () => {}, emit: vi.fn() }, 'main');
+    await Promise.resolve();
+    expect(vi.mocked(Call.ByName).mock.calls.filter(call => call[0] === 'main.Native.UnreadSummary')).toHaveLength(0);
+    stopEmpty();
+  });
+  it('excludes the viewed message and cancels a pending batch on logout', () => {
+    vi.useFakeTimers();
+    const stop = installNative({ on: () => () => {}, emit: vi.fn() }, 'main');
+    for (const id of [42, 43, 44, 43]) handleNativeMailEvent({ type: 'new_message', data: { message_id: id, folder: 'INBOX', sender: 'Sender', subject: 'Subject' } });
+    vi.advanceTimersByTime(2000);
+    expect(Call.ByName).toHaveBeenCalledWith('main.Native.NewMailBatch', [{ id: 43, sender: 'Sender', subject: 'Subject' }, { id: 44, sender: 'Sender', subject: 'Subject' }]);
+    vi.mocked(Call.ByName).mockClear();
+    handleNativeMailEvent({ type: 'new_message', data: { message_id: 45 } });
+    useAuthStore.setState({ isAuthenticated: false });
+    vi.advanceTimersByTime(2000);
+    expect(vi.mocked(Call.ByName).mock.calls.filter(call => call[0] === 'main.Native.NewMailBatch')).toHaveLength(0);
+    stop();
   });
   it('routes notification clicks to the main window and refreshes after another window sends', async () => {
     const handlers = new Map<string, (data: unknown) => void>();
-    const refresh = vi.fn().mockResolvedValue(undefined); const selectMessage = vi.fn().mockResolvedValue(undefined);
-    const previous = useMailStore.getState(); useMailStore.setState({ refresh, selectMessage });
+    const refresh = vi.fn().mockResolvedValue(undefined); const selectMessage = vi.fn().mockResolvedValue(undefined); const selectFolder = vi.fn().mockResolvedValue(undefined);
+    const previous = useMailStore.getState(); useMailStore.setState({ refresh, selectMessage, selectFolder });
     const stop = installNative({ on: (name, handler) => { handlers.set(name, handler); return () => { handlers.delete(name); }; }, emit: vi.fn() }, 'main');
     handlers.get('native:mail-changed')?.({ sent: true }); expect(refresh).toHaveBeenCalledOnce();
     await handlers.get('native:open-message')?.(42); expect(selectMessage).toHaveBeenCalledWith(42);
+    await handlers.get('native:open-inbox')?.(undefined); expect(selectFolder).toHaveBeenCalledWith('INBOX');
     expect(Call.ByName).toHaveBeenCalledWith('main.Native.RequestNotificationPermission');
     stop(); useMailStore.setState(previous);
   });

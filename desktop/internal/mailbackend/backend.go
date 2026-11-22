@@ -139,8 +139,9 @@ func (manager *Manager) Do(ctx context.Context, method, path string, body io.Rea
 }
 
 func (manager *Manager) DoRequest(ctx context.Context, request *http.Request) (*http.Response, error) {
+	request = request.WithContext(ctx)
 	if manager.local() {
-		if response, handled, err := manager.accounts.Handle(request.WithContext(ctx)); handled || err != nil {
+		if response, handled, err := manager.accounts.Handle(request); handled || err != nil {
 			if handled && request.Method == http.MethodDelete && strings.HasPrefix(request.URL.Path, "/api/v1/accounts/") {
 				manager.notify()
 			}

@@ -38,6 +38,18 @@ vars:
     sh: 'test -z "$(git status --porcelain --untracked-files=all -- desktop webmail)" && echo "" || echo "-dirty"'
 
 tasks:
+  devstack:up:
+    desc: Start an isolated loopback API and mTLS SMTP worker on the existing desktop dev database
+    dotenv: []
+    cmds:
+      - python3 -B "{{.DESKTOP_DIR}}/scripts/devstack.py" up {{.CLI_ARGS}}
+
+  devstack:down:
+    desc: Stop only the recorded devstack containers, preserving the database and original API
+    dotenv: []
+    cmds:
+      - python3 -B "{{.DESKTOP_DIR}}/scripts/devstack.py" down {{.CLI_ARGS}}
+
   tool:
     desc: Install the pinned Wails 3 CLI when it is missing
     status:

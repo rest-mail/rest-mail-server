@@ -129,6 +129,35 @@ func TestBackendMissingKeychainAndInvalidAddFailSafely(t *testing.T) {
 	}
 }
 
+func TestRESTSendAndDraftPreserveBodyAfterIMAPRouting(t *testing.T) {
+	manager := testBackend(t)
+	want := `{"from":"rest@example.test","to":["recipient@example.test"],"subject":"Native compose","body_text":"Kept intact"}`
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/api/v1/auth/login" {
+			_, _ = io.WriteString(writer, `{"data":{"access_token":"rest-access-secret","refresh_token":"rest-refresh-secret","expires_in":3600,"user":{"id":42,"email":"rest@example.test"}}}`)
+			return
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil || string(body) != want {
+			t.Errorf("REST fallback lost %s body: got %q, err %v", request.URL.Path, body, err)
+		}
+		_, _ = io.WriteString(writer, `{"data":{}}`)
+	}))
+	defer server.Close()
+	if _, err := manager.SignIn(strings.Replace(server.URL, "127.0.0.1", "localhost", 1), "rest@example.test", "password"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/v1/messages/send", "/api/v1/messages/draft"} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(want))
+		response, err := manager.DoRequest(t.Context(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+	}
+}
+
 func TestNativeBackendAccountListAndSignedOutBoundary(t *testing.T) {
 	manager := testBackend(t)
 	status := manager.Status()
