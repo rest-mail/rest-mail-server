@@ -46,8 +46,8 @@ that moves the count. The rest need harnesses and decisions first.
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 one rule identity and lifecycle | R | model + migration work; no infrastructure |
-| AC02 clients attribute and undo rule effects | R | same surface as AC01 |
+| AC01 one rule identity and lifecycle | R | Native API lifecycle and stable-ID Sieve export proved locally by `TestAC01StructuredRuleStableIdentityLifecycle`; ordering, account scope, bounded storage and serialized raw/native writers also have PostgreSQL tests. Full issue acceptance still needs ManageSieve wire lifecycle, audit/version history and preview/explanation lanes. |
+| AC02 clients attribute and undo rule effects | R | Filing, flagging and committed copy-forward attribution plus conflict-safe local undo proved locally by `TestAC02DeliveredRuleEffectsAttributionAndUndo`; rollback and later-change controls have PostgreSQL tests. Full issue acceptance still needs client moved-by links, mute behavior and its direct-recipient/receipt decision boundaries. |
 | AC03 templates keep installation/domain/account boundaries | R | shared-template semantics |
 | AC04 fixed enabled-extension list, shared with ManageSieve | **P** | v0.9.0 car: extension gate, vacation tracking, `--repair` parity |
 | AC04b reject/ereject answer 250 and tell the sender nothing | D | owner decided 250 on #1468; the disposition policy (spam folder vs discard) is not recorded |

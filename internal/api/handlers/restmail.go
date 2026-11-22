@@ -622,6 +622,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		// held, forwarded instead, or kept, with its folder and flags. Without one, the
 		// domain pipeline's folder and flags apply.
 		final := verdict.email
+		var nativeForwards []models.OutboundQueue
 		if own, ran := sieved[rcpt]; ran {
 			final = own.FinalEmail
 			switch own.FinalAction {
@@ -639,6 +640,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 			forwarded := 0
 			for _, fwd := range buildRedirectForwards(r.Context(), final, source, req.From, []string{rcpt}, verdict.domain, verdict.auth) {
 				row := fwd
+				if nativeForward(final, row.Recipient) {
+					nativeForwards = append(nativeForwards, row)
+					continue
+				}
 				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.ErrorContext(r.Context(), "restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
 					continue
@@ -744,6 +749,9 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 		// every write and the transaction's commit.
 		if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+attachmentBytes); err != nil {
+				return err
+			}
+			if err := commitNativeRuleEffects(tx, &msg, final, nativeForwards); err != nil {
 				return err
 			}
 			if err := createDeliveredMessage(tx, &msg); err != nil {

@@ -64,6 +64,18 @@ func sieveInstallationFields(q string, args []driver.NamedValue) (map[string]dri
 }
 
 func (c sieveInstallationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, `FROM "mail_rules"`) {
+		if len(args) != 1 || !strings.Contains(q, "mailbox_id =") || !strings.Contains(q, "count(*)") {
+			return nil, errors.New("raw upload lost native representation guard")
+		}
+		return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}, nil
+	}
+	if strings.Contains(q, `FROM "mailboxes"`) && strings.Contains(q, "FOR UPDATE") {
+		if len(args) != 2 || !strings.Contains(q, `"mailboxes"."id" =`) || args[1].Value != int64(1) {
+			return nil, errors.New("raw upload lost account representation lock")
+		}
+		return &authReadSnapshotRows{columns: []string{"id"}, rows: [][]driver.Value{{args[0].Value}}}, nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "sieve_scripts"`) {
 		c.record(q, args)
 		fields, err := sieveInstallationFields(q, args)

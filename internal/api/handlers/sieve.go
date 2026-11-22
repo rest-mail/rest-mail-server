@@ -9,6 +9,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/rules"
 	"gorm.io/gorm"
 )
 
@@ -98,13 +99,14 @@ func (h *SieveHandler) Register(rs endpoint.Routes) {
 	writes := handlerChecked(models.CapMailWrite, mailRulesSchemes...)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "getSieveScript", Summary: "Get the Sieve filter script", Tags: tags,
-		Description: "404 not_found when the account has no stored Sieve script.",
+		Description: "Returns the generated Sieve view when structured account rules exist, including stable rule ID/version/enabled markers. Otherwise returns the raw stored script unchanged. getMailRuleSieve explicitly identifies structured versus raw text. 404 not_found when neither representation exists.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "putSieveScript", Summary: "Create or replace the Sieve filter script", Tags: tags,
 		Description: "201 when it creates the script, 200 when it replaces it. A script that does not parse, needs a " +
 			"Sieve extension this server does not enable, or fails its dry run, is 422 validation_failed with the reason " +
-			"in fields.script, and is not stored. The reason names an extension that is not enabled.",
+			"in fields.script, and is not stored. The reason names an extension that is not enabled. " +
+			"An account using structured rules also returns 422 on script: edit its rules API or delete those rules before uploading raw Sieve. No structured rule is silently replaced or converted.",
 		Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated},
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.put)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/sieve",
@@ -126,6 +128,17 @@ func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error)
 	}
 
 	var script models.SieveScript
+	rows, err := loadNativeRules(h.db, mailboxID)
+	if err != nil {
+		return SieveScript{}, err
+	}
+	if len(rows) > 0 {
+		view := RuleSieveView{Script: rules.Export(nativeSnapshots(rows))}
+		for _, row := range rows {
+			view.Active = view.Active || row.Enabled
+		}
+		return generatedSieveOf(view, mailboxID), nil
+	}
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&script).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return SieveScript{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Sieve script not found")
@@ -143,6 +156,26 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 	if err != nil {
 		return endpoint.Status[SieveScript]{}, err
 	}
+	var answer endpoint.Status[SieveScript]
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockRuleAccount(tx, mailboxID); err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&models.MailRule{}).Where("mailbox_id = ?", mailboxID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return endpoint.Invalid(map[string]string{"script": "This account uses structured rules; edit the rules API or delete its rules before uploading raw Sieve"})
+		}
+		var err error
+		answer, err = (&SieveHandler{db: tx}).putRaw(r, in, mailboxID)
+		return err
+	})
+	return answer, err
+}
+
+func (h *SieveHandler) putRaw(r *http.Request, in putSieveRequest, mailboxID uint) (endpoint.Status[SieveScript], error) {
 
 	req := in.Body
 

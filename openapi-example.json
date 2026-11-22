@@ -9285,6 +9285,438 @@
       }
     }
   },
+  "createMailRule": {
+    "created": {
+      "requires": {
+        "state": "no_account_rules"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "version": 1,
+            "name": "Invoices",
+            "enabled": true,
+            "position": 10,
+            "conditions": [
+              {
+                "field": "subject",
+                "operator": "contains",
+                "value": "invoice"
+              }
+            ],
+            "actions": [
+              {
+                "type": "fileinto",
+                "value": "Finance"
+              }
+            ],
+            "run_count": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "raw_sieve_conflict": {
+      "requires": {
+        "state": "raw_sieve"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "rule_representation_conflict",
+            "message": "Raw Sieve and structured rules cannot coexist; delete the existing representation first"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "createPipeline": {
     "active_wrong_type": {
       "request": {
@@ -11598,6 +12030,201 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "deleteMailRule": {
+    "deleted": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "ruleID": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -18356,6 +18983,422 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "getMailRule": {
+    "found": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "version": 1,
+            "name": "Invoices",
+            "enabled": true,
+            "position": 10,
+            "conditions": [
+              {
+                "field": "subject",
+                "operator": "contains",
+                "value": "invoice"
+              }
+            ],
+            "actions": [
+              {
+                "type": "fileinto",
+                "value": "Finance"
+              }
+            ],
+            "run_count": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "ruleID": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "getMailRuleSieve": {
+    "exported": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "representation": "structured",
+            "script": "# REST Mail structured rules; edit through the rules API.\nrequire [\"fileinto\", \"imap4flags\", \"copy\"];\n# restmail-rule 1 version 1 enabled true\nif allof (header :contains \"Subject\" \"invoice\") {\n  fileinto \"Finance\";\n}\n",
+            "active": true,
+            "rule_ids": [
+              1
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -28354,6 +29397,218 @@
       }
     }
   },
+  "listMailRules": {
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "listed": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "version": 1,
+              "name": "Invoices",
+              "enabled": true,
+              "position": 10,
+              "conditions": [
+                {
+                  "field": "subject",
+                  "operator": "contains",
+                  "value": "invoice"
+                }
+              ],
+              "actions": [
+                {
+                  "type": "fileinto",
+                  "value": "Finance"
+                }
+              ],
+              "run_count": 0
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "listMailboxes": {
     "available": {
       "summary": "The permitted list is empty",
@@ -28731,6 +29986,206 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listMessageRuleEffects": {
+    "attributed": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "rule_id": 1,
+              "rule_version": 1,
+              "type": "fileinto",
+              "value": "Finance",
+              "before": "INBOX",
+              "undoable": true
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -47850,6 +49305,256 @@
       }
     }
   },
+  "undoMessageRuleEffect": {
+    "forward_not_undoable": {
+      "requires": {
+        "state": "forward_effect"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "rule_effect_not_undoable",
+            "message": "A forwarded message cannot be recalled"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "later_change_preserved": {
+      "requires": {
+        "state": "changed_rule_effect"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "rule_effect_changed",
+            "message": "The affected field changed or a later rule effect must be undone first"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "undone": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "rule_id": 1,
+            "rule_version": 1,
+            "type": "fileinto",
+            "value": "Finance",
+            "before": "INBOX",
+            "undoable": true,
+            "undone_at": "2026-11-22T12:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "effectID": "00000000-0000-4000-8000-000000000001",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "unlinkAccount": {
     "csrf_mismatch": {
       "summary": "A cookie session sends no CSRF header",
@@ -51198,6 +52903,410 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "updateMailRule": {
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "updated": {
+      "requires": {
+        "state": "structured_rule"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "version": 2,
+            "name": "Invoices",
+            "enabled": true,
+            "position": 10,
+            "conditions": [
+              {
+                "field": "subject",
+                "operator": "contains",
+                "value": "invoice"
+              }
+            ],
+            "actions": [
+              {
+                "type": "fileinto",
+                "value": "Finance"
+              }
+            ],
+            "run_count": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "ruleID": 1
+        },
+        "body": {
+          "name": "Invoices",
+          "enabled": true,
+          "position": 10,
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "invoice"
+            }
+          ],
+          "actions": [
+            {
+              "type": "fileinto",
+              "value": "Finance"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"

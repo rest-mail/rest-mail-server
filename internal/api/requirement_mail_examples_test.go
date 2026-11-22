@@ -94,6 +94,13 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 			id, mailbox = 12, 42
 		}
 		return importRows(map[string]any{"id": id, "mailbox_id": mailbox, "folder": "Drafts", "is_draft": true, "sender": "organizer@remote.test", "subject": "Planning", "body_text": "Hello", "recipients_to": []byte(`["recipient@example.net"]`), "calendar_events": []byte(`[{"uid":"planning@remote.test","summary":"Planning","organizer":{"address":"organizer@remote.test"}}]`)}), nil
+	case strings.Contains(q, `FROM "mail_rules"`):
+		// This legacy delivery fixture has no native rules. Preserve the
+		// account selector, deterministic ordering and bounded read.
+		if len(args) != 2 || args[0].Value != int64(1) || args[1].Value != int64(101) || !strings.Contains(q, "mailbox_id =") || !strings.Contains(q, "ORDER BY position, id") {
+			return nil, fmt.Errorf("native rule lookup lost account, ordering or bound: %s %v", q, args)
+		}
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
 	case strings.Contains(q, `FROM "attachments"`), strings.Contains(q, `FROM "sieve_scripts"`):
 		return invitationRows([]string{"id"}), nil
 	case strings.Contains(q, `FROM "pipelines"`):

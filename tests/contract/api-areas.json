@@ -131,6 +131,14 @@
     "updateContact"
   ],
   "640": [
+    "createMailRule",
+    "deleteMailRule",
+    "getMailRule",
+    "getMailRuleSieve",
+    "listMailRules",
+    "listMessageRuleEffects",
+    "undoMessageRuleEffect",
+    "updateMailRule",
     "deleteSieveScript",
     "disableVacation",
     "getSieveScript",

@@ -11698,7 +11698,7 @@ paths:
         - APIKeyAuth: [mail:read]
         - GatewaySessionAuth: [mail:read]
       summary: Get the Sieve filter script
-      description: 404 not_found when the account has no stored Sieve script.
+      description: Returns the generated Sieve view when structured account rules exist, including stable rule ID/version/enabled markers. Otherwise returns the raw stored script unchanged. getMailRuleSieve explicitly identifies structured versus raw text. 404 not_found when neither representation exists.
       parameters:
         - name: id
           in: path
@@ -11765,6 +11765,11 @@ paths:
         - APIKeyAuth: [mail:write]
         - GatewaySessionAuth: [mail:write]
       summary: Create or replace the Sieve filter script
+      description: >-
+        201 when it creates the script, 200 when it replaces it. A script that does not parse, needs a
+        Sieve extension this server does not enable, or fails its dry run, is 422 validation_failed with the reason
+        in fields.script, and is not stored. The reason names an extension that is not enabled.
+        An account using structured rules also returns 422 on script: edit its rules API or delete those rules before uploading raw Sieve. No structured rule is silently replaced or converted.
       requestBody:
         required: true
         content:
@@ -26295,6 +26300,4415 @@ paths:
       summary: Close an export and record how it ended
       tags:
       - Accounts
+  /api/v1/accounts/{id}/rules:
+    get:
+      summary: List structured mail rules
+      description: Ordered by position, then stable rule ID. At most 100 rules per account. Raw Sieve is never silently
+        converted; getMailRuleSieve identifies it explicitly.
+      operationId: listMailRules
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          listed:
+            value: 1
+            x-requires:
+              state: structured_rule
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                listed:
+                  value:
+                    data:
+                    - actions:
+                      - type: fileinto
+                        value: Finance
+                      conditions:
+                      - field: subject
+                        operator: contains
+                        value: invoice
+                      enabled: true
+                      id: 1
+                      name: Invoices
+                      position: 10
+                      run_count: 0
+                      version: 1
+                  x-requires:
+                    state: structured_rule
+              schema:
+                $ref: '#/components/schemas/List-NativeRule'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - GatewaySessionAuth:
+        - mail:read
+    post:
+      summary: Create a structured mail rule
+      description: Creates one stable rule identity. All 1–20 conditions must match; 1–20 actions run in order. Subject
+        and parsed From/To address comparisons use ASCII case folding. Fileinto, system flags and copy-forwards are
+        supported. A forward follows the deployment Sieve redirect allowlist and loop guards. The native engine runs
+        bounded structured data, not the exported Sieve. The domain's enabled sieve step controls account filtering.
+        Run counts count matched committed deliveries once per rule. 409 rule_representation_conflict when raw Sieve
+        exists; 409 rule_limit at 100 rules.
+      operationId: createMailRule
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          created:
+            value: 1
+            x-requires:
+              state: no_account_rules
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          malformed_json:
+            description: The wire body is the raw truncated JSON byte {, with application/json content type. The route
+              and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+            value: 1
+            x-requires:
+              body: malformed
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          raw_sieve_conflict:
+            value: 1
+            x-requires:
+              state: raw_sieve
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              created:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  state: no_account_rules
+              internal_error:
+                summary: An account lookup fault is not an authorization decision
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  fault: database
+              invalid_id:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+              malformed_json:
+                description: The wire body is the raw truncated JSON byte {, with application/json content type. The
+                  route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+                value: '{'
+                x-requires:
+                  body: malformed
+              missing:
+                description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                summary: A valid API key scoped to another mailbox is refused
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+              rate_limited:
+                description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                  sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  limit: rate
+              raw_sieve_conflict:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  state: raw_sieve
+              request_too_large:
+                description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                  The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                summary: The request exceeds the transport body cap
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  body: over_cap
+              session_unavailable:
+                description: The database-backed current-session lookup fails. The production session-cache builder
+                  and stale-session middleware produce this refusal.
+                summary: The current-session lookup fails
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  fault: session_store
+              unauthenticated:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  principal: anonymous
+              without_capability:
+                description: A caller that can see the account is told this action is what it lacks.
+                summary: A mail-write grant alone does not permit a read
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  principal: without_capability
+            schema:
+              $ref: '#/components/schemas/Definition'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              examples:
+                created:
+                  value:
+                    data:
+                      actions:
+                      - type: fileinto
+                        value: Finance
+                      conditions:
+                      - field: subject
+                        operator: contains
+                        value: invoice
+                      enabled: true
+                      id: 1
+                      name: Invoices
+                      position: 10
+                      run_count: 0
+                      version: 1
+                  x-requires:
+                    state: no_account_rules
+              schema:
+                $ref: '#/components/schemas/Data-NativeRule'
+          links:
+            deleteMailRule:
+              operationId: deleteMailRule
+              parameters:
+                id: $request.path.id
+                ruleID: $response.body#/data/id
+            getMailRule:
+              operationId: getMailRule
+              parameters:
+                id: $request.path.id
+                ruleID: $response.body#/data/id
+            updateMailRule:
+              operationId: updateMailRule
+              parameters:
+                id: $request.path.id
+                ruleID: $response.body#/data/id
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              examples:
+                malformed_json:
+                  description: The wire body is the raw truncated JSON byte {, with application/json content type.
+                    The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                  x-requires:
+                    body: malformed
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              examples:
+                raw_sieve_conflict:
+                  value:
+                    error:
+                      code: rule_representation_conflict
+                      message: Raw Sieve and structured rules cannot coexist; delete the existing representation first
+                  x-requires:
+                    state: raw_sieve
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
+  /api/v1/accounts/{id}/rules/sieve:
+    get:
+      summary: Export the account rules as Sieve
+      description: The same generated text as getSieveScript, with a stable ID/version/enabled marker per rule. Disabled
+        rules have only a marker. Raw scripts are returned verbatim with representation raw and no structured IDs;
+        they are never converted. This is the shared export surface for future ManageSieve transport; this server
+        has no RFC 5804 listener yet.
+      operationId: getMailRuleSieve
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          exported:
+            value: 1
+            x-requires:
+              state: structured_rule
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                exported:
+                  value:
+                    data:
+                      active: true
+                      representation: structured
+                      rule_ids:
+                      - 1
+                      script: "# REST Mail structured rules; edit through the rules API.\nrequire [\"fileinto\", \"\
+                        imap4flags\", \"copy\"];\n# restmail-rule 1 version 1 enabled true\nif allof (header :contains\
+                        \ \"Subject\" \"invoice\") {\n  fileinto \"Finance\";\n}\n"
+                  x-requires:
+                    state: structured_rule
+              schema:
+                $ref: '#/components/schemas/Data-RuleSieveView'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - GatewaySessionAuth:
+        - mail:read
+  /api/v1/accounts/{id}/rules/{ruleID}:
+    delete:
+      summary: Delete a structured mail rule
+      description: Removes the rule from native execution and Sieve export atomically. Existing delivered-message
+        effects retain its ID and version. No generated script row is left behind.
+      operationId: deleteMailRule
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          deleted:
+            value: 1
+            x-requires:
+              state: structured_rule
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      - name: ruleID
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          deleted:
+            value: 1
+            x-requires:
+              state: structured_rule
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 1
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 1
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      responses:
+        '204':
+          description: No Content
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
+    get:
+      summary: Get a structured mail rule
+      operationId: getMailRule
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          found:
+            value: 1
+            x-requires:
+              state: structured_rule
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      - name: ruleID
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          found:
+            value: 1
+            x-requires:
+              state: structured_rule
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 1
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 1
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                found:
+                  value:
+                    data:
+                      actions:
+                      - type: fileinto
+                        value: Finance
+                      conditions:
+                      - field: subject
+                        operator: contains
+                        value: invoice
+                      enabled: true
+                      id: 1
+                      name: Invoices
+                      position: 10
+                      run_count: 0
+                      version: 1
+                  x-requires:
+                    state: structured_rule
+              schema:
+                $ref: '#/components/schemas/Data-NativeRule'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - GatewaySessionAuth:
+        - mail:read
+    put:
+      summary: Replace a structured mail rule
+      description: Preserves the ID and increments its version, including enable, disable and position changes. Equal
+        positions sort by ID. Saved delivery effects retain the version that acted.
+      operationId: updateMailRule
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          malformed_json:
+            description: The wire body is the raw truncated JSON byte {, with application/json content type. The route
+              and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+            value: 1
+            x-requires:
+              body: malformed
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          updated:
+            value: 1
+            x-requires:
+              state: structured_rule
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      - name: ruleID
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 1
+          malformed_json:
+            description: The wire body is the raw truncated JSON byte {, with application/json content type. The route
+              and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+            value: 1
+            x-requires:
+              body: malformed
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 1
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          updated:
+            value: 1
+            x-requires:
+              state: structured_rule
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              internal_error:
+                summary: An account lookup fault is not an authorization decision
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  fault: database
+              invalid_id:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+              malformed_json:
+                description: The wire body is the raw truncated JSON byte {, with application/json content type. The
+                  route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+                value: '{'
+                x-requires:
+                  body: malformed
+              missing:
+                description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                summary: A valid API key scoped to another mailbox is refused
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+              rate_limited:
+                description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                  sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  limit: rate
+              request_too_large:
+                description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                  The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                summary: The request exceeds the transport body cap
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  body: over_cap
+              session_unavailable:
+                description: The database-backed current-session lookup fails. The production session-cache builder
+                  and stale-session middleware produce this refusal.
+                summary: The current-session lookup fails
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  fault: session_store
+              unauthenticated:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  principal: anonymous
+              updated:
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  state: structured_rule
+              without_capability:
+                description: A caller that can see the account is told this action is what it lacks.
+                summary: A mail-write grant alone does not permit a read
+                value:
+                  actions:
+                  - type: fileinto
+                    value: Finance
+                  conditions:
+                  - field: subject
+                    operator: contains
+                    value: invoice
+                  enabled: true
+                  name: Invoices
+                  position: 10
+                x-requires:
+                  principal: without_capability
+            schema:
+              $ref: '#/components/schemas/Definition'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                updated:
+                  value:
+                    data:
+                      actions:
+                      - type: fileinto
+                        value: Finance
+                      conditions:
+                      - field: subject
+                        operator: contains
+                        value: invoice
+                      enabled: true
+                      id: 1
+                      name: Invoices
+                      position: 10
+                      run_count: 0
+                      version: 2
+                  x-requires:
+                    state: structured_rule
+              schema:
+                $ref: '#/components/schemas/Data-NativeRule'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              examples:
+                malformed_json:
+                  description: The wire body is the raw truncated JSON byte {, with application/json content type.
+                    The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                  x-requires:
+                    body: malformed
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
+  /api/v1/messages/{id}/rule-effects:
+    get:
+      summary: Explain the rule effects on a delivered message
+      description: Delivery snapshots identify the stable rule ID and version, action, previous value and undoability.
+        Raw Sieve actions have no fabricated structured identity. Effects live with the message and survive rule deletion.
+        A forward is recorded only when its outbound queue row commits with the local message, and is never undoable.
+      operationId: listMessageRuleEffects
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          attributed:
+            value: 1
+            x-requires:
+              state: structured_rule
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                attributed:
+                  value:
+                    data:
+                    - before: INBOX
+                      id: 00000000-0000-4000-8000-000000000001
+                      rule_id: 1
+                      rule_version: 1
+                      type: fileinto
+                      undoable: true
+                      value: Finance
+                  x-requires:
+                    state: structured_rule
+              schema:
+                $ref: '#/components/schemas/List-Effect'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: message_not_found
+                      message: Message not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - GatewaySessionAuth:
+        - mail:read
+  /api/v1/messages/{id}/rule-effects/{effectID}/undo:
+    post:
+      summary: Undo one local rule effect
+      description: Restores the previous folder or system flag atomically with marking the effect undone. Idempotent
+        after success. 409 rule_effect_not_undoable for a forward. 409 rule_effect_changed if the current field differs
+        from the recorded result or a later effect on that field has not been undone; later user changes are preserved.
+        Effects are retained with the message, with no separate expiry.
+      operationId: undoMessageRuleEffect
+      tags:
+      - Rules
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          forward_not_undoable:
+            value: 1
+            x-requires:
+              state: forward_effect
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 1
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 0
+          later_change_preserved:
+            value: 1
+            x-requires:
+              state: changed_rule_effect
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 2147483647
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 1
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          undone:
+            value: 1
+            x-requires:
+              state: structured_rule
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 1
+            x-requires:
+              principal: without_capability
+      - name: effectID
+        in: path
+        required: true
+        schema:
+          format: uuid
+          type: string
+        examples:
+          forward_not_undoable:
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              state: forward_effect
+          internal_error:
+            summary: An account lookup fault is not an authorization decision
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              fault: database
+          invalid_id:
+            value: 00000000-0000-4000-8000-000000000001
+          later_change_preserved:
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              state: changed_rule_effect
+          missing:
+            description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+            summary: A valid API key scoped to another mailbox is refused
+            value: 00000000-0000-4000-8000-000000000001
+          rate_limited:
+            description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+              sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+            summary: Repeated malformed API-key guesses exhaust the real refusal budget
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The
+              focused Vertrag test supplies a real oversized body; no typed body is declared.
+            summary: The request exceeds the transport body cap
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            description: The database-backed current-session lookup fails. The production session-cache builder and
+              stale-session middleware produce this refusal.
+            summary: The current-session lookup fails
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              fault: session_store
+          unauthenticated:
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              principal: anonymous
+          undone:
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              state: structured_rule
+          without_capability:
+            description: A caller that can see the account is told this action is what it lacks.
+            summary: A mail-write grant alone does not permit a read
+            value: 00000000-0000-4000-8000-000000000001
+            x-requires:
+              principal: without_capability
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                undone:
+                  value:
+                    data:
+                      before: INBOX
+                      id: 00000000-0000-4000-8000-000000000001
+                      rule_id: 1
+                      rule_version: 1
+                      type: fileinto
+                      undoable: true
+                      undone_at: '2026-11-22T12:00:00Z'
+                      value: Finance
+                  x-requires:
+                    state: structured_rule
+              schema:
+                $ref: '#/components/schemas/Data-Effect'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, a session that has ended, or a gateway session that has
+            ended'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                without_capability:
+                  description: A caller that can see the account is told this action is what it lacks.
+                  summary: A mail-write grant alone does not permit a read
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  description: Unknown and inaccessible accounts remain indistinguishable to the caller.
+                  summary: A valid API key scoped to another mailbox is refused
+                  value:
+                    error:
+                      code: message_not_found
+                      message: Message not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              examples:
+                forward_not_undoable:
+                  value:
+                    error:
+                      code: rule_effect_not_undoable
+                      message: A forwarded message cannot be recalled
+                  x-requires:
+                    state: forward_effect
+                later_change_preserved:
+                  value:
+                    error:
+                      code: rule_effect_changed
+                      message: The affected field changed or a later rule effect must be undone first
+                  x-requires:
+                    state: changed_rule_effect
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: A current session sends Content-Length above APIMaxBodyBytes, including on this GET.
+                    The focused Vertrag test supplies a real oversized body; no typed body is declared.
+                  summary: The request exceeds the transport body cap
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  description: The test primes a one-token per-peer budget with an invalid key, then repeats it without
+                    sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After.
+                  summary: Repeated malformed API-key guesses exhaust the real refusal budget
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                internal_error:
+                  summary: An account lookup fault is not an authorization decision
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  description: The database-backed current-session lookup fails. The production session-cache builder
+                    and stale-session middleware produce this refusal.
+                  summary: The current-session lookup fails
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
 components:
   securitySchemes:
     CookieAuth:
@@ -26528,6 +30942,242 @@ components:
           "$ref": "#/components/headers/X-Frame-Options"
 
   schemas:
+    NativeRulePagination:
+      additionalProperties: false
+      properties:
+        cursor:
+          type: string
+        has_more:
+          type: boolean
+        total:
+          format: int64
+          type: integer
+      required:
+      - has_more
+      type: object
+    List-NativeRule:
+      additionalProperties: false
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/NativeRule'
+          type: array
+        pagination:
+          oneOf:
+          - $ref: '#/components/schemas/NativeRulePagination'
+          - type: 'null'
+      required:
+      - data
+      type: object
+    NativeRule:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/Action'
+          maxItems: 20
+          minItems: 1
+          type: array
+        conditions:
+          items:
+            $ref: '#/components/schemas/Condition'
+          maxItems: 20
+          minItems: 1
+          type: array
+        enabled:
+          type: boolean
+        id:
+          type: integer
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        position:
+          maximum: 1000000
+          minimum: 0
+          type: integer
+        run_count:
+          type: integer
+        version:
+          type: integer
+      required:
+      - id
+      - version
+      - name
+      - enabled
+      - position
+      - conditions
+      - actions
+      - run_count
+      type: object
+    Action:
+      additionalProperties: false
+      properties:
+        type:
+          enum:
+          - fileinto
+          - flag
+          - forward
+          type: string
+        value:
+          maxLength: 1024
+          minLength: 1
+          type: string
+      required:
+      - type
+      - value
+      type: object
+    Condition:
+      additionalProperties: false
+      properties:
+        field:
+          enum:
+          - subject
+          - from
+          - to
+          type: string
+        operator:
+          enum:
+          - contains
+          - is
+          type: string
+        value:
+          maxLength: 1024
+          minLength: 1
+          type: string
+      required:
+      - field
+      - operator
+      - value
+      type: object
+    Definition:
+      additionalProperties: false
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/Action'
+          maxItems: 20
+          minItems: 1
+          type: array
+        conditions:
+          items:
+            $ref: '#/components/schemas/Condition'
+          maxItems: 20
+          minItems: 1
+          type: array
+        enabled:
+          type: boolean
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        position:
+          maximum: 1000000
+          minimum: 0
+          type: integer
+      required:
+      - name
+      - enabled
+      - position
+      - conditions
+      - actions
+      type: object
+    Data-NativeRule:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/NativeRule'
+      required:
+      - data
+      type: object
+    Data-RuleSieveView:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/RuleSieveView'
+      required:
+      - data
+      type: object
+    RuleSieveView:
+      additionalProperties: false
+      properties:
+        active:
+          type: boolean
+        representation:
+          enum:
+          - structured
+          - raw
+          - empty
+          type: string
+        rule_ids:
+          items:
+            type: integer
+          type: array
+        script:
+          type: string
+      required:
+      - representation
+      - script
+      - active
+      - rule_ids
+      type: object
+    List-Effect:
+      additionalProperties: false
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Effect'
+          type: array
+        pagination:
+          oneOf:
+          - $ref: '#/components/schemas/NativeRulePagination'
+          - type: 'null'
+      required:
+      - data
+      type: object
+    Effect:
+      additionalProperties: false
+      properties:
+        before:
+          type: string
+        id:
+          type: string
+        rule_id:
+          type: integer
+        rule_version:
+          type: integer
+        type:
+          enum:
+          - fileinto
+          - flag
+          - forward
+          type: string
+        undoable:
+          type: boolean
+        undone_at:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        value:
+          type: string
+      required:
+      - id
+      - rule_id
+      - rule_version
+      - type
+      - value
+      - before
+      - undoable
+      type: object
+    Data-Effect:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/Effect'
+      required:
+      - data
+      type: object
     CloseExportSessionBody:
       additionalProperties: false
       properties:

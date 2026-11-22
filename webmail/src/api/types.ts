@@ -857,6 +857,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List structured mail rules
+         * @description Ordered by position, then stable rule ID. At most 100 rules per account. Raw Sieve is never silently converted; getMailRuleSieve identifies it explicitly.
+         */
+        get: operations["listMailRules"];
+        put?: never;
+        /**
+         * Create a structured mail rule
+         * @description Creates one stable rule identity. All 1–20 conditions must match; 1–20 actions run in order. Subject and parsed From/To address comparisons use ASCII case folding. Fileinto, system flags and copy-forwards are supported. A forward follows the deployment Sieve redirect allowlist and loop guards. The native engine runs bounded structured data, not the exported Sieve. The domain's enabled sieve step controls account filtering. Run counts count matched committed deliveries once per rule. 409 rule_representation_conflict when raw Sieve exists; 409 rule_limit at 100 rules.
+         */
+        post: operations["createMailRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/rules/sieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the account rules as Sieve
+         * @description The same generated text as getSieveScript, with a stable ID/version/enabled marker per rule. Disabled rules have only a marker. Raw scripts are returned verbatim with representation raw and no structured IDs; they are never converted. This is the shared export surface for future ManageSieve transport; this server has no RFC 5804 listener yet.
+         */
+        get: operations["getMailRuleSieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/rules/{ruleID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a structured mail rule */
+        get: operations["getMailRule"];
+        /**
+         * Replace a structured mail rule
+         * @description Preserves the ID and increments its version, including enable, disable and position changes. Equal positions sort by ID. Saved delivery effects retain the version that acted.
+         */
+        put: operations["updateMailRule"];
+        post?: never;
+        /**
+         * Delete a structured mail rule
+         * @description Removes the rule from native execution and Sieve export atomically. Existing delivered-message effects retain its ID and version. No generated script row is left behind.
+         */
+        delete: operations["deleteMailRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/search": {
         parameters: {
             query?: never;
@@ -907,12 +976,12 @@ export interface paths {
         };
         /**
          * Get the Sieve filter script
-         * @description 404 not_found when the account has no stored Sieve script.
+         * @description Returns the generated Sieve view when structured account rules exist, including stable rule ID/version/enabled markers. Otherwise returns the raw stored script unchanged. getMailRuleSieve explicitly identifies structured versus raw text. 404 not_found when neither representation exists.
          */
         get: operations["getSieveScript"];
         /**
          * Create or replace the Sieve filter script
-         * @description 201 when it creates the script, 200 when it replaces it. A script that does not parse, needs a Sieve extension this server does not enable, or fails its dry run, is 422 validation_failed with the reason in fields.script, and is not stored. The reason names an extension that is not enabled.
+         * @description 201 when it creates the script, 200 when it replaces it. A script that does not parse, needs a Sieve extension this server does not enable, or fails its dry run, is 422 validation_failed with the reason in fields.script, and is not stored. The reason names an extension that is not enabled. An account using structured rules also returns 422 on script: edit its rules API or delete those rules before uploading raw Sieve. No structured rule is silently replaced or converted.
          */
         put: operations["putSieveScript"];
         post?: never;
@@ -3232,6 +3301,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{id}/rule-effects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain the rule effects on a delivered message
+         * @description Delivery snapshots identify the stable rule ID and version, action, previous value and undoability. Raw Sieve actions have no fabricated structured identity. Effects live with the message and survive rule deletion. A forward is recorded only when its outbound queue row commits with the local message, and is never undoable.
+         */
+        get: operations["listMessageRuleEffects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/rule-effects/{effectID}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo one local rule effect
+         * @description Restores the previous folder or system flag atomically with marking the effect undone. Idempotent after success. 409 rule_effect_not_undoable for a forward. 409 rule_effect_changed if the current field differs from the recorded result or a later effect on that field has not been undone; later user changes are preserved. Effects are retained with the message, with no separate expiry.
+         */
+        post: operations["undoMessageRuleEffect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{id}/seal": {
         parameters: {
             query?: never;
@@ -3506,6 +3615,11 @@ export interface components {
              */
             time_zone: string | null;
         };
+        Action: {
+            /** @enum {string} */
+            type: "fileinto" | "flag" | "forward";
+            value: string;
+        };
         Address: {
             address: string;
             name?: string;
@@ -3710,6 +3824,13 @@ export interface components {
             rows: number;
             skipped_folders?: string[];
         };
+        Condition: {
+            /** @enum {string} */
+            field: "subject" | "from" | "to";
+            /** @enum {string} */
+            operator: "contains" | "is";
+            value: string;
+        };
         Contact: {
             /** Format: date-time */
             created_at: string;
@@ -3896,6 +4017,9 @@ export interface components {
         "Data-DomainDNSCheck": {
             data: components["schemas"]["DomainDNSCheck"];
         };
+        "Data-Effect": {
+            data: components["schemas"]["Effect"];
+        };
         "Data-ExecutionResult": {
             data: components["schemas"]["ExecutionResult"];
         };
@@ -3947,6 +4071,9 @@ export interface components {
         "Data-MessageTrace": {
             data: components["schemas"]["MessageTrace"];
         };
+        "Data-NativeRule": {
+            data: components["schemas"]["NativeRule"];
+        };
         "Data-OwnerChallenge": {
             data: components["schemas"]["OwnerChallenge"];
         };
@@ -3997,6 +4124,9 @@ export interface components {
         };
         "Data-Result": {
             data: components["schemas"]["Result"];
+        };
+        "Data-RuleSieveView": {
+            data: components["schemas"]["RuleSieveView"];
         };
         "Data-ScheduledMessage": {
             data: components["schemas"]["ScheduledMessage"];
@@ -4142,6 +4272,13 @@ export interface components {
         "Data-vacationSetting": {
             data: components["schemas"]["vacationSetting"];
         };
+        Definition: {
+            actions: components["schemas"]["Action"][];
+            conditions: components["schemas"]["Condition"][];
+            enabled: boolean;
+            name: string;
+            position: number;
+        };
         DeliveredMessage: {
             folder: string;
             id: number;
@@ -4218,6 +4355,18 @@ export interface components {
             domain_id: number;
             outbound_stop: components["schemas"]["DomainOutboundStop"] | null;
             previous: components["schemas"]["ReputationFigures"];
+        };
+        Effect: {
+            before: string;
+            id: string;
+            rule_id: number;
+            rule_version: number;
+            /** @enum {string} */
+            type: "fileinto" | "flag" | "forward";
+            undoable: boolean;
+            /** Format: date-time */
+            undone_at?: string | null;
+            value: string;
         };
         EmailJSON: {
             attachments?: components["schemas"]["Attachment"][];
@@ -4476,6 +4625,10 @@ export interface components {
             data: components["schemas"]["Domain"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
+        "List-Effect": {
+            data: components["schemas"]["Effect"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
         "List-FolderName": {
             data: components["schemas"]["FolderName"][];
             pagination?: components["schemas"]["Pagination"] | null;
@@ -4502,6 +4655,10 @@ export interface components {
         };
         "List-MessageTrace": {
             data: components["schemas"]["MessageTrace"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-NativeRule": {
+            data: components["schemas"]["NativeRule"][];
             pagination?: components["schemas"]["Pagination"] | null;
         };
         "List-Pipeline": {
@@ -4706,6 +4863,16 @@ export interface components {
         MessageVolumeData: {
             count: number;
             date: string;
+        };
+        NativeRule: {
+            actions: components["schemas"]["Action"][];
+            conditions: components["schemas"]["Condition"][];
+            enabled: boolean;
+            id: number;
+            name: string;
+            position: number;
+            run_count: number;
+            version: number;
         };
         OpenExportSessionBody: {
             /** @enum {string} */
@@ -5190,6 +5357,13 @@ export interface components {
             note?: string;
             ok: boolean;
             reason?: string;
+        };
+        RuleSieveView: {
+            active: boolean;
+            /** @enum {string} */
+            representation: "structured" | "raw" | "empty";
+            rule_ids: number[];
+            script: string;
         };
         ScheduledMessage: {
             account_id: number;
@@ -16111,6 +16285,1188 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Data-Quota"];
                 };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMailRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-NativeRule"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createMailRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Definition"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-NativeRule"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMailRuleSieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-RuleSieveView"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMailRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                ruleID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-NativeRule"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateMailRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                ruleID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Definition"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-NativeRule"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMailRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                ruleID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
             401: {
@@ -46472,6 +47828,398 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMessageRuleEffects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Effect"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    undoMessageRuleEffect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                effectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Effect"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
                     "Content-Security-Policy": string;

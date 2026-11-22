@@ -12,6 +12,11 @@ import (
 // rather than the examples' ids (#1232). They are the links openapi.yaml states.
 // TestEveryCreateLeadsToItsLifecycle holds each create to that, or to a recorded reason.
 var responseLinks = map[string]map[string]map[string]oapifly.Link{
+	"createMailRule": {"201": {
+		"getMailRule":    {OperationID: "getMailRule", Parameters: map[string]string{"id": "$request.path.id", "ruleID": "$response.body#/data/id"}},
+		"updateMailRule": {OperationID: "updateMailRule", Parameters: map[string]string{"id": "$request.path.id", "ruleID": "$response.body#/data/id"}},
+		"deleteMailRule": {OperationID: "deleteMailRule", Parameters: map[string]string{"id": "$request.path.id", "ruleID": "$response.body#/data/id"}},
+	}},
 	"addToAllowlist": {
 		"201": {
 			"removeFromAllowlist": {OperationID: "removeFromAllowlist", Parameters: map[string]string{"eid": "$response.body#/data/id", "id": "$request.path.id"}},

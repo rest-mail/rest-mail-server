@@ -294,6 +294,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// OSI-13: bind the sieve filter to the deployment's redirect allowlist,
 	// overriding the deny-external default baked into the init() registration.
 	sieveRedirect := cfg.SieveRedirect()
+	pipeline.DefaultRegistry.Register("mail_rules", filters.NewNativeRulesWithPolicy(filters.SieveRedirectPolicy{
+		AllowExternal: sieveRedirect.AllowExternal, AllowedDomains: sieveRedirect.AllowedDomains,
+	}))
 	pipeline.DefaultRegistry.Register("sieve", filters.NewSieveWithPolicy(filters.SieveRedirectPolicy{
 		AllowExternal:  sieveRedirect.AllowExternal,
 		AllowedDomains: sieveRedirect.AllowedDomains,
@@ -716,6 +719,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 		vacationH.Register(mailRules)
 		sieveH.Register(mailRules)
+		handlers.NewNativeRuleHandler(db).Register(mailRules)
+		messageH.RegisterRuleEffects(mail)
 
 		// Quarantine
 		pipelineH.RegisterQuarantine(publicRoutes(r).
