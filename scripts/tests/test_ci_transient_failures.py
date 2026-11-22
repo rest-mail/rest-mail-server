@@ -78,11 +78,31 @@ class DockerRetryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(len(calls), 2)
         # The shim also insists every container it starts asks for the maximum
-        # oom_score_adj, so a retried `run` carries the flag it inserted.
-        self.assertEqual(calls[1], "run --oom-score-adj 1000 -d postgres:16-alpine")
+        # oom_score_adj and keeps a readable log, so a retried `run` carries the
+        # flags it inserted.
+        self.assertEqual(calls[1], "run --oom-score-adj 1000 --log-driver json-file -d postgres:16-alpine")
         self.assertIn(HUB_EOF, result.stderr)
         self.assertIn("transient registry failure", result.stderr)
         self.assertEqual(result.stdout, "stdout of call 1\nstdout of call 2\n")
+
+    def test_a_started_container_keeps_a_readable_log(self):
+        for verb in (("run",), ("create",), ("container", "run"), ("container", "create")):
+            with self.subTest(verb=verb):
+                result, calls = self.docker(["0"], *verb, "-d", "restmail-api")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls[-1], " ".join((*verb, "--oom-score-adj 1000 --log-driver json-file -d restmail-api")))
+
+    def test_a_callers_log_driver_is_kept(self):
+        for flag in (("--log-driver", "local"), ("--log-driver=local",)):
+            with self.subTest(flag=flag):
+                result, calls = self.docker(["0"], "run", *flag, "-d", "restmail-api")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls[-1], " ".join(("run", "--oom-score-adj 1000", *flag, "-d", "restmail-api")))
+
+    def test_other_commands_get_no_container_flags(self):
+        result, calls = self.docker(["0"], "logs", "e2e-api")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[-1], "logs e2e-api")
 
     def test_each_transient_form_is_retried(self):
         forms = {

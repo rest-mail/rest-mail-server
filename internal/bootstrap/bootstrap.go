@@ -332,8 +332,9 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 			return err
 		}
 		var account models.Mailbox
-		res := tx.Where("address = ?", address).
-			Attrs(models.Mailbox{
+		err = tx.Where("address = ?", address).Take(&account).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			account = models.Mailbox{
 				DomainID:               d.ID,
 				LocalPart:              local,
 				Address:                address,
@@ -342,12 +343,13 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 				PasswordChangeRequired: true,
 				TwoFactorRequired:      true,
 				BootstrapExpiresAt:     &expires,
-			}).
-			FirstOrCreate(&account)
-		if res.Error != nil {
-			return res.Error
+			}
+			err = repositories.CreateMailbox(tx, &account)
+			created = err == nil
 		}
-		created = res.RowsAffected > 0
+		if err != nil {
+			return err
+		}
 		if created {
 			if err := grants.EnsureDefaults(tx, &account); err != nil {
 				return err

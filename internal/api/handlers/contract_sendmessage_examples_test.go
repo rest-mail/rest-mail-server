@@ -20,9 +20,9 @@ func TestSendMessage_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, sendMessagePath, "sendMessage")
 
 	want := map[string][]string{
-		"request": {"from_missing", "unsubscribe_not_allowed", "valid"},
+		"request": {"attachments_not_supported", "from_missing", "unsubscribe_not_allowed", "valid"},
 		"201":     {"valid"},
-		"422":     {"from_missing", "unsubscribe_not_allowed"},
+		"422":     {"attachments_not_supported", "from_missing", "unsubscribe_not_allowed"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

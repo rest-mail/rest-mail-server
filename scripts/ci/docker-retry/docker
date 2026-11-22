@@ -35,16 +35,29 @@ case "${1:-}" in
   run | create) verb=1 ;;
   container) case "${2:-}" in run | create) verb=2 ;; esac ;;
 esac
+# Every container this shim starts also writes its output to a file the engine
+# can read back. On the ARC pool the engine is podman behind the docker API, and
+# its default log driver there kept nothing: First start's `docker logs` of a
+# healthy, running API came back empty for 60 seconds on two runners
+# (rest-mail-server#2218, 2026-11-21) while GitHub's runners read it at once.
+# json-file is docker's default and podman's name for its file driver.
 has_oom=0
+has_log_driver=0
 for arg in "$@"; do
-  case "$arg" in --oom-score-adj | --oom-score-adj=*) has_oom=1 ;; esac
+  case "$arg" in
+    --oom-score-adj | --oom-score-adj=*) has_oom=1 ;;
+    --log-driver | --log-driver=*) has_log_driver=1 ;;
+  esac
 done
-if [ "$verb" -gt 0 ] && [ "$has_oom" -eq 0 ]; then
+if [ "$verb" -gt 0 ]; then
   index=0
   for arg in "$@"; do
     argv+=("$arg")
     index=$((index + 1))
-    [ "$index" -eq "$verb" ] && argv+=(--oom-score-adj 1000)
+    if [ "$index" -eq "$verb" ]; then
+      [ "$has_oom" -eq 1 ] || argv+=(--oom-score-adj 1000)
+      [ "$has_log_driver" -eq 1 ] || argv+=(--log-driver json-file)
+    fi
   done
 else
   argv=("$@")

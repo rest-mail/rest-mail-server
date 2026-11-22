@@ -379,7 +379,7 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 		if count > 0 {
 			return errExists
 		}
-		if err := tx.Create(&account).Error; err != nil {
+		if err := repositories.CreateMailbox(tx, &account); err != nil {
 			if repositories.IsUniqueViolation(err) {
 				return errExists
 			}
@@ -400,9 +400,6 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 				return err
 			}
 			account.QuotaBytes = 0
-		}
-		if err := tx.Create(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
-			return err
 		}
 		now := time.Now()
 		if hash != "" {
