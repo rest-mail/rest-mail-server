@@ -530,16 +530,28 @@ the pinned Wails CLI, which the local build task installs when missing.
 Override the installation destination for testing, for example
 `DESKTOP_INSTALL_DIR=/tmp/restmail-desktop chore desktop:release`.
 
-Versions are `$(cat desktop/VERSION).$(git rev-list --count HEAD)`, currently
-`0.1.<repository commit count>`. New commits on the same history increase the
-number. Uncommitted changes, including untracked desktop or webmail files, add
+Versions follow semantic versioning. `python3 desktop/scripts/release.py next-version`
+starts from the highest `desktop-v*` tag and reads the conventional commit titles of
+the commits under `desktop/` or `webmail/` that the tag lacks:
+
+- a `feat` raises the minor version and resets the patch (`0.8.0` to `0.9.0`);
+- a breaking change (`feat!:`, `fix!:`) raises the minor version while the app is
+  `0.x`, and the major version from `1.0.0` on;
+- anything else (`fix`, `perf`, `build`, `docs` and so on) raises the patch
+  (`0.9.0` to `0.9.1`);
+- server-only commits leave the version unchanged.
+
+Commits are compared by patch, so released commits that are rebased onto a newer
+main are not counted again. The first release was `0.1.0`. macOS's build number
+(`CFBundleVersion`) is the repository's commit count, which only ever grows; the
+version people see is the semantic one. Uncommitted changes, including untracked desktop or webmail files, add
 `-dirty` to local versions and commits. The binary and `release.json` include
-the version, full commit and build timestamp; the macOS bundle also records the
-numeric version in its plist. Metadata is embedded before ad-hoc signing.
+the version, full commit and build timestamp; the macOS bundle records the
+version and build number in its plist. Metadata is embedded before ad-hoc signing.
 
 After building and testing locally, run `chore desktop:publish` to zip the last
 local `desktop/bin/RESTMail.app` with `ditto` and publish it with `release.json`.
-The tag is `desktop-v<build version>`, its target is the build's recorded commit,
+The tag is `desktop-v<version>`, its target is the build's recorded commit,
 and its title is `REST Mail desktop <version>`. Notes list commits touching
 `desktop/` or `webmail/` since the previous desktop tag, through the built commit.
 Publishing refuses dirty builds, commits absent from all remote branches, and
