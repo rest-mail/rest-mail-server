@@ -301,6 +301,12 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 			"sendDraft": {OperationID: "sendDraft", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
+	"uploadDraftAttachment": {
+		"201": {
+			"listDraftAttachments":  {OperationID: "listDraftAttachments", Parameters: map[string]string{"id": "$request.path.id"}},
+			"deleteDraftAttachment": {OperationID: "deleteDraftAttachment", Parameters: map[string]string{"id": "$request.path.id", "attachmentId": "$response.body#/data/id"}},
+		},
+	},
 }
 
 // withResponseLinks is endpoints with responseLinks on their responses. The registry's

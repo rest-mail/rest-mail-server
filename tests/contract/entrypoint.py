@@ -46,6 +46,8 @@ for operation in ("getQuietHours", "setQuietHours", "getAccountTimeZone", "setAc
     vertrag_hooks.before(operation)(shared["account_settings_of_its_own"])
 contact_draft = runpy.run_path(str(directory / "contact_draft_hooks.py"))
 contact_draft["register_contact_draft_hooks"](shared["fixture_call"], shared["ADMIN"])
+draft_attachments = runpy.run_path(str(directory / "draft_attachment_hooks.py"))
+draft_attachments["register_draft_attachment_hooks"](shared["fixture_call"], shared["admin_token"], shared["ADMIN"])
 postmaster = runpy.run_path(str(directory / "postmaster_hooks.py"))
 postmaster["register_postmaster_hooks"](shared["mfa_admin_token"])
 held_release = runpy.run_path(str(directory / "held_release_hooks.py"))

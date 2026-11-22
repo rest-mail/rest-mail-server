@@ -689,7 +689,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
 		// A contact import goes to disk and is held to its own limit.
-		r.Use(middleware.MaxBodyBytesExcept(cfg.APIMaxBodyBytes, handlers.ContactImportRoute))
+		r.Use(middleware.MaxBodyBytesExcept(cfg.APIMaxBodyBytes, func(r *http.Request) bool {
+			return handlers.ContactImportRoute(r) || handlers.DraftAttachmentUploadRoute(r)
+		}))
 
 		accountH.RegisterReads(publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone).

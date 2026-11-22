@@ -23,6 +23,10 @@
     }
   },
   "create_lifecycle": {
+    "uploadDraftAttachment": {
+      "read": "An upload is read through listDraftAttachments (metadata) and the shared /api/v1/attachments/{id} download route; there is no separate single-attachment read beneath a draft. No link leads to the download route, which the own-data phase exercises with a declared id.",
+      "update": "Uploaded attachment bytes and metadata are immutable: deleteDraftAttachment removes one and uploading again creates its replacement."
+    },
     "activateGrant": {
       "*": "Starts a timed use of a grant that already exists: there is no activation to read or change by id, and ending it takes a second factor in the body of deactivateGrant."
     },

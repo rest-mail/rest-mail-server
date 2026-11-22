@@ -204,6 +204,7 @@ func refuseComposeAttachments(_ *http.Request, err error) error {
 // RegisterCompose mounts the drafts, the scheduled sends, the calendar invitations and the
 // replies to them.
 func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(string, ...middleware.AuditOption) endpoint.Middleware) {
+	h.registerDraftAttachments(rs)
 	sendAudit := func(action string) []endpoint.Middleware {
 		if len(audit) == 0 {
 			return nil
@@ -256,8 +257,8 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		Errors:    idempotentSendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
-		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription,
-		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: sentOrDiscarded,
+		Description: "The draft (mail:write) is sent as sendMessage sends, including attachments previously stored by uploadDraftAttachment, and deleted once it is; a refused send keeps it and its uploads. Stored attachment bytes are checked before MIME construction; the encoded message must fit SMTP_MAX_MESSAGE_SIZE (413). Draft lookup/access dependency failures return 500 and follow request cancellation. " + queuedDeliveryDescription + sendIdempotencyDescription + delegatedSendingDescription,
+		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or draft-account quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
 		Errors: append([]int{http.StatusNotFound}, idempotentSendRefusals...), Security: delegatedSendSecurity(models.CapMailWrite), Middleware: sendAudit("mail.send_draft")}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
 		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},

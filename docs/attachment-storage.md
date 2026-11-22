@@ -32,6 +32,45 @@ Downloads pass the existing mailbox authorization check and stream through the
 API, including range requests. Objects and credentials are never sent to a
 browser as public or presigned URLs.
 
+## Uploading outgoing attachments
+
+Create a draft, then upload each file with
+`POST /api/v1/messages/draft/{id}/attachments`. Send its raw bytes as
+`Content-Type: application/octet-stream`, with `X-Attachment-Filename` naming
+the file and `X-Attachment-Content-Type` declaring its MIME type, for example
+`application/pdf`. Filenames must be valid UTF-8 of 1–255 bytes without CR,
+LF or NUL; they are display metadata, never object paths. Empty files are valid.
+
+The 201 response contains the attachment's `id`, `message_id`, `filename`,
+`content_type`, `size_bytes`, SHA-256 `checksum` and `created_at`. It never
+contains storage credentials or object references. `GET` on the same path lists
+the draft's attachments; `DELETE .../attachments/{attachmentId}` removes one
+and returns 204. All three operations require `mail:write` on the draft.
+Another account's draft or an attachment outside the named draft returns 404.
+
+Uploads stream through a temporary file to the configured attachment store;
+they do not use the JSON API's body-size allowance. `SMTP_MAX_MESSAGE_SIZE`
+bounds the combined draft text and attachment bytes, with 413
+`message_too_large` for excess bytes, including unknown-length uploads.
+Account and owner storage quotas are reserved transactionally; insufficient
+space returns 422 `mailbox_full`. Deleting an upload releases its charge.
+The existing `MIME_MAX_PARTS` limit also bounds attachment count, including
+the body parts, so repeated empty uploads cannot bypass structural bounds.
+
+`POST /api/v1/messages/draft/{id}/send` reads and verifies the stored uploads,
+builds MIME, and stores the same raw message in Sent and the outbound queue.
+The final encoded MIME must also fit `SMTP_MAX_MESSAGE_SIZE`; base64 and MIME
+headers can make it larger than the uploaded bytes. A refusal preserves the
+draft and its uploads. A successful send atomically replaces their quota charge
+with the Sent copy's charge and removes the draft's attachment rows.
+
+Inline JSON `attachments` fields remain explicitly refused on plain send and
+draft create/update; arbitrary attachment IDs are not accepted by plain send.
+Use the draft upload flow instead. Removed and failed-upload objects with no
+remaining database reference are reclaimed by the attachment cleaner after
+its configured grace period, rather than being deleted while another message
+may still reference the same content hash.
+
 ## Moving an existing installation
 
 1. Back up PostgreSQL and the attachment files. Provision the private bucket
@@ -54,9 +93,8 @@ browser as public or presigned URLs.
 
 Back up the PostgreSQL metadata and the bucket together. Rolling software back
 to a version without S3 support requires restoring the matching metadata and
-files; old binaries cannot interpret S3 object references. Object garbage
-collection is not implemented, so deleting a message removes its database
-references but may leave an unreferenced object in the private bucket.
+files; old binaries cannot interpret S3 object references. The attachment
+cleaner reclaims unreferenced filesystem and S3 objects after its grace period.
 
 Run `python3 scripts/garage-attachment-test.py` on a Docker-capable test runner
 to exercise the real pinned Garage image, including binary objects, range reads,
