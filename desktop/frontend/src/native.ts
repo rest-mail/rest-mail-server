@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { tabs, type HeldAttachment } from './tabs';
 import { layoutPreferences } from './layout';
 import { createMailNotificationBatch } from './notifications';
+import { appearanceSettings } from './appearance/engine';
 
 const invoke = <Result,>(method: string, ...args: unknown[]) => Call.ByName(`main.Native.${method}`, ...args) as Promise<Result>;
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : 'Native action failed');
@@ -57,6 +58,8 @@ export function handleNativeMailEvent(event: SSEEvent) {
 
 export function runNativeCommand(action: string, windowName = 'main') {
   if (!document.hasFocus()) return;
+  if (action === 'settings') { appearanceSettings.open(); return; }
+  if (appearanceSettings.get()) { if (action === 'close-tab' || action === 'close-window') appearanceSettings.close(); return; }
   if (action === 'close-tab') { if (tabs.get().active !== 'mail') native.requestClose(tabs.get().active); return; }
   if (isEditing(document.activeElement)) return;
   const auth = useAuthStore.getState();
@@ -68,7 +71,6 @@ export function runNativeCommand(action: string, windowName = 'main') {
   if (action === 'view.pane.folders') { layoutPreferences.toggleFolders(); return; }
   if (action === 'view.pane.reader') { layoutPreferences.toggleReader(); return; }
   if (action === 'import-thunderbird') { window.dispatchEvent(new Event('desktop:import-thunderbird')); return; }
-  if (action === 'settings') { tabs.select('mail'); useUIStore.getState().setView('settings'); return; }
   if (action === 'refresh') { void mail.refresh().catch(report); return; }
   if (tabs.get().active !== 'mail' || useUIStore.getState().view !== 'mail' || !mail.selectedMessage || mail.loadingMessage || mail.selectedMessage.is_draft) return;
   const names: Record<string, string> = { reply: 'Reply', 'reply-all': 'Reply all', forward: 'Forward', archive: 'Archive', delete: 'Delete', 'toggle-flag': mail.selectedMessage.is_flagged ? 'Unflag' : 'Flag' };
@@ -96,7 +98,7 @@ export function installNative(events: RuntimeEvents, windowName: string) {
     const signedIn = auth.isAuthenticated && auth.setupRequired.length === 0;
     const message = mail.selectedMessage;
     const preferences = layoutPreferences.get();
-    const state = { signedIn, editing: isEditing(document.activeElement), viewing: tabs.get().active === 'mail' && useUIStore.getState().view === 'mail', composeTab: tabs.get().active !== 'mail', activeTab: tabs.get().active, messageId: mail.loadingMessage ? 0 : message?.id ?? 0, draft: message?.is_draft ?? false, read: message?.is_read ?? false, flagged: message?.is_flagged ?? false, layout: preferences.layout, folders: preferences.folders, reader: preferences.reader };
+    const state = { signedIn, editing: isEditing(document.activeElement), viewing: !appearanceSettings.get() && tabs.get().active === 'mail' && useUIStore.getState().view === 'mail', composeTab: !appearanceSettings.get() && tabs.get().active !== 'mail', activeTab: tabs.get().active, messageId: mail.loadingMessage ? 0 : message?.id ?? 0, draft: message?.is_draft ?? false, read: message?.is_read ?? false, flagged: message?.is_flagged ?? false, layout: preferences.layout, folders: preferences.folders, reader: preferences.reader };
     const serialized = JSON.stringify(state);
     if (lastState !== serialized) { lastState = serialized; void invoke('SyncState', windowName, state).catch(report); }
     if (windowName !== 'main') return;
@@ -127,7 +129,7 @@ export function installNative(events: RuntimeEvents, windowName: string) {
     }
   };
   const unsubscribe = [
-    useAuthStore.subscribe(sync), useMailStore.subscribe(sync), useUIStore.subscribe(sync), tabs.subscribe(sync), layoutPreferences.subscribe(sync),
+    useAuthStore.subscribe(sync), useMailStore.subscribe(sync), useUIStore.subscribe(sync), tabs.subscribe(sync), layoutPreferences.subscribe(sync), appearanceSettings.subscribe(sync),
     events.on('native:tab-closed', data => tabs.close(String(data))),
     events.on('native:select-tab', data => tabs.select(String(data))),
     events.on('native:drop-error', data => toast.error(String(data))),

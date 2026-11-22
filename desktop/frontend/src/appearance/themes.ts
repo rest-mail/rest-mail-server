@@ -2,6 +2,7 @@ import type { FontFamily } from './fonts';
 
 export interface Palette {
   sidebar: string; sidebarInk: string; sidebarMuted: string;
+  sidebarSelection: string; sidebarSelectionInk: string;
   list: string; reader: string; sheet: string; ink: string; muted: string;
   accent: string; accentInk: string; selection: string; selectionInk: string;
   border: string; unread: string; badge: string; badgeInk: string;
@@ -28,6 +29,7 @@ export const defaultTheme: Theme = {
   id: 'rest-mail', name: 'REST Mail', character: 'Confident navy. A little sunshine. Unmistakably yours.', dark: false,
   colours: {
     sidebar: '#1a2a4a', sidebarInk: '#ffffff', sidebarMuted: '#c2cde0',
+    sidebarSelection: '#ffcc00', sidebarSelectionInk: '#1a2a4a',
     list: '#f3f5fa', reader: '#ffffff', sheet: '#ffffff', ink: '#1a2a4a', muted: '#53627a',
     accent: '#ffcc00', accentInk: '#1a2a4a', selection: '#2c4373', selectionInk: '#ffffff',
     border: '#7b879b', unread: '#2c4373', badge: '#ffcc00', badgeInk: '#1a2a4a',
@@ -38,7 +40,8 @@ export const defaultTheme: Theme = {
 };
 
 function palette(input: Pick<Palette, 'sidebar' | 'sidebarInk' | 'sidebarMuted' | 'list' | 'reader' | 'ink' | 'muted' | 'accent' | 'selection' | 'border' | 'danger' | 'success' | 'brace'>): Palette {
-  return { ...input, sheet: input.reader, accentInk: contrastInk(input.accent), selectionInk: contrastInk(input.selection), unread: input.selection, badge: input.accent, badgeInk: contrastInk(input.accent) };
+  const sidebarSelection = contrast(input.accent, input.sidebar) >= 3 ? input.accent : input.selection;
+  return { ...input, sidebarSelection, sidebarSelectionInk: contrastInk(sidebarSelection), sheet: input.reader, accentInk: contrastInk(input.accent), selectionInk: contrastInk(input.selection), unread: input.selection, badge: input.accent, badgeInk: contrastInk(input.accent) };
 }
 
 export const builtInThemes: readonly Theme[] = [defaultTheme, {

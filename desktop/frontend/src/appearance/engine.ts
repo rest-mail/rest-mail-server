@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { fontFamilies, fontStack, type FontFamily } from './fonts';
-import { builtInThemes, contrastInk, defaultTheme, themeByName, type Shape, type Theme, type Typefaces } from './themes';
+import { builtInThemes, contrast, contrastInk, defaultTheme, themeByName, type Shape, type Theme, type Typefaces } from './themes';
 
 export interface Overrides { accent?: string; display?: FontFamily; ui?: FontFamily; reading?: FontFamily; mono?: FontFamily; radius?: number; density?: number }
 export interface RemixSpec { colours: string; typefaces: string; shape: string; overrides: Overrides }
@@ -38,9 +38,15 @@ export function resolveTheme(spec: RemixSpec): Theme {
   const fonts: Typefaces = { ...typefaces.fonts };
   for (const role of ['display', 'ui', 'reading', 'mono'] as const) if (overrides[role]) fonts[role] = overrides[role];
   const geometry: Shape = { ...shape.shape, ...(overrides.radius === undefined ? {} : { radius: overrides.radius }), ...(overrides.density === undefined ? {} : { density: overrides.density }) };
+  const palette = { ...colours.colours };
+  if (overrides.accent) {
+    const accentInk = contrastInk(overrides.accent);
+    const sidebarSelection = contrast(overrides.accent, palette.sidebar) >= 3 ? overrides.accent : contrast(palette.selection, palette.sidebar) >= 3 ? palette.selection : palette.sidebarInk;
+    Object.assign(palette, { accent: overrides.accent, accentInk, badge: overrides.accent, badgeInk: accentInk, sidebarSelection, sidebarSelectionInk: contrastInk(sidebarSelection) });
+  }
   return {
     ...colours, id: 'custom', name: 'Custom', fonts, shape: geometry,
-    colours: { ...colours.colours, ...(overrides.accent ? { accent: overrides.accent, accentInk: contrastInk(overrides.accent) } : {}) },
+    colours: palette,
   };
 }
 

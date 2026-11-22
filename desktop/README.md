@@ -112,11 +112,11 @@ adjust its width in columns or its height in the stacked layout.
 
 Layout, pane visibility, and separate split sizes are saved in localStorage per
 server host and signed-in email. No account settings are changed. The desktop-only
-theme uses the native system UI face, an 11/12/13/15/20px type scale, 400/500/600
-weights, 16/20/28px line heights, 32px sidebar rows, and tabular counts and times.
-Monospace is reserved for authenticator secrets and recovery-code data. Brand navy
-and yellow remain the sidebar and primary-action accents; shared webmail does not
-import this theme or render the desktop title bar.
+theme defaults to Bricolage Grotesque and Instrument Sans, with an
+11/12/13/15/22px type scale, 400/500/600 weights, and tabular counts and times.
+Appearance settings can replace the palette, all four font roles, row spacing,
+corner radius, and the theme's type scale. Shared webmail does not import these
+styles, fonts, or preferences.
 
 The default window is 1200×800, with a 1000×720 native content minimum (1000×754
 including the macOS title-bar inset). Sign-in and setup

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import { Columns3, PanelsTopLeft, PanelLeft, PanelBottom, ArrowLeft } from 'lucide-react';
+import { Columns3, PanelsTopLeft, PanelLeft, PanelBottom, ArrowLeft, Paintbrush } from 'lucide-react';
 import { ComposeView, type ComposeLifecycle } from '@webmail/components/compose/ComposeView';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { useMailStore } from '@webmail/stores/mailStore';
@@ -9,6 +9,7 @@ import { layoutPreferences, useLayoutPreferences } from './layout';
 import { tabs, useDesktopTabs, type ComposeTab } from './tabs';
 import { native } from './native';
 import type { RuntimeEvents } from './session';
+import { appearanceSettings } from './appearance/engine';
 
 function Draft({ tab, events }: { tab: ComposeTab; events: RuntimeEvents }) {
   const save = useRef<() => Promise<boolean>>(async () => false);
@@ -67,6 +68,7 @@ export function DesktopTabs({ children, events }: { children: ReactNode; events:
         <span className="desktop-layout-divider" />
         <button data-testid="pane-folders" aria-label="Show folder pane" title="Show/hide folder pane (⌘⌥S)" aria-pressed={preferences.folders} onClick={layoutPreferences.toggleFolders}><PanelLeft size={16} /></button>
         <button data-testid="pane-reader" aria-label="Show reader pane" title="Show/hide reader pane (⌘⌥R)" aria-pressed={preferences.reader} onClick={layoutPreferences.toggleReader}><PanelBottom size={16} /></button>
+        <button data-testid="appearance-open" aria-label="Appearance settings" title="Settings (⌘,)" onClick={appearanceSettings.open}><Paintbrush size={16} /></button>
       </div>
     </header>}
     {reading && state.active === 'mail' && <div className="desktop-reader-back"><button data-testid="reader-back" onClick={() => useMailStore.setState({ selectedMessageId: null, selectedMessage: null })}><ArrowLeft size={16} />Back to messages</button></div>}
