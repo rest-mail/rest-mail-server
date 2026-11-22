@@ -100,6 +100,29 @@ type LogsArgs struct {
 	Lines int `json:"lines,omitempty"`
 }
 
+type ThemeOverrides struct {
+	Accent  string `json:"accent,omitempty"`
+	Display string `json:"display,omitempty"`
+	UI      string `json:"ui,omitempty"`
+	Reading string `json:"reading,omitempty"`
+	Mono    string `json:"mono,omitempty"`
+	Radius  *int   `json:"radius,omitempty"`
+	Density *int   `json:"density,omitempty"`
+}
+
+type ThemeRemix struct {
+	Colours   string          `json:"colours"`
+	Typefaces string          `json:"typefaces"`
+	Shape     string          `json:"shape"`
+	Overrides *ThemeOverrides `json:"overrides,omitempty"`
+}
+
+type ThemeSetArgs struct {
+	Window string      `json:"window,omitempty"`
+	Theme  string      `json:"theme,omitempty"`
+	Remix  *ThemeRemix `json:"remix,omitempty"`
+}
+
 func domainTool[Args any](server *Server, name, description string) {
 	sdk.AddTool(server.protocol, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, request *sdk.CallToolRequest, args Args) (*sdk.CallToolResult, any, error) {
 		if server.options.Domain == nil {
@@ -205,6 +228,9 @@ func (server *Server) registerTools() {
 	uiTool[EmptyArgs](server, "ui_snapshot", "snapshot")
 	uiTool[MenuArgs](server, "ui_menu", "menu")
 	uiTool[EmptyArgs](server, "ui_tabs", "tabs")
+	uiTool[EmptyArgs](server, "ui_theme_list", "themeList")
+	uiTool[ThemeSetArgs](server, "ui_theme_set", "themeSet")
+	uiTool[EmptyArgs](server, "ui_theme_get", "themeGet")
 	uiTool[DropFilesArgs](server, "ui_drop_files", "dropFiles")
 	uiTool[ElementArgs](server, "ui_click", "click")
 	uiTool[TypeArgs](server, "ui_type", "type")
