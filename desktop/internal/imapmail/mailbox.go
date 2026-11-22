@@ -114,6 +114,7 @@ func (store *Store) ListMessages(ctx context.Context, account uint, folder strin
 		if err != nil {
 			return err
 		}
+		result.UIDValidity = selected.UIDValidity
 		cursor := pageCursor{Account: account, Folder: folder, Validity: selected.UIDValidity, Query: query}
 		if page.Cursor != "" {
 			encoded, err := base64.RawURLEncoding.DecodeString(page.Cursor)

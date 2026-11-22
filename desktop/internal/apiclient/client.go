@@ -22,8 +22,9 @@ type Client struct {
 }
 
 type Page struct {
-	Cursor string `json:"cursor,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Cursor         string `json:"cursor,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
+	IncludeSnoozed bool   `json:"include_snoozed,omitempty"`
 }
 
 type Pagination struct {
@@ -33,8 +34,9 @@ type Pagination struct {
 }
 
 type MessagePage struct {
-	Data       []apitypes.Message `json:"data"`
-	Pagination *Pagination        `json:"pagination,omitempty"`
+	Data        []apitypes.Message `json:"data"`
+	Pagination  *Pagination        `json:"pagination,omitempty"`
+	UIDValidity uint32             `json:"uid_validity,omitempty"`
 }
 
 type Draft struct {
@@ -104,6 +106,9 @@ func (client *Client) ListMessages(ctx context.Context, accountID uint, folder s
 
 func (page Page) values() url.Values {
 	values := url.Values{}
+	if page.IncludeSnoozed {
+		values.Set("include_snoozed", "true")
+	}
 	if page.Cursor != "" {
 		values.Set("cursor", page.Cursor)
 	}
