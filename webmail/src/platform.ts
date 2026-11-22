@@ -21,6 +21,7 @@ export interface MailPlatform {
   pickAttachments?: () => Promise<NativeAttachment[]>;
   saveAttachment?: (url: string, filename: string) => Promise<void>;
   openCompose?: (state?: ComposeState) => void;
+  importThunderbird?: () => void;
   nativeNotifications?: boolean;
   onMailEvent?: (event: SSEEvent) => void;
   registerMessageAction?: (name: string, action: () => void) => () => void;

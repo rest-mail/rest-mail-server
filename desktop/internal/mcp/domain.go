@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/thunderbird"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
@@ -33,6 +34,11 @@ type MailClient interface {
 }
 
 type MailDomain struct {
+	Imports interface {
+		Profiles() thunderbird.Catalog
+		Start(thunderbird.Selection) (thunderbird.Status, error)
+		Status(bool) thunderbird.Status
+	}
 	session  SessionClient
 	mail     MailClient
 	accounts AccountClient
@@ -61,6 +67,26 @@ func decodeArgs[Args any](data json.RawMessage) (Args, error) {
 
 func (domain *MailDomain) Call(ctx context.Context, name string, data json.RawMessage) (any, error) {
 	switch name {
+	case "thunderbird_profiles", "thunderbird_import", "import_status":
+		if domain.Imports == nil {
+			return nil, errors.New("Thunderbird import unavailable")
+		}
+		switch name {
+		case "thunderbird_profiles":
+			return domain.Imports.Profiles(), nil
+		case "import_status":
+			args, err := decodeArgs[ImportStatusArgs](data)
+			if err != nil {
+				return nil, err
+			}
+			return domain.Imports.Status(args.Cancel), nil
+		default:
+			args, err := decodeArgs[thunderbird.Selection](data)
+			if err != nil {
+				return nil, err
+			}
+			return domain.Imports.Start(args)
+		}
 	case "add_imap_account":
 		if domain.accounts == nil {
 			return nil, errors.New("IMAP accounts unavailable")
