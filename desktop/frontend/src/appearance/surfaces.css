@@ -22,8 +22,8 @@ button, input, textarea, select, .desktop-shell button { border-radius: var(--ra
 .desktop-sidebar [data-testid="compose-open"] { background: var(--signal); border: 1px solid var(--theme-accent-ink, var(--ink)); border-radius: var(--radius); }
 .desktop-sidebar [data-testid="compose-open"] span, .desktop-sidebar [data-testid="compose-open"] { color: var(--theme-accent-ink, var(--ink)); }
 .desktop-sidebar [data-testid^="folder-"] { height: var(--desktop-row-height); border-radius: var(--radius); }
-.desktop-sidebar [data-testid^="folder-"][aria-current] { background: var(--signal); color: var(--theme-accent-ink, var(--ink)); }
-.desktop-sidebar [data-testid^="folder-"][aria-current] :is(svg, span) { color: var(--theme-accent-ink, var(--ink)); }
+.desktop-sidebar [data-testid^="folder-"][aria-current] { background: var(--theme-sidebar-selection, var(--signal)); color: var(--theme-sidebar-selection-ink, var(--ink)); }
+.desktop-sidebar [data-testid^="folder-"][aria-current] :is(svg, span) { color: var(--theme-sidebar-selection-ink, var(--ink)); }
 .desktop-sidebar [data-inbox="true"] > span:last-child:not(:first-of-type) { background: var(--theme-badge, var(--signal)); color: var(--theme-badge-ink, var(--ink)); border-radius: var(--radius); }
 .desktop-sidebar [data-testid^="folder-"][aria-current] > span:last-child:not(:first-of-type) { background: var(--theme-selection, var(--deep)); color: var(--theme-selection-ink, white); }
 .desktop-sidebar :is(.desktop-sidebar-action, .desktop-signout, .desktop-sidebar-tools summary):hover { color: var(--theme-sidebar-ink, white); }
@@ -37,7 +37,7 @@ button, input, textarea, select, .desktop-shell button { border-radius: var(--ra
 .desktop-message[data-selected="true"] :is(span, p, svg) { color: var(--theme-selection-ink, white) !important; }
 .desktop-message[data-selected="true"]::before { background: var(--theme-selection-ink, white); }
 .desktop-reader-pane, .desktop-reader-toolbar { background: var(--theme-reader, var(--sheet)); }
-.desktop-reader-content .prose, .desktop-compose [data-testid="compose-body"] { font-family: var(--theme-reading, var(--desktop-font)); }
+.desktop-reader-content .prose, .desktop-reader-content pre.whitespace-pre-wrap, .desktop-compose [data-testid="compose-body"] { font-family: var(--theme-reading, var(--desktop-font)); }
 .desktop-reader-content iframe { background: #ffffff; color-scheme: light; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px rgb(0 0 0 / 8%); }
 .desktop-reader-content :is([data-testid="reader-load-images"], [data-testid^="attachment-"]), .desktop-reader-content div:has(> [data-testid="reader-load-images"]) { border-radius: var(--radius); }
 .desktop-tab-strip > [aria-selected="true"], .desktop-draft-tab[data-active="true"] { border-radius: var(--radius) var(--radius) 0 0; }

@@ -106,6 +106,7 @@ def main():
     for record in records:
         documentation.append(f"| {record['family']} | {record['license']} | [Pinned source]({record['source']}) | {sum(asset['bytes'] for asset in record['assets']):,} |")
     documentation.extend(["", "## Reproduce", "", "Run `python desktop/scripts/bundle-fonts.py` using Python with `fonttools[woff]` (generated with fontTools 4.68.0) available. This is a maintainer-only download/subsetting step, never part of the runtime or normal build. Do not edit generated font assets without regenerating the manifest.", ""])
+    documentation.insert(4, "License text is preserved, with line endings and trailing whitespace normalized.\n")
     documentation.extend(["## Modified-font naming", "", "Parcel Sans, Parcel Serif and Parcel Mono are Latin-subset derivatives of IBM Plex Sans, IBM Plex Serif and IBM Plex Mono. Their internal family and PostScript names have been renamed to respect the upstream reserved name. Copyright and license notices are preserved. Roboto Slab's separate upstream copyright notice is also included.", ""])
     (FRONTEND / "FONTS.md").write_text("\n".join(documentation))
 

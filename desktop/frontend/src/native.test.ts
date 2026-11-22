@@ -8,6 +8,7 @@ import { useMailStore } from '@webmail/stores/mailStore';
 import { configureMailPlatform } from '@webmail/platform';
 import type { MessageDetail } from '@webmail/types';
 import { handleNativeMailEvent, inboxUnread, installNative, isEditing, native, notificationMetadata, registerMessageAction, runNativeCommand } from './native';
+import { appearanceSettings } from './appearance/engine';
 
 describe('native mail integration', () => {
   afterEach(() => vi.useRealTimers());
@@ -15,6 +16,7 @@ describe('native mail integration', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     vi.clearAllMocks(); vi.mocked(Call.ByName).mockResolvedValue(true); configureMailPlatform({ desktop: true });
     tabs.clear();
+    appearanceSettings.close();
     document.body.innerHTML = '';
     useAuthStore.setState({ isAuthenticated: true, setupRequired: [] });
     useUIStore.setState({ view: 'mail', composeState: null });
@@ -25,6 +27,19 @@ describe('native mail integration', () => {
     for (const selector of ['input', 'textarea', 'select', 'span']) expect(isEditing(document.querySelector(selector))).toBe(true);
     expect(isEditing(document.querySelector('article'))).toBe(false);
     expect(isEditing(null)).toBe(false);
+  });
+  it('opens appearance before sign-in and while editing, and prevents underlying message commands', () => {
+    useAuthStore.setState({ isAuthenticated: false });
+    document.body.innerHTML = '<input>'; document.querySelector('input')!.focus();
+    runNativeCommand('settings');
+    expect(appearanceSettings.get()).toBe(true);
+    useAuthStore.setState({ isAuthenticated: true });
+    const callback = vi.fn(); const unregister = registerMessageAction('Delete', callback);
+    document.querySelector('input')!.blur(); runNativeCommand('delete');
+    expect(callback).not.toHaveBeenCalled();
+    runNativeCommand('close-tab');
+    expect(appearanceSettings.get()).toBe(false);
+    unregister();
   });
   it('ignores native commands and tab keys when another app owns focus', () => {
     vi.mocked(document.hasFocus).mockReturnValue(false);

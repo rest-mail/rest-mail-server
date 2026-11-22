@@ -1,0 +1,71 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { AppearanceSettings } from './Appearance';
+import { appearance, appearanceSettings, resolveTheme } from './engine';
+import { builtInThemes, themeByName } from './themes';
+
+beforeEach(() => { localStorage.clear(); appearance.restore('desktop.test', 'designer@desktop.test'); appearanceSettings.open(); });
+describe('desktop appearance settings', () => {
+  it('shows all ten distinctive themes with live palette and font specimens', () => {
+    render(<AppearanceSettings />);
+    expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true');
+    expect(screen.getByLabelText('Live theme preview')).toBeTruthy();
+    for (const theme of builtInThemes) expect(screen.getByTestId(`theme-${theme.id}`).textContent).toContain(theme.character);
+    fireEvent.click(screen.getByTestId('theme-letterpress'));
+    expect(appearance.get().selected).toBe('letterpress');
+    expect(screen.getByTestId('appearance-preview').style.getPropertyValue('--theme-reading')).toContain('Newsreader');
+  });
+  it('mixes independent sources and applies every individual override immediately', () => {
+    render(<AppearanceSettings />);
+    fireEvent.click(screen.getByTestId('appearance-remix'));
+    fireEvent.change(screen.getByLabelText('Theme A'), { target: { value: 'canopy' } });
+    fireEvent.change(screen.getByLabelText('Theme B'), { target: { value: 'letterpress' } });
+    fireEvent.click(screen.getByTestId('remix-colours-a'));
+    fireEvent.click(screen.getByTestId('remix-typefaces-b'));
+    fireEvent.click(screen.getByTestId('remix-shape-b'));
+    fireEvent.change(screen.getByLabelText('Accent colour'), { target: { value: '#ffcc99' } });
+    fireEvent.change(screen.getByLabelText('ui font'), { target: { value: 'Space Grotesk' } });
+    fireEvent.change(screen.getByLabelText('reading font'), { target: { value: 'Literata' } });
+    fireEvent.change(screen.getByLabelText('display font'), { target: { value: 'Syne' } });
+    fireEvent.change(screen.getByLabelText('mono font'), { target: { value: 'JetBrains Mono' } });
+    fireEvent.change(screen.getByLabelText('Corner radius'), { target: { value: '21' } });
+    fireEvent.change(screen.getByLabelText('Row spacing'), { target: { value: '45' } });
+    const current = resolveTheme(appearance.get().spec);
+    expect(current.colours.sidebar).toBe(themeByName('canopy').colours.sidebar);
+    expect(current.colours.accent).toBe('#ffcc99');
+    expect(current.fonts).toEqual({ display: 'Syne', ui: 'Space Grotesk', reading: 'Literata', mono: 'JetBrains Mono' });
+    expect(current.shape).toMatchObject({ radius: 21, density: 45, scale: 1.04 });
+    expect(appearance.get().selected).toBe('custom');
+    fireEvent.click(screen.getByTestId('theme-reset'));
+    expect(appearance.get().selected).toBe('canopy');
+    expect(appearance.get().spec.overrides).toEqual({});
+  });
+  it('names, saves, restores and deletes a remix without touching the built-in collection', () => {
+    render(<AppearanceSettings />);
+    fireEvent.click(screen.getByTestId('appearance-remix'));
+    fireEvent.click(screen.getByTestId('theme-save'));
+    expect(screen.getByTestId('appearance-notice').textContent).toContain('name');
+    fireEvent.change(screen.getByTestId('theme-save-name'), { target: { value: 'Plum & paper' } });
+    fireEvent.click(screen.getByTestId('theme-save'));
+    const saved = appearance.get().saved[0];
+    fireEvent.click(screen.getByTestId('appearance-saved'));
+    expect(screen.getByTestId(`theme-${saved.id}`).textContent).toContain('Plum & paper');
+    fireEvent.click(screen.getByTestId(`theme-${saved.id}`));
+    expect(appearance.get().selected).toBe(saved.id);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Plum & paper' }));
+    expect(appearance.get().saved).toHaveLength(0);
+    expect(builtInThemes).toHaveLength(10);
+  });
+  it('surprises with a real cross-theme remix, supports keyboard dismissal and restores focus', () => {
+    const trigger = document.createElement('button'); document.body.append(trigger); trigger.focus();
+    const view = render(<AppearanceSettings />);
+    expect(document.activeElement).toBe(screen.getByTestId('appearance-done'));
+    fireEvent.click(screen.getByTestId('appearance-surprise'));
+    expect(appearance.get().spec.colours).not.toBe(appearance.get().spec.typefaces);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(appearanceSettings.get()).toBe(false);
+    view.unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+});

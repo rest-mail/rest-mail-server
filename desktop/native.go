@@ -101,7 +101,7 @@ func (service *Native) install(app *application.App) {
 	appMenu := menu.AddSubmenu("REST Mail")
 	appMenu.AddRole(application.About)
 	appMenu.AddSeparator()
-	service.settings = appMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").SetEnabled(false).OnClick(func(*application.Context) { service.emitCommand("settings") })
+	service.settings = appMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").OnClick(func(*application.Context) { service.emitCommand("settings") })
 	appMenu.AddSeparator()
 	appMenu.AddRole(application.ServicesMenu)
 	appMenu.AddRole(application.Hide)
@@ -144,6 +144,10 @@ func (service *Native) invokeMenu(identifier string) error {
 	window := service.app.Window.Current()
 	if window == nil || !window.IsFocused() {
 		return errors.New("no focused REST Mail window")
+	}
+	if identifier == "settings" {
+		service.emitCommand("settings")
+		return nil
 	}
 	service.mutex.Lock()
 	state := service.states[window.Name()]
@@ -198,7 +202,7 @@ func (service *Native) updateMenu() {
 			service.items[command.ID].SetChecked(state.Checked(command.ID))
 		}
 	}
-	service.settings.SetEnabled(state.SignedIn && !state.Editing)
+	service.settings.SetEnabled(true)
 }
 
 func (service *Native) SyncCompose(name string, status ComposeStatus) {
