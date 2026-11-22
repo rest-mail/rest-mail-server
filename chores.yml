@@ -1103,7 +1103,7 @@ tasks:
           -e RESTMAIL_API_IP -e RESTMAIL_SMTP_IP \
           -e MAIL1_POSTFIX_IP -e MAIL2_POSTFIX_IP -e MAIL1_DOVECOT_IP -e MAIL2_DOVECOT_IP \
           -e API_BASE_URL="${RESTMAIL_E2E_API_URL:-${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}}" \
-          golang:1.26.10 \
+          golang:1.26.11 \
           go test -race -count=1 -v -timeout=2h ./tests/e2e/... {{.CLI_ARGS}}
 
   test:contract-own-data:
@@ -2000,7 +2000,7 @@ tasks:
               -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
               -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
-              golang:1.26.10 \
+              golang:1.26.11 \
               sh -ec 'go build -o /go/bin/instance ./cmd/instance && exec /go/bin/instance "$@"' _ \
                 acme-issue -out /certs -listen :80 \
                 -renew-before "{{.CERT_RENEW_BEFORE | default "0s"}}" \
@@ -2055,7 +2055,7 @@ tasks:
               -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
               -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
-              golang:1.26.10 \
+              golang:1.26.11 \
               go run ./cmd/instance mtls-issue -out /internal-mtls \
                 -server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
                 -server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}

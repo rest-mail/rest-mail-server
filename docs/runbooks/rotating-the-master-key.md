@@ -330,7 +330,7 @@ not been decided ([Not decided](#not-decided)).
 
 **Run** on 2026-11-04, from main at `01c844bb`:
 
-- `cmd/rotate-key` and `cmd/api`, built with Go 1.26.10 and run directly on an
+- `cmd/rotate-key` and `cmd/api`, built with Go 1.26.11 and run directly on an
   arm64 Mac, against Postgres 16.15 in a Docker container on the same machine,
   over a published port. The 1-minute load average was 38 to 48 around the timed
   12,000-row run, and about 100 earlier in the session.

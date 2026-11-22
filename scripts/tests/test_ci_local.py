@@ -801,14 +801,14 @@ class VertragShards(unittest.TestCase):
                 "jobs": {
                     "lint": {
                         "steps": [
-                            {"name": "Set up Go", "with": {"go-version": "1.26.10"}}
+                            {"name": "Set up Go", "with": {"go-version": "1.26.11"}}
                         ]
                     }
                 }
             }
-            with patch.object(local, "run", side_effect=["go1.26.10\n", '{"CC":"clang","CGO_ENABLED":"1"}']) as commands:
+            with patch.object(local, "run", side_effect=["go1.26.11\n", '{"CC":"clang","CGO_ENABLED":"1"}']) as commands:
                 local.go_toolchain()
-            self.assertEqual(local.env["GOTOOLCHAIN"], "go1.26.10")
+            self.assertEqual(local.env["GOTOOLCHAIN"], "go1.26.11")
             self.assertEqual(local.env["CC"], "clang")
             self.assertEqual(local.env["CGO_ENABLED"], "1")
             self.assertEqual(commands.call_args.args[0][1], "scripts/ci/install_cgo.py")
@@ -1952,7 +1952,7 @@ FAILED (failures=1)
 # A go that only knows what the gate asks of it; `vet` follows a file in the tree.
 FAKE_GO = """#!/bin/sh
 case "$1" in
-  env) echo go1.26.10 ;;
+  env) echo go1.26.11 ;;
   vet) if [ -f vet-breaks ]; then echo "vet-breaks:1: does not compile"; exit 1; fi ;;
 esac
 """
@@ -1964,7 +1964,7 @@ jobs:
   lint:
     steps:
       - name: Set up Go
-        with: {go-version: "1.26.10"}
+        with: {go-version: "1.26.11"}
 """
 # A test the first entry brings, which the second entry's file breaks, as with #1900 and #1880.
 LATER_TEST = """

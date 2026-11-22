@@ -13,7 +13,7 @@
       "local": "tests/load"
     },
     "Set up Go": {
-      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
       "local": "Go toolchain"
     },
     "Run go vet": {
@@ -91,11 +91,11 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
-      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "sha256": "e0e9f4b86de7fd1ce7d07205e78f7b314b412ff3f4b128de79dd7fc6f9be2431",
       "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
     },
     "Use the race build cache": {
@@ -145,11 +145,11 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
-      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "sha256": "e0e9f4b86de7fd1ce7d07205e78f7b314b412ff3f4b128de79dd7fc6f9be2431",
       "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
     },
     "Use the race build cache": {
@@ -199,11 +199,11 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
-      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "sha256": "e0e9f4b86de7fd1ce7d07205e78f7b314b412ff3f4b128de79dd7fc6f9be2431",
       "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
     },
     "Use the race build cache": {
@@ -253,11 +253,11 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
-      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "sha256": "e0e9f4b86de7fd1ce7d07205e78f7b314b412ff3f4b128de79dd7fc6f9be2431",
       "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
     },
     "Use the race build cache": {
@@ -291,11 +291,11 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "494a08ff4a3ee84a90c11720497f7c13f6fe2a7825a33c3b6584e98ad95bccce",
+      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
-      "sha256": "3c013df89e7db6e763a36094aec27cb08e5343c0e543f92c57fb928a1525d52c",
+      "sha256": "e0e9f4b86de7fd1ce7d07205e78f7b314b412ff3f4b128de79dd7fc6f9be2431",
       "exception": "GitHub's cache transport only: the race build cache makes CI's runs quicker and changes no result. A local run uses the machine's own Go build cache."
     },
     "Use the race build cache": {
@@ -337,7 +337,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e": {
-      "sha256": "755323d55cf98fa26dece639c45f06ac9b214374424b17c87381811e1a4b49c6",
+      "sha256": "219c537dc39dc674f75c6e268307aa34c0856b65be6778e2b1ba3dcdea5f2fa3",
       "local": "Go toolchain"
     },
     "Install GoReleaser (pinned, checksummed, download retried)": {

@@ -118,7 +118,7 @@ jobs:
         id: go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Fill the module and build cache for a new go.sum
@@ -144,7 +144,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-${{ steps.race.outputs.week }}
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-${{ steps.race.outputs.week }}
           lookup-only: true
 
       # -exec true builds each test binary and runs none of them, so this needs no database.
@@ -163,7 +163,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-${{ steps.race.outputs.week }}
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-${{ steps.race.outputs.week }}
 
       # The action saves its own cache for a key that turns over weekly. The queue tested
       # this commit, so this is for the cache and not for the verdict.
@@ -315,7 +315,7 @@ jobs:
       - name: Set up Go for both generated descriptions
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Cache the verdict comparator's pinned archive
@@ -467,7 +467,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Run go vet
@@ -488,7 +488,7 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           # v2.1.6 is built with Go 1.24 and refuses to lint a module that
-          # targets go 1.26.10 (go.mod). Pin a build made with Go >= 1.26.
+          # targets go 1.26.11 (go.mod). Pin a build made with Go >= 1.26.
           version: v2.11.4
           # Installed by the step above, which keeps trying for longer.
           install-mode: none
@@ -586,7 +586,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Set up cgo
@@ -598,10 +598,10 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-none
           restore-keys: |
-            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
-            go-race-${{ runner.os }}-go1.26.10-
+            go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.11-
 
       - name: Use the race build cache
         run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
@@ -757,7 +757,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Set up cgo
@@ -769,10 +769,10 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-none
           restore-keys: |
-            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
-            go-race-${{ runner.os }}-go1.26.10-
+            go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.11-
 
       - name: Use the race build cache
         run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
@@ -832,7 +832,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Set up cgo
@@ -844,10 +844,10 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-none
           restore-keys: |
-            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
-            go-race-${{ runner.os }}-go1.26.10-
+            go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.11-
 
       - name: Use the race build cache
         run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
@@ -959,7 +959,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Set up cgo
@@ -971,10 +971,10 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-none
           restore-keys: |
-            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
-            go-race-${{ runner.os }}-go1.26.10-
+            go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.11-
 
       - name: Use the race build cache
         run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
@@ -1118,7 +1118,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Set up cgo
@@ -1130,10 +1130,10 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-race
-          key: go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-none
+          key: go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-none
           restore-keys: |
-            go-race-${{ runner.os }}-go1.26.10-${{ hashFiles('go.sum') }}-
-            go-race-${{ runner.os }}-go1.26.10-
+            go-race-${{ runner.os }}-go1.26.11-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-go1.26.11-
 
       - name: Use the race build cache
         run: echo "GOCACHE=$HOME/.cache/go-race" >> "$GITHUB_ENV"
@@ -1320,7 +1320,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
       - name: Verify private attachments against Garage
         run: python3 scripts/garage-attachment-test.py
@@ -1345,7 +1345,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       # A cold build cache can still need modules unused by the test job.
@@ -1450,7 +1450,7 @@ jobs:
       - name: Set up Go for the served API description
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Generate types from this revision's served description
@@ -1512,7 +1512,7 @@ jobs:
       - name: Set up Go for the served API description
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Generate types from this revision's served description
@@ -1619,7 +1619,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: The API's javascript filter against the sidecar
@@ -1681,7 +1681,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache: true
 
       - name: Tools
