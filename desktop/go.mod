@@ -1,6 +1,6 @@
 module github.com/rest-mail/rest-mail-server/desktop
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
