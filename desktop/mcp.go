@@ -37,6 +37,7 @@ func startMCP(app *application.App, manager *mailbackend.Manager, client *apicli
 	domain := desktopmcp.NewDomain(manager, client)
 	if len(imports) > 0 {
 		domain.Imports = imports[0]
+		domain.Local = imports[0].local
 	}
 	server, err := desktopmcp.New(desktopmcp.Options{
 		Port:          launch.Port,

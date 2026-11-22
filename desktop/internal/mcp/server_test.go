@@ -148,6 +148,7 @@ func TestToolListComplete(t *testing.T) {
 		expected = append(expected, test.name)
 	}
 	expected = append(expected, "thunderbird_profiles", "thunderbird_import", "import_status", "add_imap_account", "list_accounts", "remove_imap_account", "ui_snapshot", "ui_menu", "ui_tabs", "ui_theme_list", "ui_theme_set", "ui_theme_get", "ui_drop_files", "ui_click", "ui_type", "ui_navigate", "ui_read_text", "ui_screenshot", "app_info", "app_logs")
+	expected = append(expected, "local_search", "index_status", "reindex")
 	var actual []string
 	for _, tool := range list.Tools {
 		actual = append(actual, tool.Name)
