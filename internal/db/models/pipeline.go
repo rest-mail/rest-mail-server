@@ -59,7 +59,7 @@ type MessageTrace struct {
 
 	// RFCMessageID is the RFC 5322 Message-ID header — the stable correlation key
 	// for mail that never became a Message row (rejected/quarantined/discarded).
-	RFCMessageID string `gorm:"size:255;index" json:"rfc_message_id"`
+	RFCMessageID string `gorm:"type:text;index:,type:hash" json:"rfc_message_id"`
 
 	Direction string `gorm:"size:20" json:"direction"` // inbound | outbound
 	Transport string `gorm:"size:20" json:"transport"` // tls | plaintext | "" (unknown / not applicable)
