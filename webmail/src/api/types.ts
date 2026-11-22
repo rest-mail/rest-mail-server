@@ -260,7 +260,7 @@ export interface paths {
         };
         /**
          * List the addresses an account receives at and may send from
-         * @description receives is the account's own address, then every active alias on an active domain whose destination is this account; no other alias or destination is shown. sends_as is every mailbox address the account may put in From, each with the modes allowed (from: on_behalf false; on_behalf: on_behalf true), decided by the same check sendMessage makes, so the two cannot disagree. Asked by the account itself, it answers for the credential the request is made with; asked by someone else who may read the account, for the account's own sign-in. Uses the same mail:read authorization as getAccount; an account the caller may not read is 404.
+         * @description receives is the account's own address, then every active alias on an active domain whose destination is this account; no other alias or destination is shown. sends_as is every mailbox address the account may put in From, each with the modes allowed (from: on_behalf false; on_behalf: on_behalf true), decided by the same check sendMessage makes, so the two cannot disagree. Asked by the account itself, it answers for the credential the request is made with; asked by someone else who may read the account, for the account's own sign-in. Uses the same mail:read authorization as getAccount. Hidden or missing accounts return 404. A visible account without mail:read for this credential returns 403.
          */
         get: operations["listAccountAddresses"];
         put?: never;
@@ -548,7 +548,7 @@ export interface paths {
         put?: never;
         /**
          * Open an audited export of the account's data
-         * @description Records the start of an export of the account's data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. There is no other pairing: mail is not exported as vcard, nor contacts as maildir, and any other pairing is refused 422 validation_failed naming format. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account's mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else's account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.
+         * @description Records the start of an export of the account's data as an account.export audit entry naming the actor, the account, the data and its format, before anything is written. Each kind of data has one format: mail as maildir, contacts as vcard, calendar as icalendar and settings as json. There is no other pairing: mail is not exported as vcard, nor contacts as maildir, and any other pairing fails the body schema, so it is refused 422 validation_failed before the handler runs. Requires mail:export on the account. Every account holds it on its own mailbox and the owner role holds it on an owned account; a grant to read another account's mail does not confer it, and the admin and readonly roles do not hold it, so an administrator exporting someone else's account needs a role that names it. Close the export with closeExportSession; one not closed timeout_seconds (one day) after it started is closed by the server as aborted.
          */
         post: operations["createExportSession"];
         delete?: never;
@@ -632,7 +632,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List messages in a folder */
+        /**
+         * List messages in a folder
+         * @description The received_at, date_header, created_at and updated_at timestamps use UTC, regardless of the account time zone. The raw Date header is unchanged.
+         */
         get: operations["listMessages"];
         put?: never;
         post?: never;
@@ -1117,7 +1120,10 @@ export interface paths {
         /** List aliases, optionally filtered by domain */
         get: operations["listAliases"];
         put?: never;
-        /** Create a new alias */
+        /**
+         * Create a new alias
+         * @description The source address must name a hosted domain. Its domain is normalized as in domain creation: one trailing ASCII dot is removed and empty labels are refused with 422 validation_failed on source_address. The destination is not rewritten.
+         */
         post: operations["createAlias"];
         delete?: never;
         options?: never;
@@ -1389,7 +1395,7 @@ export interface paths {
         };
         /**
          * List the database's slowest statements
-         * @description The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Each is the statement as Postgres normalises it, constants replaced by `$1`, `$2` and so on, so no parameter value is shown, with its calls, total and mean execution time in milliseconds and the rows it returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has.
+         * @description The current database's statements from pg_stat_statements, slowest first: by total execution time (`sort=total`, the default) or by mean time per call (`sort=mean`), at most `limit` of them (default 20, at most 100). Shows normalized SQL shapes with constants replaced by `$1`, `$2` and so on. Text that may contain unnormalized values or comments is replaced by a redaction marker with the query ID. Each row includes calls, total and mean execution time in milliseconds, and rows returned or changed. The figures count from the last reset (`POST /api/v1/admin/database/statements/reset`) or the database's start. Answers 503 with code `statistics_unavailable` when the database does not have pg_stat_statements loaded: Postgres needs `shared_preload_libraries = 'pg_stat_statements'` and the extension created, which the chart's bundled Postgres has.
          */
         get: operations["listSlowStatements"];
         put?: never;
@@ -2955,7 +2961,7 @@ export interface paths {
         put?: never;
         /**
          * Deliver a message into a mailbox (protocol gateways)
-         * @description Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, the text is whatever follows its first blank line. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. Import-only fields sent by older callers are ignored.
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 naming the message made, 200 processed when it quarantined or discarded it, 403 rejected, 503 deferred (greylisted or rate_limited when the greylist or rate_limit step held it back), 422 mailbox_full over quota. These are REST statuses for every caller; the SMTP gateway rewrites them into its SMTP reply (#1664). A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient. Stored text must not contain NUL (U+0000), including strings and object keys anywhere in recipients_to or recipients_cc; a refusal is 422 validation_failed naming the field, before any write. raw_message is a standard padded base64 string (format: byte), not unencoded message text, and may hold any octets: they are stored exactly. With raw_message and neither body_text nor body_html, the stored text is read from raw_message; when it can't be parsed, the text is whatever follows its first blank line. An arrival (received_tls set) past the hop limit and a reserved alias that cannot route are 403 rejected before the pipeline runs. The recipient is resolved from address. Arriving mail uses server time and default Inbox/flags, subject to inbound rules. For compatibility, legacy fields mailbox_id, folder, is_answered, is_read, is_flagged, is_starred, is_draft and received_at are ignored. Import fields flags and internal_date are rejected, as are always_store and match_submission (422 validation_failed).
          */
         post: operations["deliverMessage"];
         delete?: never;
@@ -2975,7 +2981,7 @@ export interface paths {
         put?: never;
         /**
          * Save a new draft
-         * @description Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden. to and cc items are described as bare addresses, internationalized or not; the handler also accepts whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. An empty from, like none, keeps the draft in the caller's own mailbox with no sender; any other from must be the exact address of a mailbox the caller may write to, or the answer is 403.
+         * @description Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden. to and cc items are described as bare addresses, internationalized or not; the handler also accepts whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. An empty from, like none, keeps the draft in the caller's own mailbox with no sender; any other from must be the exact address of a mailbox the caller may write to, or the answer is 403. An attachments field, including null or an empty list, is refused with 422 validation_failed: attachments cannot be sent through this route yet.
          */
         post: operations["saveDraft"];
         delete?: never;
@@ -2994,7 +3000,7 @@ export interface paths {
         get?: never;
         /**
          * Update an existing draft
-         * @description Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation. to and cc items are described as bare addresses, internationalized or not; the handler also accepts whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. An omitted to or cc stays as it is, and an empty list clears it. An empty from clears the sender and leaves the draft in its mailbox; any other from must be the exact address of a mailbox the caller may write to, or the answer is 403.
+         * @description Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation. to and cc items are described as bare addresses, internationalized or not; the handler also accepts whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. An omitted to or cc stays as it is, and an empty list clears it. An empty from clears the sender and leaves the draft in its mailbox; any other from must be the exact address of a mailbox the caller may write to, or the answer is 403. An attachments field, including null or an empty list, is refused with 422 validation_failed: attachments cannot be sent through this route yet.
          */
         put: operations["updateDraft"];
         post?: never;
@@ -3095,7 +3101,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message
-         * @description Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
+         * @description Queued at once (201), or with scheduled_at stored and queued then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. A 201 means the message is durably queued, not that it has arrived. Every recipient, on this server or elsewhere, gets it through the outbound queue, signed where the sender domain has a DKIM key, and through the receiving domain's normal inbound checks. The answer does not wait for delivery: a later temporary refusal is retried, and a permanent one fails that recipient's queue entry and bounces to the sender as a DSN. Optional Idempotency-Key (at most 255 bytes) is scoped to the authenticated account across send, send-draft and forward, and retained for 24 hours after a successful send. A retry of the same route, resource and parsed body returns the original status and result without sending again, even if the draft or original message no longer exists. Different bodies, routes or resources with the same live key return 409 idempotency_conflict. Concurrent matching requests wait for the first transaction to commit, then replay it; if the wait is cancelled or fails, the retry returns 503 deferred and queues nothing. Failed sends roll back and do not consume the key. Current sender and source-mailbox permissions are checked on every replay. Omitting the header preserves ordinary sending. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox. An attachments field, including null or an empty list, is refused with 422 validation_failed: attachments cannot be sent through this route yet.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -3111,7 +3117,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a message by ID */
+        /**
+         * Get a message by ID
+         * @description The received_at, date_header, created_at and updated_at timestamps use UTC, regardless of the account time zone. The raw Date header is unchanged.
+         */
         get: operations["getMessage"];
         put?: never;
         post?: never;
@@ -3332,6 +3341,26 @@ export interface paths {
         };
         /** What this server is */
         get: operations["describeServer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public service availability
+         * @description Reports whether the API can reach its database. Every answer has Cache-Control: no-store.
+         */
+        get: operations["getPublicStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3929,6 +3958,9 @@ export interface components {
         };
         "Data-PipelineAnalyticsResponse": {
             data: components["schemas"]["PipelineAnalyticsResponse"];
+        };
+        "Data-PublicStatus": {
+            data: components["schemas"]["PublicStatus"];
         };
         "Data-QuarantineDeleted": {
             data: components["schemas"]["QuarantineDeleted"];
@@ -4769,6 +4801,10 @@ export interface components {
             stage_decisions: components["schemas"]["StageDecisionCount"][];
             terminal_outcomes: components["schemas"]["TerminalCount"][];
             top_reject_reasons: components["schemas"]["RejectReasonCount"][];
+        };
+        PublicStatus: {
+            /** @enum {string} */
+            status: "operational" | "degraded";
         };
         QuarantineDeleted: {
             /** @enum {string} */
@@ -47573,6 +47609,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPublicStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description no-store, on every answer */
+                    "Cache-Control"?: string;
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-PublicStatus"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    /** @description no-store, on every answer */
+                    "Cache-Control"?: string;
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-PublicStatus"];
                 };
             };
         };

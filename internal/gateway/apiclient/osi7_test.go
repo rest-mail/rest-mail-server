@@ -91,7 +91,11 @@ func TestDeliverMessage_SizeAwareDeadlineGoverns(t *testing.T) {
 	})
 
 	t.Run("too-short deadline times out", func(t *testing.T) {
-		c := New(srv.URL, WithMessageDeadline(20*time.Millisecond))
+		// The API blocks until released, so any finite deadline times out. It must
+		// still be long enough for the request to reach the API on a loaded runner:
+		// with 20 ms the client sometimes gave up before connecting, and the wait
+		// below then failed for a request that was never sent.
+		c := New(srv.URL, WithMessageDeadline(2*time.Second))
 		if _, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")}); !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("error = %v, want a deadline exceeded while the API is blocked", err)
 		}

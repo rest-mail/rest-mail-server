@@ -1,0 +1,94 @@
+{
+  "decided": [
+    {
+      "when": "The body is not valid JSON, or not the declared media type",
+      "answer": "400 `bad_request`",
+      "source": "[2026-10-28, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6466869752)",
+      "checks": [
+        "TestRequirementExamplesThroughTheProductionRouter",
+        "TestWireConventionsRefuseByParseabilityAndVisibility"
+      ]
+    },
+    {
+      "when": "The body parses but breaks a rule, including one the request schema states",
+      "answer": "422 `validation_failed`, with the failing fields",
+      "source": "[2026-10-28, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6466869752)",
+      "checks": [
+        "TestWireConventionsRefuseByParseabilityAndVisibility"
+      ]
+    },
+    {
+      "when": "Someone else's account, or an object in it, with no link to the caller",
+      "answer": "404",
+      "source": "[2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794)",
+      "checks": [
+        "TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists"
+      ]
+    },
+    {
+      "when": "The account or object does not exist",
+      "answer": "404, identical to the row above",
+      "source": "[2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794)",
+      "checks": [
+        "TestAccountRefusals_ANoLinkCallerCannotTellAnAccountExists"
+      ]
+    },
+    {
+      "when": "The caller can see the account or object, and this action is not allowed",
+      "answer": "403",
+      "source": "[2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794)",
+      "checks": [
+        "TestWireConventionsRefuseByParseabilityAndVisibility"
+      ]
+    },
+    {
+      "when": "The caller lacks the role for an admin route",
+      "answer": "403",
+      "source": "[2026-11-01, #672](https://github.com/rest-mail/rest-mail-server/issues/672#issuecomment-6563382794)",
+      "checks": [
+        "TestAdminRoutes_MailboxTokenDenied"
+      ]
+    },
+    {
+      "when": "A protocol gateway's call is refused or deferred (the gateway speaks SMTP to its peer)",
+      "answer": "A REST status to every caller: `deliverMessage` answers 403 `rejected` and 503 `deferred`, never an SMTP code; the SMTP gateway rewrites them into 550 5.7.1 and 451 4.3.0",
+      "source": "[2026-11-03, #1533](https://github.com/rest-mail/rest-mail-server/issues/1533), [#1664](https://github.com/rest-mail/rest-mail-server/issues/1664)",
+      "checks": [
+        "TestMailStateRequirementExamples"
+      ]
+    },
+    {
+      "when": "An endpoint returns a list and there is no data",
+      "answer": "`[]`, never `null`",
+      "source": "[2026-10-23, #622](https://github.com/rest-mail/rest-mail-server/issues/622), under Decided",
+      "checks": [
+        "TestNoSuccessListIsNullable"
+      ]
+    },
+    {
+      "when": "A route creates something",
+      "answer": "Its success links the read, update and delete routes of what it made, or a recorded reason says why not",
+      "source": "[#656](https://github.com/rest-mail/rest-mail-server/issues/656), inherited by [#1749](https://github.com/rest-mail/rest-mail-server/issues/1749)",
+      "checks": [
+        "TestEveryCreateLeadsToItsLifecycle",
+        "TestCreatesPersistAndEndAt404"
+      ]
+    }
+  ],
+  "undecided": [
+    "Delete and idempotence statuses",
+    "List and pagination envelopes",
+    "Naming",
+    "Identifiers",
+    "Dates",
+    "Unknown request fields",
+    "Create-or-replace statuses",
+    "Error-code registry",
+    "Stored-state refusals",
+    "Authorization and validation order",
+    "Missing object and body validation order",
+    "Item error paths",
+    "What the served description covers",
+    "Timestamp UTC versus host-offset rendering (#2099 comment 11)"
+  ]
+}
