@@ -26,7 +26,8 @@ type SessionManager interface {
 }
 
 type Session struct {
-	manager SessionManager
+	manager  SessionManager
+	onChange func()
 }
 
 func NewSession(manager SessionManager) *Session {
@@ -68,6 +69,9 @@ func (service *Session) Status() SessionStatus {
 
 func (service *Session) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	service.manager.SetOnChange(func(status session.SessionStatus) {
+		if service.onChange != nil {
+			service.onChange()
+		}
 		application.Get().Event.Emit("session:changed", status)
 	})
 	if err := service.manager.Restore(ctx); err != nil {

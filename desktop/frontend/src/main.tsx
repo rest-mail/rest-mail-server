@@ -6,6 +6,7 @@ import { openNativeMailStream } from './mailStream';
 import { prepareScreenshotDocument, registerUIBridge } from './bridge';
 import './desktop.css';
 import { appearance, appearanceSettings } from './appearance/engine';
+import { localMail } from './localMail';
 
 async function launch() {
   appearance.init();
@@ -25,7 +26,7 @@ async function launch() {
       serverHost = status.Server ? new URL(status.Server).host : '';
       return identity(status);
     },
-    signOut: () => binding.SignOut(),
+    signOut: () => mock ? binding.SignOut() : localMail.signOut(window.confirm('Delete this account’s local mail data from this device? Choose Cancel to keep cached mail and sign out.')),
     pickAttachments: nativeFiles.pick,
     saveAttachment: async (url, filename) => {
       const response = await transport(url);
