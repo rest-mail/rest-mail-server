@@ -29,6 +29,7 @@ auth:
     secrets: [password]
     public: [email, client]
   header: 'Authorization: Bearer {$response.body#/data/access_token}'
+  expires-in: '{$response.body#/data/expires_in}'
   # Sent with no credential: each authenticated operation's documented 401, and
   # the operations that take a credential other than the session's (the hooks
   # give them theirs: a gateway closes a mail client's session with its token).

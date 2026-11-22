@@ -455,6 +455,9 @@ smtpGateway:
     inbound: 10025
     submissionTLS: 10465
   queueWorkers: 4
+  # Simultaneous deliveries per recipient domain across all gateway replicas.
+  # A lower limit can reduce throughput to a busy domain; 0 disables the cap.
+  queueMaxPerDestination: 2
   # Let the queue deliver to private addresses (RFC 1918, loopback,
   # link-local) for an MX or a RESTMAIL endpoint. Off, the outbound SSRF guard
   # refuses them (#167). Only for a testbed whose mail servers are all inside

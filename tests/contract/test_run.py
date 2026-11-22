@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import own_data
 import reports
 import summary
 import yaml
@@ -62,6 +63,16 @@ class Reports(unittest.TestCase):
         self.assertEqual(
             config["hookfiles"], str(ROOT / "tests/contract/entrypoint.py")
         )
+
+    def test_own_data_renews_the_configured_native_login(self):
+        source = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        config = reports.configure(source, ROOT, "/tmp/run/run")
+        config = own_data.configure(config, ["deleteQueueEntry"])
+        config = reports.configure(config, ROOT, "/tmp/run/own-data", narrowed=True)
+        auth = config["auth"]
+        self.assertEqual(auth.get("expires-in"), "{$response.body#/data/expires_in}")
+        self.assertEqual(auth["login"]["body"]["client"], "native")
+        self.assertEqual(auth["header"], "Authorization: Bearer {$response.body#/data/access_token}")
 
     def test_live_url_survives_every_phase_location(self):
         url = "https://fixture.test/api/docs/openapi.json?revision=one"

@@ -63,6 +63,18 @@ helm lint "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_
 echo "== render production defaults =="
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/prod.yaml"
 
+test_ac03b_destination_limit_is_configurable() {
+  local expected="${1:?expected limit}" manifest="${2:?rendered chart}" actual
+  actual="$(yq -N e 'select(.kind == "Deployment") | .spec.template.spec.containers[] | select(.name == "smtp-gateway") | .env[] | select(.name == "QUEUE_MAX_PER_DESTINATION") | .value | select(tag == "!!str")' "$manifest")"
+  [ "$actual" = "$expected" ] || fail "AC03b: smtp-gateway QUEUE_MAX_PER_DESTINATION='$actual', expected '$expected' as a string"
+  pass "AC03b: smtp-gateway QUEUE_MAX_PER_DESTINATION=$expected"
+}
+test_ac03b_destination_limit_is_configurable 2 "$tmp/prod.yaml"
+for limit in 1 0; do
+  helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set "smtpGateway.queueMaxPerDestination=$limit" > "$tmp/queue-limit.yaml"
+  test_ac03b_destination_limit_is_configurable "$limit" "$tmp/queue-limit.yaml"
+done
+
 assert_absent "PrometheusRule disabled by default" "$tmp/prod.yaml" 'kind: PrometheusRule'
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set metrics.prometheusRule.enabled=false > "$tmp/metrics-off.yaml"
 assert_absent "PrometheusRule explicitly disabled" "$tmp/metrics-off.yaml" 'kind: PrometheusRule'

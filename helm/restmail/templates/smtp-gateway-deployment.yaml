@@ -100,6 +100,8 @@ spec:
             {{- end }}
             - name: QUEUE_WORKERS
               value: {{ .Values.smtpGateway.queueWorkers | quote }}
+            - name: QUEUE_MAX_PER_DESTINATION
+              value: {{ .Values.smtpGateway.queueMaxPerDestination | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.smtpGateway.logLevel | quote }}
             - name: ENVIRONMENT

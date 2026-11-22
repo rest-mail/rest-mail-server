@@ -124,6 +124,12 @@ that moves the count. The rest need harnesses and decisions first.
 | AC04 complaint ingestion attributable and safe | D | ingestion provider decision |
 | AC05 reputation controls isolate a domain | R + H | logic is R; real reputation signal is H |
 
+Local PostgreSQL and Helm proofs for the queue rows, not live receiver acceptance:
+
+- AC02: [`TestAC02LocalAndRemoteSubmissionReportWorkerOutcomes`](../internal/api/queue_async_outcomes_db_test.go) submits through the send and draft APIs and authenticated SMTP. All three acknowledge a durable Sent copy and pending queue rows; only the worker produces the local greylist retry, policy refusal and eventual delivery. The sender sees the corresponding per-recipient states and gets one DSN per permanent failure, including a controlled remote NXDOMAIN, and none for greylisting or success.
+- AC03: [`TestAC03StalledDestinationCannotMonopolizeQueueAcrossRestart`](../internal/gateway/queue/destination_restart_db_test.go) holds one SMTP session open while three other destinations use the remaining workers. Killing the worker process leaves the live reservation in PostgreSQL. The replacement advances other mail, reclaims the orphan after its heartbeat goes stale and drains the held rows without charging them for waiting.
+- AC03b: [`test_ac03b_destination_limit_is_configurable`](../helm/restmail/tests/render-test.sh) proves the chart renders the default, an override and an explicit `0`. [`TestQueueGauges_DestinationHeldBackIsNotABacklog`](../internal/gateway/queue/queue_saturation_db_test.go) and the [alert fixture](../helm/restmail/tests/queue-alerts-test.yml) prove held rows do not inflate the alert's backlog. The [runbook](runbooks/mail-queuing-not-delivering.md#saturated-held-back-or-a-backlog) explains the single-destination throughput cost.
+
 ## #2104 — TLS and releases
 
 | AC | Bucket | What is missing |
