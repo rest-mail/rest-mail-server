@@ -257,7 +257,7 @@ tasks:
           --restart unless-stopped \
           --network container:{{.SMTP_GATEWAY_CONTAINER_NAME}} \
           -v {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
-          --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim \
+          --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 \
           -c "$(cat "{{.TASKFILE_DIR}}/tls-front-reload.sh")" tls-front "$conf" \
           {{.SMTP_GATEWAY_TLS_CERT_PATH}} {{.SMTP_GATEWAY_TLS_KEY_PATH}} >"$OUTPUT" 2>&1
 

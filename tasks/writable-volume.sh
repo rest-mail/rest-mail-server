@@ -11,7 +11,7 @@ target=$4
 if ! docker volume inspect "$volume" >/dev/null 2>&1; then
   docker volume create --label "$RESTMAIL_LABEL" "$volume" >/dev/null
   docker run --rm --label "$RESTMAIL_LABEL" --network none \
-    -v "$volume:/writable" alpine:3.20 \
+    -v "$volume:/writable" alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc \
     sh -ec 'chown "$1:$1" /writable; chmod "$2" /writable' _ "$owner" "$mode" >/dev/null
 fi
 printf '%s\n' "-v $volume:$target"

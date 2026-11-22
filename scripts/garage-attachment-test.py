@@ -31,7 +31,7 @@ def main():
             subprocess.run(["docker", "run", "--detach", "--name", name,
                             "--label", os.environ.get("RESTMAIL_LABEL") or "rest-mail.run=local",
                             "-p", "127.0.0.1:3900:3900", "-p", "127.0.0.1:3903:3903",
-                            "-v", str(config) + ":/etc/garage.toml:ro", "--entrypoint", "/garage", "dxflrs/garage:v2.4.1", "server"], check=True)
+                            "-v", str(config) + ":/etc/garage.toml:ro", "--entrypoint", "/garage", "dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020", "server"], check=True)
 
             def api(method, path, body=None):
                 request = urllib.request.Request("http://127.0.0.1:3903/v2/" + path,

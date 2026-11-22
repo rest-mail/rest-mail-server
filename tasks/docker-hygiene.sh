@@ -42,12 +42,12 @@ case "${1:-}" in
       i=$((i + 1))
       [ -e "$decoys/$i" ] || printf x >"$decoys/$i" 2>/dev/null || break
     done
-    if docker run --rm --label "$RESTMAIL_LABEL" --privileged --pid=host -v "$decoys:/decoys:ro" alpine:3.20 \
+    if docker run --rm --label "$RESTMAIL_LABEL" --privileged --pid=host -v "$decoys:/decoys:ro" alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc \
       sh -c 'sync; cat /decoys/* >/dev/null; echo 2 > /proc/sys/vm/drop_caches' >/dev/null 2>&1; then
       exit 0
     fi
     # The decoys may not be on the Mac: this may be a Linux runner with Docker's socket.
-    docker run --rm --label "$RESTMAIL_LABEL" --privileged --pid=host alpine:3.20 \
+    docker run --rm --label "$RESTMAIL_LABEL" --privileged --pid=host alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc \
       sh -c 'sync; echo 2 > /proc/sys/vm/drop_caches' >/dev/null 2>&1 ||
       echo "  note: could not drop the Docker VM's guest cache" >&2
     ;;

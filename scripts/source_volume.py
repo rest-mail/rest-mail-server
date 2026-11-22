@@ -25,8 +25,8 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ALPINE_IMAGE = "alpine:3.20"
-GO_IMAGE = "golang:1.26.11"
+ALPINE_IMAGE = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+GO_IMAGE = "golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f"
 # A private topology has a modules volume of its own (#2062), so the label on it is the run's.
 MODULES_VOLUME = os.environ.get("RESTMAIL_MODULES_VOLUME") or "rest-mail-go-modules"
 DEFAULT_LABEL = "rest-mail.run=local"

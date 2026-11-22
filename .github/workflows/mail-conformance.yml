@@ -147,14 +147,14 @@ jobs:
           set -o pipefail
           dir="$RUNNER_TEMP/imc"
           printf 'nameserver 10.99.0.10\n' > "$dir/resolv.conf"
-          docker run --rm -v testbed_certs:/certs:ro alpine:3.20 cat /certs/ca.crt > "$dir/ca.crt" \
+          docker run --rm -v testbed_certs:/certs:ro alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc cat /certs/ca.crt > "$dir/ca.crt" \
             || echo "no testbed CA certificate: every TLS check will read worse"
           docker run --rm --network testbed_mailnet \
             -v "$dir/resolv.conf:/etc/resolv.conf:ro" \
             -v "$dir/instantmailcheck:/imc:ro" \
             -v "$dir/ca.crt:/ca.crt:ro" \
             -e SSL_CERT_FILE=/ca.crt \
-            alpine:3.20 /imc --json --threshold 0 --dkim-selector default restmail.test \
+            alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc /imc --json --threshold 0 --dkim-selector default restmail.test \
             > "$dir/report.json" || echo "instantmailcheck exited $?"
           python3 -B scripts/mailcheck_baseline.py compare scripts/mailcheck-baseline.json "$dir/report.json" 2>&1 \
             | tee "$dir/compare.txt"

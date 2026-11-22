@@ -112,7 +112,7 @@ ADDRESS_VARIABLES = {
     "apiport": ("TOPOLOGY_APIPORT_IP",),
 }
 
-DNSMASQ_IMAGE = "ghcr.io/rest-mail/reference-dnsmasq:0.1.0"
+DNSMASQ_IMAGE = "ghcr.io/rest-mail/reference-dnsmasq:0.1.0@sha256:e29e5409d5e83a51af3c13dcfb6b949823cf96af2fcde6df4edda728d88e06f8"
 
 
 def validate(name):
@@ -284,7 +284,7 @@ def plan(name, existing_subnets=(), pool=None):
             "RESTMAIL_MODULES_VOLUME": names["modules_volume"],
             # Docker Desktop has no route from the host to the run's subnet, so the object store's
             # first bootstrap runs in a container on it.
-            "RESTMAIL_GARAGE_BOOTSTRAP_IMAGE": "golang:1.26.11",
+            "RESTMAIL_GARAGE_BOOTSTRAP_IMAGE": "golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f",
             "RESTMAIL_DEV_GOCACHE_VOLUME": f"restmail-{name}-devcache",
             "RESTMAIL_SERVICE_MODE": "prod",
             "RESTMAIL_PREBUILT_IMAGES": "true",

@@ -150,7 +150,7 @@ def host(topology):
         for kind, volume, prefix in (("public", names["certs_volume"], "ca"), ("internal", project + "-internal-mtls", "internal-ca")):
             for extension in ("crt", "key"):
                 material = run(["docker", "run", "--rm", "--name", project + "-tls-read", "--label", label,
-                                "--network", "none", "-v", f"{volume}:/source:ro", "alpine:3.20", "cat", f"/source/{prefix}.{extension}"]).stdout
+                                "--network", "none", "-v", f"{volume}:/source:ro", "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc", "cat", f"/source/{prefix}.{extension}"]).stdout
                 (directory / f"{kind}.{extension}").write_text(material)
                 (directory / f"{kind}.{extension}").chmod(0o600)
         for service, config in services.items():

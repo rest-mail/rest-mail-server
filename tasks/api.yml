@@ -166,7 +166,7 @@ tasks:
           docker volume create --label "$RESTMAIL_LABEL" {{.API_COVER_VOLUME}} >$OUTPUT 2>&1 || exit 1
           COVER_OWNER=0
           if [ "{{.API_MODE}}" = prod ]; then COVER_OWNER=10001; fi
-          docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
+          docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc \
             sh -ec 'find /gocover -mindepth 1 -delete; chown "$1:$1" /gocover; chmod 0755 /gocover' _ "$COVER_OWNER" >$OUTPUT 2>&1 || exit 1
           COVER_FLAGS="-v {{.API_COVER_VOLUME}}:/gocover -e GOCOVERDIR=/gocover"
           if [ "{{.API_MODE}}" = dev ]; then
@@ -320,7 +320,7 @@ tasks:
         fi
         echo "  restarting {{.API_CONTAINER_NAME}} with empty coverage counters"
         docker stop -t 60 {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
-        docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
+        docker run --rm --label "$RESTMAIL_LABEL" -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc \
           find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
         docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
         i=0

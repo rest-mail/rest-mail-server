@@ -53,7 +53,7 @@ class DevGoCache(unittest.TestCase):
         self.assertEqual(result.stdout, "-v fixture-10001:/cache\n-e GOPATH=/cache/go -e GOMODCACHE=/cache/go/pkg/mod -e GOCACHE=/cache/build\n")
         calls = self.calls.read_text().splitlines()
         self.assertIn("volume create --label rest-mail.run=local fixture-10001", calls)
-        self.assertIn('run --rm --label rest-mail.run=local --network none -v fixture-10001:/writable alpine:3.20 sh -ec chown "$1:$1" /writable; chmod "$2" /writable _ 10001 0700', calls)
+        self.assertIn('run --rm --label rest-mail.run=local --network none -v fixture-10001:/writable alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -ec chown "$1:$1" /writable; chmod "$2" /writable _ 10001 0700', calls)
 
     def test_a_volume_in_use_is_left_alone(self):
         result = self.run_script("0", volume_exists=True)
