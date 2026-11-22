@@ -136,7 +136,7 @@ def main(argv=None):
                 containers.append(container)
                 return container
 
-            postgres = start("postgres", "postgres:16-alpine", {
+            postgres = start("postgres", "postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777", {
                 "POSTGRES_USER": "restmail", "POSTGRES_PASSWORD": secret, "POSTGRES_DB": "restmail_test"},
                 extra=["--tmpfs", "/var/lib/postgresql/data"], command=["-c", "shared_preload_libraries=pg_stat_statements",
                                                                        "-c", "pg_stat_statements.max=100000"])

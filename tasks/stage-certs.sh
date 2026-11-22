@@ -39,7 +39,7 @@ done
 
 docker volume create --label "$RESTMAIL_LABEL" "$service_volume" >/dev/null
 # shellcheck disable=SC2086 # $mounts and $plan are lists of words
-docker run --rm --label "$RESTMAIL_LABEL" --network none $mounts -v "$service_volume:/to" alpine:3.20 sh -euc '
+docker run --rm --label "$RESTMAIL_LABEL" --network none $mounts -v "$service_volume:/to" alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -euc '
   set -f
   owner=$1
   shift

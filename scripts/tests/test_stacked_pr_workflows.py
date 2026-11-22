@@ -197,8 +197,9 @@ class StackedPRWorkflows(unittest.TestCase):
             for failed in needs:
                 results = "\n".join(f"{name}={status if name == failed else 'success'}" for name in needs)
                 with self.subTest(job=failed, status=status):
-                    result = subprocess.run(["bash", "-c", script], env=dict(os.environ, RESULTS=results), capture_output=True, text=True, timeout=600)
-                    self.assertEqual(result.returncode, int(status not in {"success", "skipped"}), result.stdout + result.stderr)
+                    result = subprocess.run(["bash", "-c", script], env=dict(os.environ, RESULTS=results, EVENT_NAME="pull_request"), capture_output=True, text=True, timeout=600)
+                    allowed = status == "success" or (status == "skipped" and failed in {"seed-caches", "seed-caches-gate"})
+                    self.assertEqual(result.returncode, int(not allowed), result.stdout + result.stderr)
 
     def test_e2e_verdict_preserves_intentional_skips_and_rejects_failed_work(self):
         script = shell_of(self.jobs["e2e.yml"]["e2e"], "Verify e2e outcome")

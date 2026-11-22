@@ -1,0 +1,23 @@
+{
+  "repository": "rest-mail/rest-mail-server",
+  "observed_on": "2026-11-22",
+  "sources": [
+    "repos/rest-mail/rest-mail-server/rules/branches/main",
+    "repos/rest-mail/rest-mail-server/rulesets",
+    "repos/rest-mail/rest-mail-server/rulesets/25840194",
+    "repos/rest-mail/rest-mail-server/branches/main/protection"
+  ],
+  "main": {
+    "required_status_checks": ["CI", "E2E (full topology)"]
+  },
+  "merge_queue": {
+    "ruleset_id": 25840194,
+    "ruleset_name": "main merge queue",
+    "enforcement": "active",
+    "required_status_checks": ["CI", "E2E (full topology)"]
+  },
+  "checks": [
+    {"context": "CI", "app_id": 15368, "workflow": "ci.yml", "job": "ci"},
+    {"context": "E2E (full topology)", "app_id": 15368, "workflow": "e2e.yml", "job": "e2e"}
+  ]
+}

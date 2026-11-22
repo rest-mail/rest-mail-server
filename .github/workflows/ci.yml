@@ -549,7 +549,7 @@ jobs:
     runs-on: ${{ needs.test-gate.outputs.runner }}
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_DB: restmail_test
           POSTGRES_USER: restmail
@@ -720,7 +720,7 @@ jobs:
     runs-on: ${{ needs.test-contract-gate.outputs.runner }}
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_DB: restmail_test
           POSTGRES_USER: restmail
@@ -922,7 +922,7 @@ jobs:
         shard: [1, 2, 3, 4]
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_DB: restmail_test
           POSTGRES_USER: restmail
@@ -1081,7 +1081,7 @@ jobs:
         shard: [1, 2, 3, 4]
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_DB: restmail_test
           POSTGRES_USER: restmail
@@ -1882,6 +1882,9 @@ jobs:
     steps:
       - name: Verdict
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          CI_ACTOR: ${{ github.actor }}
+          DISPATCH_PR: ${{ inputs.pull-request }}
           RESULTS: |
             preflight-gate=${{ needs.preflight-gate.result }}
             preflight=${{ needs.preflight.result }}
@@ -1934,6 +1937,22 @@ jobs:
           while IFS='=' read -r job result; do
             [ -n "$job" ] || continue
             printf '  %-12s %s\n' "$job" "$result"
+            if [ "$result" = skipped ]; then
+              case "$job" in
+                seed-caches | seed-caches-gate)
+                  [ "${EVENT_NAME:-pull_request}" != push ] || fail=1 ;;
+                contract-diff | contract-diff-gate)
+                  if [ "${EVENT_NAME:-pull_request}" = pull_request ] ||
+                     { [ "${EVENT_NAME:-}" = workflow_dispatch ] && [ -n "${DISPATCH_PR:-}" ]; }; then
+                    fail=1
+                  fi ;;
+                preflight | preflight-gate | ci-gate) fail=1 ;;
+                *)
+                  if [ "${EVENT_NAME:-}" != push ] || [ "${CI_ACTOR:-}" != 'github-merge-queue[bot]' ]; then
+                    fail=1
+                  fi ;;
+              esac
+            fi
             case "$result" in
               success | skipped) ;;
               *) fail=1 ;;

@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
+GO_TEST_IMAGE = "golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f"
 STEP_NAMES = (
     "Python environment",
     "CI coverage",
@@ -1265,11 +1266,14 @@ class Gate:
         """Run the selected Linux-only packages without changing host networking."""
         if not self.linux_packages:
             return "NOT REQUIRED: no selected Go packages need a Linux container"
+        requested = "golang:" + self.env["GOTOOLCHAIN"].removeprefix("go")
+        if requested != GO_TEST_IMAGE.split("@", 1)[0]:
+            raise CouldNotRun(f"no pinned Linux Go test image for {requested}; update GO_TEST_IMAGE")
         try:
             self.run(["docker", "info"], capture=True)
         except subprocess.CalledProcessError as error:
             raise CouldNotRun("start Docker; selected Go tests need Linux") from error
-        self.linux_image = "golang:" + self.env["GOTOOLCHAIN"].removeprefix("go")
+        self.linux_image = GO_TEST_IMAGE
         existed = (
             subprocess.run(
                 ["docker", "image", "inspect", self.linux_image],

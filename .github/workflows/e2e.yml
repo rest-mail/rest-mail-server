@@ -357,6 +357,16 @@ jobs:
             echo "::error::E2E gate failing — preflight=$PREFLIGHT_RESULT. Rebase onto the current base branch before pushing again."
             exit 1
           fi
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::E2E gate failing — classify=$CHANGES_RESULT"
+            exit 1
+          fi
+          case "$RUN_E2E/$RUN_DELTA" in
+            true/true | true/false | false/true | false/false) ;;
+            *)
+              echo "::error::E2E gate failing — missing or invalid classifier decisions"
+              exit 1 ;;
+          esac
           echo "classify job result : $CHANGES_RESULT"
           echo "run_e2e decision    : $RUN_E2E"
           echo "run_delta decision  : $RUN_DELTA"

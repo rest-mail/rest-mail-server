@@ -48,7 +48,7 @@ COMMIT = re.compile(r"^[0-9a-f]{40}$")
 TASK_FILES = ("chores.yml", "Taskfile.yml")
 DKIM_HOST_CHMOD = 'chmod 644 "$KEYDIR/$DOMAIN.$SEL.key"'
 DKIM_CONTAINER_CHMOD = (
-    'docker run --rm -v "$(pwd)/$KEYDIR:/keys" alpine:3.20 '
+    'docker run --rm -v "$(pwd)/$KEYDIR:/keys" alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc '
     'chmod 644 "/keys/$DOMAIN.$SEL.key"'
 )
 

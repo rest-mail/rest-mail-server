@@ -1113,7 +1113,7 @@ tasks:
           -e RESTMAIL_API_IP -e RESTMAIL_SMTP_IP \
           -e MAIL1_POSTFIX_IP -e MAIL2_POSTFIX_IP -e MAIL1_DOVECOT_IP -e MAIL2_DOVECOT_IP \
           -e API_BASE_URL="${RESTMAIL_E2E_API_URL:-${CONTRACT_ENDPOINT:-http://{{.RESTMAIL_API_IP | default "10.99.0.20"}}:8080}}" \
-          golang:1.26.11 \
+          golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f \
           go test -race -count=1 -v -timeout=2h ./tests/e2e/... {{.CLI_ARGS}}
 
   test:contract-own-data:
@@ -1421,7 +1421,7 @@ tasks:
           fail=0
           for pid in $pids; do wait "$pid" || fail=1; done
           exit $fail'
-        docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} --entrypoint sh alpine/openssl -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} --entrypoint sh alpine/openssl@sha256:9698e7956c08e713265da24c4587205beba3eaa6af2b319d73575d30a6ff033e -c "$probe"
 
   mailserver:wait:
     desc: 'Wait until a reference server answers SMTP and IMAP: chore mailserver:wait mail1'
@@ -1470,7 +1470,7 @@ tasks:
           fail=0
           for pid in $pids; do wait "$pid" || fail=1; done
           exit $fail'
-        docker run --rm --label "$RESTMAIL_LABEL" --network "$network" alpine:3.20 sh -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network "$network" alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -c "$probe"
 
   health:wait:
     desc: Wait for the API to answer its health endpoint (two-hour hang guard by default)
@@ -1496,7 +1496,7 @@ tasks:
           done
           echo "ERROR: api did not become healthy within {{.WAIT_SECONDS}}s" >&2
           exit 1'
-        docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} alpine:3.20 sh -c "$probe"
+        docker run --rm --label "$RESTMAIL_LABEL" --network {{.RESTMAIL_NETWORK}} alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -c "$probe"
 
   ps:
     desc: Show all running rest-mail-* containers (raw docker ps view)
@@ -1845,7 +1845,7 @@ tasks:
     vars:
       CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
       CERTGEN_IMAGE: '{{.CERTGEN_IMAGE | default "ghcr.io/rest-mail/reference-certgen"}}'
-      CERTGEN_TAG: '{{.CERTGEN_TAG | default "0.1.0"}}'
+      CERTGEN_TAG: '{{.CERTGEN_TAG | default "0.1.0@sha256:25958a72e2abb7950e4133f748137c4df0962986193d0b641ea59451a5d68076"}}'
     cmds:
       # Idempotent + CA-preserving: certgen reuses the existing CA and skips
       # domains whose certs are already present. The reference dovecot/postfix
@@ -1936,7 +1936,7 @@ tasks:
     vars:
       CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
       CERTGEN_IMAGE: '{{.CERTGEN_IMAGE | default "ghcr.io/rest-mail/reference-certgen"}}'
-      CERTGEN_TAG: '{{.CERTGEN_TAG | default "0.1.0"}}'
+      CERTGEN_TAG: '{{.CERTGEN_TAG | default "0.1.0@sha256:25958a72e2abb7950e4133f748137c4df0962986193d0b641ea59451a5d68076"}}'
       # cert_provider selects the branch below. Rendered as RESTMAIL_CERT_PROVIDER
       # only when NON-default, so an absent var means the testbed default —
       # byte-identical to before.
@@ -1967,7 +1967,7 @@ tasks:
             # <hostname>.{crt,key} by SNI and falls back to the primary cert for any
             # name it lacks a per-name file for — so a single multi-SAN cert named
             # after the primary hostname is sufficient (it must list every SAN).
-            docker run --rm --label "$RESTMAIL_LABEL" -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3 sh -euc '
+            docker run --rm --label "$RESTMAIL_LABEL" -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf sh -euc '
               sans=$(echo "$1" | tr "," " "); set -- $sans; primary="$1"; shift
               if [ ! -f "/certs/${primary}.crt" ] || [ ! -f "/certs/${primary}.key" ]; then
                 echo "cert_provider=manual: MISSING /certs/${primary}.{crt,key} — drop the serving cert+key (covering SANs: ${sans}) into volume {{.CERTS_VOLUME}}" >&2
@@ -2011,7 +2011,7 @@ tasks:
               -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
               -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
-              golang:1.26.11 \
+              golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f \
               sh -ec 'go build -o /go/bin/instance ./cmd/instance && exec /go/bin/instance "$@"' _ \
                 acme-issue -out /certs -listen :80 \
                 -renew-before "{{.CERT_RENEW_BEFORE | default "0s"}}" \
@@ -2066,7 +2066,7 @@ tasks:
               -v {{.RESTMAIL_MODULES_VOLUME | default "rest-mail-go-modules"}}:/go/pkg/mod:ro \
               -v {{.RESTMAIL_GOCACHE_VOLUME | default "rest-mail-e2e-gocache"}}:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
-              golang:1.26.11 \
+              golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f \
               go run ./cmd/instance mtls-issue -out /internal-mtls \
                 -server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
                 -server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
@@ -2083,7 +2083,7 @@ tasks:
             # paths its env vars point at (INTERNAL_MTLS_CA_CERT / _SERVER_* /
             # _CLIENT_*). The CA's key is not one of them, and is best kept out.
             docker volume create --label "$RESTMAIL_LABEL" --label rest-mail.data=true "{{.INTERNAL_MTLS_VOLUME}}" >/dev/null
-            docker run --rm --label "$RESTMAIL_LABEL" -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls:ro" alpine:3 sh -euc '
+            docker run --rm --label "$RESTMAIL_LABEL" -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls:ro" alpine:3@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf sh -euc '
               missing=0
               for f in internal-ca.crt internal-server.crt internal-server.key \
                 internal-imap.crt internal-imap.key internal-pop3.crt internal-pop3.key \
@@ -2110,7 +2110,7 @@ tasks:
       FRAG_VOL: '{{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default .DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
       DNSMASQ_CONTAINER: '{{.RESTMAIL_DNSMASQ_CONTAINER | default .DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
       DNSMASQ_IMAGE: '{{.DNSMASQ_IMAGE | default "ghcr.io/rest-mail/reference-dnsmasq"}}'
-      DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0"}}'
+      DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0@sha256:e29e5409d5e83a51af3c13dcfb6b949823cf96af2fcde6df4edda728d88e06f8"}}'
     cmds:
       # Reuses reference-dnsmasq's render-fragment with rest-mail's split-gateway
       # template. restmail.test is currently also declared statically in the testbed
@@ -2173,7 +2173,7 @@ tasks:
           --label "rest-mail-loop={{.TOPOLOGY_RUN | default "c1"}}" --label "$RESTMAIL_LABEL" \
           -v "{{.ROOT_DIR}}/tests/contract:/src:ro" \
           -v "{{.FRAG_VOL}}:/dst" \
-          alpine:3.20 cp /src/dnsmasq.conf /dst/12-rest-mail-contract.conf
+          alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc cp /src/dnsmasq.conf /dst/12-rest-mail-contract.conf
         if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
           docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
         else
@@ -2186,7 +2186,7 @@ tasks:
       FRAG_VOL: '{{.RESTMAIL_DNSMASQ_FRAGMENTS_VOLUME | default .DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
       DNSMASQ_CONTAINER: '{{.RESTMAIL_DNSMASQ_CONTAINER | default .DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
       DNSMASQ_IMAGE: '{{.DNSMASQ_IMAGE | default "ghcr.io/rest-mail/reference-dnsmasq"}}'
-      DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0"}}'
+      DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "0.1.0@sha256:e29e5409d5e83a51af3c13dcfb6b949823cf96af2fcde6df4edda728d88e06f8"}}'
     cmds:
       - |
         docker run --rm --label "$RESTMAIL_LABEL" -v "{{.FRAG_VOL}}:/dst" \
@@ -2227,7 +2227,7 @@ tasks:
         docker run --rm --label "$RESTMAIL_LABEL" \
           -v "{{.ROOT_DIR}}/{{.CONFIG_DIR}}:/src:ro" \
           -v "{{.FRAG_VOL}}:/dst" \
-          alpine:3.20 cp /src/dkim.conf /dst/11-{{.CONFIG}}-dkim.conf
+          alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc cp /src/dkim.conf /dst/11-{{.CONFIG}}-dkim.conf
         docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
         echo "  DKIM provisioned + published for {{.RESTMAIL_HOSTNAME}}"
       # Additional served domains (manifest `domains:` list): provision DKIM per
@@ -2260,7 +2260,7 @@ tasks:
           docker run --rm --label "$RESTMAIL_LABEL" \
             -v "{{.ROOT_DIR}}/{{.CONFIG_DIR}}:/src:ro" \
             -v "{{.FRAG_VOL}}:/dst" \
-            alpine:3.20 cp "/src/dkim.conf" "/dst/11-{{.CONFIG}}-$slug-dkim.conf"
+            alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc cp "/src/dkim.conf" "/dst/11-{{.CONFIG}}-$slug-dkim.conf"
           echo "  DKIM provisioned + published for $name"
         done
         docker restart {{.DNSMASQ_CONTAINER}} >/dev/null

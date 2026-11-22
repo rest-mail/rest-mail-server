@@ -212,7 +212,7 @@ class GuestCacheTests(DockerStub):
         self.assertEqual(self.drop(RESTMAIL_LABEL=LABEL).returncode, 0)
         [run] = self.runs()
         self.assertEqual(run[:4], ["run", "--rm", "--label", LABEL])
-        for flag in ("--privileged", "--pid=host", "alpine:3.20"):
+        for flag in ("--privileged", "--pid=host", "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"):
             self.assertIn(flag, run)
         self.assertEqual(run[-1], "sync; cat /decoys/* >/dev/null; echo 2 > /proc/sys/vm/drop_caches")
 

@@ -25,7 +25,7 @@ vars:
   MONITORING_REGISTRY: '{{.MONITORING_REGISTRY | default "ghcr.io/rest-mail"}}'
 
   # prometheus
-  PROMETHEUS_UPSTREAM_IMAGE: '{{.PROMETHEUS_UPSTREAM_IMAGE | default "prom/prometheus:v2.51.0"}}'
+  PROMETHEUS_UPSTREAM_IMAGE: '{{.PROMETHEUS_UPSTREAM_IMAGE | default "prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f"}}'
   PROMETHEUS_IMAGE: '{{.MONITORING_REGISTRY}}/prometheus:v2.51.0'
   PROMETHEUS_IP: '{{.PROMETHEUS_IP | default "10.99.0.30"}}'
   PROMETHEUS_PORT: '{{.PROMETHEUS_PORT | default "9090"}}'
@@ -34,7 +34,7 @@ vars:
   PROMETHEUS_DATA_VOLUME: '{{.MONITORING_PROJECT}}-prometheus-data'
 
   # grafana
-  GRAFANA_UPSTREAM_IMAGE: '{{.GRAFANA_UPSTREAM_IMAGE | default "grafana/grafana:10.4.1"}}'
+  GRAFANA_UPSTREAM_IMAGE: '{{.GRAFANA_UPSTREAM_IMAGE | default "grafana/grafana:10.4.1@sha256:753bbb971071480d6630d3aa0d55345188c02f39456664f67c1ea443593638d0"}}'
   GRAFANA_IMAGE: '{{.MONITORING_REGISTRY}}/grafana:10.4.1'
   GRAFANA_IP: '{{.GRAFANA_IP | default "10.99.0.31"}}'
   GRAFANA_PORT: '{{.GRAFANA_PORT | default "3001"}}'
@@ -47,7 +47,7 @@ vars:
   GRAFANA_DATA_VOLUME: '{{.MONITORING_PROJECT}}-grafana-data'
 
   # postgres-exporter
-  POSTGRES_EXPORTER_UPSTREAM_IMAGE: '{{.POSTGRES_EXPORTER_UPSTREAM_IMAGE | default "prometheuscommunity/postgres-exporter:v0.15.0"}}'
+  POSTGRES_EXPORTER_UPSTREAM_IMAGE: '{{.POSTGRES_EXPORTER_UPSTREAM_IMAGE | default "prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6"}}'
   POSTGRES_EXPORTER_IMAGE: '{{.MONITORING_REGISTRY}}/postgres-exporter:v0.15.0'
   POSTGRES_EXPORTER_IP: '{{.POSTGRES_EXPORTER_IP | default "10.99.0.32"}}'
   POSTGRES_EXPORTER_NAME: '{{.MONITORING_PROJECT}}-postgres-exporter'

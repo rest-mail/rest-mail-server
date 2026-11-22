@@ -251,7 +251,7 @@ class LinuxGoTests(unittest.TestCase):
         self.assertIn("GOTOOLCHAIN=local", args)
         self.assertIn("ENVIRONMENT=test", args)
         self.assertIn("GOMAXPROCS=" + self.local.env["GOMAXPROCS"], args)
-        image_index = args.index("golang:" + self.version)
+        image_index = args.index(gate.GO_TEST_IMAGE)
         self.assertEqual(
             args[image_index + 1:],
             [
@@ -266,7 +266,7 @@ class LinuxGoTests(unittest.TestCase):
             ["go", "env", "-json", "GOMODCACHE", "GOCACHE"],
         )
         docker.assert_called_once_with(
-            ["docker", "image", "inspect", "golang:" + self.version],
+            ["docker", "image", "inspect", gate.GO_TEST_IMAGE],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
@@ -286,9 +286,21 @@ class LinuxGoTests(unittest.TestCase):
             self.local.linux_go_tests()
         self.assertEqual(
             commands.call_args_list[1].args[0],
-            ["docker", "pull", "golang:" + self.version],
+            ["docker", "pull", gate.GO_TEST_IMAGE],
         )
         self.assertTrue(self.local.created_linux_image)
+
+    def test_ac01_linux_go_image_refuses_a_toolchain_without_a_digest_pin(self):
+        self.local.linux_packages = [self.loadgen]
+        self.local.env["GOTOOLCHAIN"] = "go0.0.0"
+        with (
+            patch.object(self.local, "run", return_value=json.dumps(self.caches)),
+            patch.object(gate.subprocess, "run") as docker,
+            patch.object(self.local, "run_go_test"),
+        ):
+            docker.return_value.returncode = 0
+            with self.assertRaisesRegex(gate.CouldNotRun, "no pinned Linux Go test image"):
+                self.local.linux_go_tests()
 
     def test_unavailable_docker_fails_closed_before_any_tests(self):
         self.local.linux_packages = [self.loadgen]
