@@ -42,7 +42,7 @@ func (s *Store) dispatchQuiet(ctx context.Context, now time.Time, send func(cont
 		if err := tx.Model(&models.QuietNotification{}).Distinct("mailbox_id").Order("mailbox_id").Pluck("mailbox_id", &accounts).Error; err != nil {
 			return err
 		}
-		store := NewStore(tx)
+		store := NewStore(tx, s.platforms...)
 		for _, mailbox := range accounts {
 			var rows []models.QuietNotification
 			if err := tx.Where("mailbox_id = ?", mailbox).Find(&rows).Error; err != nil {

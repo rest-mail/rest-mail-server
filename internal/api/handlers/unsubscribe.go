@@ -364,7 +364,13 @@ func (p *oneClickPoster) post(ctx context.Context, target string) (int, error) {
 			if len(via) > maxUnsubscribeRedirects {
 				return fmt.Errorf("unsubscribe: stopped after %d redirects", maxUnsubscribeRedirects)
 			}
-			return p.checkTarget(req.Context(), req.URL)
+			if err := p.checkTarget(req.Context(), req.URL); err != nil {
+				return err
+			}
+			if req.Method != http.MethodPost {
+				return errors.New("unsubscribe: redirect does not preserve POST")
+			}
+			return nil
 		},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(rmail.UnsubscribeOneClick))
