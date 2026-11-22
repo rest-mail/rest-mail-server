@@ -39,6 +39,15 @@ func Root(config, instance string) (string, error) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", err
 	}
+	for _, directory := range []string{filepath.Dir(root), root} {
+		info, err := os.Lstat(directory)
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("local store refuses symlinks")
+		}
+	}
 	if err := os.Chmod(filepath.Dir(root), 0700); err != nil {
 		return "", err
 	}
@@ -60,9 +69,6 @@ func Open(root, key string) (*Store, error) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(root, 0700); err != nil {
-		return nil, err
-	}
 	path := filepath.Join(root, key+".sqlite")
 	for _, candidate := range []string{root, path, path + "-wal", path + "-shm"} {
 		info, err := os.Lstat(candidate)
@@ -72,6 +78,9 @@ func Open(root, key string) (*Store, error) {
 		if err == nil && info.Mode()&os.ModeSymlink != 0 {
 			return nil, errors.New("local store refuses symlinks")
 		}
+	}
+	if err := os.Chmod(root, 0700); err != nil {
+		return nil, err
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -145,7 +154,10 @@ CREATE TRIGGER messages_au AFTER UPDATE ON messages WHEN
  INSERT INTO message_fts(rowid,subject,sender,recipients_to,recipients_cc,search_body)
  VALUES(new.id,new.subject,new.sender,new.recipients_to,new.recipients_cc,new.search_body); END;
 INSERT INTO message_fts(message_fts) VALUES('rebuild');
-`, `CREATE TABLE account_catalog(id INTEGER PRIMARY KEY, metadata TEXT NOT NULL);`}
+`, `CREATE TABLE account_catalog(id INTEGER PRIMARY KEY, metadata TEXT NOT NULL);`, `
+ALTER TABLE messages ADD COLUMN needs_body INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX messages_reindex ON messages(needs_body,body_cached,size_bytes);
+`}
 
 func (store *Store) migrate() error {
 	if _, err := store.writer.Exec(`CREATE TABLE IF NOT EXISTS migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
@@ -256,7 +268,7 @@ func (store *Store) FolderComplete(ctx context.Context, folder string) bool {
 func (store *Store) Status(ctx context.Context) (Status, error) {
 	var status Status
 	err := store.reader.QueryRowContext(ctx, `SELECT count(*), coalesce(sum(body_cached),0),
- (SELECT count(*)>0 AND min(complete)=1 FROM folders) FROM messages`).Scan(&status.Messages, &status.Bodies, &status.Complete)
+	 (SELECT count(*)>0 AND min(complete)=1 FROM folders) AND NOT EXISTS(SELECT 1 FROM messages WHERE needs_body=1) FROM messages`).Scan(&status.Messages, &status.Bodies, &status.Complete)
 	status.Complete = status.Complete && status.Messages == status.Bodies
 	for _, path := range []string{store.path, store.path + "-wal", store.path + "-shm"} {
 		if info, statErr := os.Stat(path); statErr == nil {
@@ -294,6 +306,7 @@ func (store *Store) PutBatch(ctx context.Context, messages []apitypes.Message, b
  size_bytes=excluded.size_bytes,is_read=excluded.is_read,has_attachments=excluded.has_attachments,metadata=excluded.metadata,
  search_body=CASE WHEN excluded.body_cached THEN excluded.search_body ELSE messages.search_body END,
  body_cached=max(messages.body_cached,excluded.body_cached),
+ needs_body=CASE WHEN excluded.body_cached THEN 0 ELSE messages.needs_body END,
  generation=CASE WHEN excluded.generation>0 THEN excluded.generation ELSE messages.generation END`,
 			message.ID, message.Folder, message.ThreadID, message.Subject, addresses(message.SenderName+" "+message.Sender), addresses(string(message.RecipientsTo)), addresses(string(message.RecipientsCc)), message.ReceivedAt.Unix(), message.SizeBytes, message.IsRead, message.HasAttachments, string(metadata), text+" "+HTMLText(html), body, generation)
 		if err != nil {
@@ -331,7 +344,7 @@ func (store *Store) Remove(ctx context.Context, id uint) error {
 }
 
 func (store *Store) Pending(ctx context.Context, budget int64) ([]apitypes.Message, error) {
-	rows, err := store.reader.QueryContext(ctx, `SELECT metadata FROM messages WHERE body_cached=0 AND size_bytes<=? ORDER BY received_at DESC LIMIT 100`, budget)
+	rows, err := store.reader.QueryContext(ctx, `SELECT metadata FROM messages WHERE (body_cached=0 OR needs_body=1) AND size_bytes<=? ORDER BY received_at DESC LIMIT 100`, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +365,7 @@ func (store *Store) Pending(ctx context.Context, budget int64) ([]apitypes.Messa
 }
 
 func (store *Store) Reset(ctx context.Context) error {
-	_, err := store.writer.ExecContext(ctx, `UPDATE folders SET cursor='',scanning=0,complete=0; UPDATE messages SET body_cached=0;`)
+	_, err := store.writer.ExecContext(ctx, `UPDATE folders SET cursor='',scanning=0,complete=0; UPDATE messages SET needs_body=1;`)
 	return err
 }
 
@@ -514,7 +527,10 @@ func (store *Store) List(ctx context.Context, folder string, before int64, limit
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	rows, err := store.reader.QueryContext(ctx, `SELECT metadata FROM messages WHERE folder=? AND (?=0 OR id<?) ORDER BY id DESC LIMIT ?`, folder, before, before, limit+1)
+	rows, err := store.reader.QueryContext(ctx, `SELECT metadata FROM messages WHERE folder=? AND (?=0 OR id<?)
+ AND coalesce(json_extract(metadata,'$.imap_deleted'),0)=0
+ AND (json_extract(metadata,'$.snoozed_until') IS NULL OR unixepoch(json_extract(metadata,'$.snoozed_until'))<=unixepoch('now'))
+ ORDER BY id DESC LIMIT ?`, folder, before, before, limit+1)
 	if err != nil {
 		return nil, false, err
 	}

@@ -81,15 +81,19 @@ func TestForwardMigrationRebuildsExistingHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	metadata, err := json.Marshal(fixture(1, "migrated", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO messages(id,folder,thread_id,subject,sender,recipients_to,recipients_cc,received_at,size_bytes,is_read,has_attachments,metadata) VALUES(1,'INBOX','','migrated','','','',0,0,0,0,?)`, string(metadata)); err != nil {
+		t.Fatal(err)
+	}
 	database.Close()
 	store, err := Open(root, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if err = store.Put(context.Background(), fixture(1, "migrated", "available"), true); err != nil {
-		t.Fatal(err)
-	}
 	result, err := store.Search(context.Background(), "migrated", "", 50, 0)
 	if err != nil || len(result.Data) != 1 {
 		t.Fatalf("%+v %v", result, err)

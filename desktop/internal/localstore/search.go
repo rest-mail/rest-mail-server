@@ -72,12 +72,19 @@ func searchSQL(query, folder string) (string, []any, string, error) {
 	conditions := []string{"1=1"}
 	arguments := []any{}
 	fts := []string{}
+	for _, part := range parts {
+		operator, _, found := strings.Cut(part, ":")
+		if found && strings.EqualFold(operator, "in") {
+			folder = ""
+		}
+	}
 	if folder != "" {
 		conditions = append(conditions, "m.folder=?")
 		arguments = append(arguments, folder)
 	}
 	for _, part := range parts {
 		operator, value, found := strings.Cut(part, ":")
+		operator = strings.ToLower(operator)
 		if !found {
 			fts = append(fts, quote(part))
 			continue
