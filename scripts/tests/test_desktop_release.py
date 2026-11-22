@@ -622,3 +622,31 @@ class StopInstalledTests(unittest.TestCase):
         tasks = (ROOT / "tasks/desktop.yml").read_text()
         self.assertNotIn('tell application "REST Mail" to quit', tasks)
         self.assertIn("scripts/stop-installed.sh", tasks)
+
+
+class FetchRetryTests(unittest.TestCase):
+    """release.py retries a failed git fetch before giving up on a publish."""
+
+    def load(self):
+        spec = importlib.util.spec_from_file_location("release_retry", ROOT / "desktop/scripts/release.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_a_transient_failure_is_retried(self):
+        release = self.load()
+        codes = iter([128, 0])
+        calls = []
+        def run(command, check):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, next(codes))
+        with contextlib.redirect_stderr(io.StringIO()):
+            release.fetch_with_retries(["git", "fetch"], run=run, sleep=lambda _: None)
+        self.assertEqual(len(calls), 2)
+
+    def test_a_persistent_failure_still_fails(self):
+        release = self.load()
+        def run(command, check):
+            return subprocess.CompletedProcess(command, 128)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(subprocess.CalledProcessError):
+            release.fetch_with_retries(["git", "fetch"], attempts=3, run=run, sleep=lambda _: None)

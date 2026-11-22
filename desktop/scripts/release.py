@@ -6,6 +6,8 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
+import time
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -60,6 +62,19 @@ def release_notes(revision="HEAD", exclude_tag=None):
     )
 
 
+def fetch_with_retries(command, attempts=3, delay=5, run=subprocess.run, sleep=time.sleep):
+    """Runs a git fetch, retrying a failure: this Mac's GitHub SSH and TLS connections
+    fail intermittently, and one dropped connection must not lose a finished build."""
+    for attempt in range(1, attempts + 1):
+        result = run(command, check=False)
+        if result.returncode == 0:
+            return
+        if attempt < attempts:
+            print(f"git fetch failed (attempt {attempt} of {attempts}); retrying in {delay}s", file=sys.stderr)
+            sleep(delay)
+    raise subprocess.CalledProcessError(result.returncode, command)
+
+
 def publish(build_dir):
     metadata = json.loads((build_dir / "release.json").read_text())
     version = metadata["version"]
@@ -79,7 +94,7 @@ def publish(build_dir):
         raise ValueError(
             "App bundle metadata differs from the last build's release.json"
         )
-    subprocess.run(["git", "fetch", "--all", "--prune", "--tags"], check=True)
+    fetch_with_retries(["git", "fetch", "--all", "--prune", "--tags"])
     branches = output(
         "git",
         "for-each-ref",
