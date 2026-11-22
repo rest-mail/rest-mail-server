@@ -68,8 +68,8 @@ This adapter does not implement server drafts, forwarding endpoints, attachment
 sending, scheduled sends, calendar sends, receipt/seal verification, server-side
 account settings, or saving an SMTP send into Sent. Unsupported local features
 return an explicit error rather than being sent to the REST Mail server or
-silently downgraded. INBOX is watched, not every folder; this is not an offline
-store or a full synchronization engine.
+silently downgraded. The adapter watches INBOX; the local SQLite synchronization
+layer also polls every folder and provides the offline store described below.
 
 ## Build and run
 
@@ -177,6 +177,128 @@ MCP tools use the same import service:
   discovery), and numeric destination `account_id`; returns immediately.
 - `import_status`: retrieve persisted progress and summary; pass `cancel: true`
   to cancel the active job. The job outlives the MCP request and sheet.
+
+## Local SQLite mail index
+
+SQLite is the default desktop mail cache, using `modernc.org/sqlite` with FTS5
+and no cgo dependency. Windows cross-builds work with `CGO_ENABLED=0`.
+Each authorized account has a SHA-256-named database under
+`os.UserConfigDir()/REST Mail/mail` (on macOS,
+`~/Library/Application Support/REST Mail/mail`). The app-support directories are
+0700 and database files are 0600. The store refuses symlink destinations. WAL,
+a 5-second busy timeout, one serialized writer and up to four query-only readers
+allow local search while synchronization writes. Mail itself is not encrypted
+by SQLite: device/OS protection and the private directory permissions apply.
+Credentials and tokens remain in the existing keychain/session layer, never in
+SQLite; upstream JSON is redacted before being cached.
+
+Any nonempty `RESTMAIL_DESKTOP_INSTANCE` uses a fresh OS temporary directory,
+including malformed instance labels. Test copies never open the owner's mail
+database. Their temporary trees are removed on orderly shutdown. Test-copy
+Thunderbird import checkpoints also live inside that temporary tree.
+
+### Schema and recovery
+
+Transactional, forward-only migrations are recorded in `migrations`; databases
+from a newer application fail closed. The current schema is version 4:
+
+1. `accounts` stores only an opaque identity; `folders` stores summaries,
+   UIDVALIDITY, a resumable cursor, scan generation and completion state;
+   `messages` stores headers, flags, dates, attachment presence, searchable text
+   and body-cache state; `bodies` retains original text/HTML; `attachments`
+   stores metadata, not downloaded attachment bytes.
+2. External-content `message_fts` and insert/update/delete triggers index subject,
+   sender, To, Cc and body text, rebuilding already-existing headers on upgrade.
+3. `account_catalog` retains authorized account listings for offline startup.
+4. `messages.needs_body` queues resumable reindexing without deleting cached
+   bodies or interrupting offline reading.
+
+Header scans checkpoint each page and reconcile arrivals, flags, moves, deletions
+and removed folders. Expired cursors restart the affected scan. IMAP's persisted
+UIDVALIDITY-specific message identities prevent UID reuse from opening old mail.
+Body backfill has a 32 MiB budget per pass, fetches at most 100 pending messages
+at a time, and retries unfinished work after restart. Attachment metadata must
+succeed before a sync body is considered complete. Bodies larger than the
+per-pass budget remain headers-only; the index reports incomplete and offers
+server supplementation. Attachment downloads themselves are not offline-cached.
+
+REST synchronization uses the existing `apiclient` and authenticated session;
+IMAP uses the same `mailbackend`/`imapmail` adapter as the UI. An independent
+subscription consumes the existing SSE stream (including IMAP IDLE/poll events),
+with a 10-second reconciliation poll for missed events and non-INBOX changes.
+Reliable REST mod-sequences skip unchanged completed folders. Synchronization and
+successful write-through mutations serialize per account; a mutation can wait
+for the current bounded sync pass. Failed writes are never replayed offline.
+Thunderbird's existing `pkg/mailimport` uploader wakes the destination index
+after successful requests; imported mail follows the same backfill path.
+
+### Search and offline use
+
+FTS5 uses `unicode61 remove_diacritics 2`, IDN address variants, weighted BM25
+ranking and highlighted snippets. HTML contributes extracted visible text, never
+tags, attributes, scripts or styles. Snippet markers render as React text/marks,
+not executable HTML. Supported operators (combinable with words/quoted phrases):
+
+```text
+from:reader@bücher.test to:team@example.test subject:"project notes"
+has:attachment is:unread before:2026-11-22 after:2026-11-01 in:Archive
+```
+
+Dates are UTC day boundaries (`after` is inclusive, `before` exclusive). An
+explicit `in:` overrides the current UI folder. Searches return local ranked
+results first; an incomplete index triggers a separate, nonblocking server
+supplement, deduplicated by message ID. The UI labels Local index, Server, or
+Local index + server and discards obsolete supplements when the query changes.
+Cached folders, headers and original bodies remain readable without a connection;
+the status strip explicitly shows offline availability. Existing keychain account
+identity permits offline startup, without persisting access tokens.
+
+Settings beside Appearance shows the active account's database/WAL/SHM size,
+cached-message count and a reindex action. Sign-out offers deletion or retention
+of local account data; account removal deletes its database and sidecars.
+MCP exposes `local_search` (`query`, optional `account_id`/`folder`),
+`index_status` and `reindex` (optional `account_id`). `sign_out` accepts
+`delete_local_data: true` for an explicit local purge.
+
+### Synthetic benchmark and app evidence
+
+Run this opt-in benchmark; it generates mail and never reads real messages:
+
+```sh
+cd desktop
+RESTMAIL_DESKTOP_BENCHMARK=1 go test ./internal/localstore -run '^$' \
+  -bench BenchmarkSyntheticCorpus -benchtime=1x -count=1 -timeout=45m
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags production -o /tmp/RESTMail.exe .
+```
+
+Measured November 22, 2026 on an Apple M1 Max, darwin/arm64:
+
+| Measurement | Result |
+| --- | ---: |
+| Generated messages | 200,000 |
+| Synthetic body bytes | 560,785,538 (560.8 MB) |
+| Backfill, excluding FTS optimize | 66.366 s |
+| Backfill throughput | 3,014 messages/s; 8.45 MB/s |
+| Entire SQLite store after checkpoint | 1,807,728,640 bytes (1,807.7 MB) |
+| FTS shadow-table pages (`dbstat`) | 148.0 MB |
+| Warm search p95, 400 searches | 18.108 ms |
+
+The workload cycles through eight selective body, subject, sender/IDN, attachment,
+unread, date and folder queries, with 50 ranked hits per page. This is a warm,
+single-client measurement, not a guarantee for very broad terms, cold disks or
+concurrent backfill. The total store includes original bodies, searchable text,
+JSON headers and the FTS index. No trigram index was added: Unicode FTS met the
+100 ms target for this measured workload without extra index/storage cost.
+
+Real-app evidence from the isolated `sqlite` copy against the localhost:18081
+dev stack is in `/tmp/desktop-sqlite-scratch`: `proof.json` records a synthetic
+arrival searchable locally after 0.447 s and local MCP round-trip p95 of 7.423 ms;
+`mutation-proof.json` records flags and a move; `offline-proof.json` records
+cached reads/search with the stack stopped. The stack was restored afterwards.
+`local-search-webview.png` and `offline-reader-webview.png` are webview fallback
+captures, **not native screenshots**. Native CoreGraphics/screencapture failed
+with `could not create image from window`; `capture-logs.json` records that
+limitation. No Screen Recording permission changes were made.
 
 ## Frontend validation
 
