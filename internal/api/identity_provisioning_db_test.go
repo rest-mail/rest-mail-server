@@ -146,7 +146,20 @@ func TestIdentityProvisioningAndRecoverySafeguards(t *testing.T) {
 		folders := fmt.Sprintf("/api/v1/accounts/%d/folders", target.ID)
 		identityStatus(t, doRequest(router, http.MethodGet, folders, login.AccessToken, ""), http.StatusForbidden, "setup_required")
 		identityStatus(t, accept(token), http.StatusUnauthorized, "invalid_token")
+		countInvitations := func() int64 {
+			t.Helper()
+			var count int64
+			if err := db.Model(&models.OneTimeToken{}).Where("account_id = ? AND purpose = ?", target.ID, models.OneTimeTokenInvitation).Count(&count).Error; err != nil {
+				t.Fatal(err)
+			}
+			return count
+		}
+		before := countInvitations()
 		identityStatus(t, doRequest(router, http.MethodPost, path, session.AccessToken, ""), http.StatusConflict, "account_not_invitable")
+		if after := countInvitations(); after != before {
+			t.Fatalf("refusing an invitation to a credentialed account changed its token count from %d to %d", before, after)
+		}
+		requireSpentIdentityToken(t, db, token, models.OneTimeTokenInvitation, target.ID)
 	})
 
 	t.Run("verified_recovery_is_bound_to_the_account_and_preserves_mfa", func(t *testing.T) {
