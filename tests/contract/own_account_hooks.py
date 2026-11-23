@@ -47,7 +47,8 @@ def register_own_account_hooks(admin_token):
             return
         path = transaction.get("fullPath", "").partition("?")[0]
         parts = path.rstrip("/").split("/")
-        if parts[-1] in ("sessions", "invitation"):
+        revokes_sessions = parts[-1] == "sessions"
+        if revokes_sessions or parts[-1] == "invitation":
             parts.pop()
         account_id = parts[-1]
         if not account_id.isdecimal() or int(account_id) < 1:
@@ -59,6 +60,9 @@ def register_own_account_hooks(admin_token):
         )
         if int(account_id) == own_account_id(origin):
             transaction["skip"] = True
+        elif revokes_sessions and not transaction.get("skip"):
+            for cache in ("setup_admin_tokens", "mfa_admin_sessions", "probe_admin_sessions"):
+                hooks.stash.get(cache, {}).pop(origin, None)
 
     for operation in OWN_ACCOUNT_OPERATIONS:
         hooks.before(operation)(skip_the_own_account)

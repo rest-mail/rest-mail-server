@@ -51,6 +51,7 @@ class OwnAccountProbes(unittest.TestCase):
 
         module = types.ModuleType("vertrag_hooks")
         module.stash = {}
+        self.stash = module.stash
         self.before = []
 
         def before(name):
@@ -145,6 +146,40 @@ class OwnAccountProbes(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "positive ID"):
             self.hooks_for("deleteMailbox")[0](transaction)
         self.assertNotIn("skip", transaction)
+
+    def test_sent_session_revocation_discards_setup_sessions_only_for_its_origin(self):
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        other_origin = "http://other.test:8080"
+        caches = ("setup_admin_tokens", "mfa_admin_sessions", "probe_admin_sessions")
+        for cache in caches:
+            self.stash[cache] = {origin: "cached-session", other_origin: "keep"}
+        self.stash["own_account_ids"] = {origin: OWN_ID}
+        transaction = self.transaction("/api/v1/admin/mailboxes/9/sessions")
+        transaction["request"]["headers"]["Authorization"] = "Bearer already-prepared"
+        before = copy.deepcopy(transaction)
+
+        for operation, hook in self.before:
+            if operation == "endMailboxSessions":
+                hook(transaction)
+
+        self.assertEqual(transaction, before)
+        for cache in caches:
+            self.assertEqual(self.stash[cache], {other_origin: "keep"})
+        self.assertEqual(self.loaded["shared"]["admin_token"](origin), "setup-session")
+        self.assertEqual([path for path, _ in self.server.calls], ["/api/v1/auth/login"])
+
+    def test_skipped_session_revocation_preserves_setup_sessions(self):
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        self.stash["own_account_ids"] = {origin: OWN_ID}
+        self.stash["setup_admin_tokens"] = {origin: "cached-session"}
+        transaction = self.transaction(f"/api/v1/admin/mailboxes/{OWN_ID}/sessions")
+
+        for operation, hook in self.before:
+            if operation == "endMailboxSessions":
+                hook(transaction)
+
+        self.assertIs(transaction.get("skip"), True)
+        self.assertEqual(self.stash["setup_admin_tokens"], {origin: "cached-session"})
 
 
 if __name__ == "__main__":
