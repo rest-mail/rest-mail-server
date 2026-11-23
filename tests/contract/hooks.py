@@ -979,8 +979,9 @@ def queued_and_held_mail_of_its_own(transaction):
     #   entry of its own, a send to a reserved .invalid address. retry's 400
     #   (already_bounced) gets one bounced first, so it is refused for that and
     #   not for an entry that is gone.
-    # - A bulk action's empty filter selects every entry, so it gets one to act
-    #   on. The documented filter selects nothing by design and needs nothing.
+    # - A bulk action's empty filter selects every entry, so it gets a deferred
+    #   entry that the worker cannot claim yet. The documented filter selects
+    #   nothing by design and needs nothing.
     # - listHeldMessages' 200 (none_held) names an account that holds nothing,
     #   and the reset removed 1: it gets an account of its own.
     # - The scheduled messages' own hooks schedule theirs through the API.
@@ -1001,12 +1002,12 @@ def queued_and_held_mail_of_its_own(transaction):
         transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"recipient": recipient})
     elif path.startswith("/api/v1/admin/queue/bulk-") and status == "200":
         if hooks.get_json(transaction) == {"filter": {}}:
-            # Every entry it makes is pending, which all three actions act
-            # on: the after hook holds the answer to them (#1772).
-            made = a_queue_entry_of_its_own(transaction)
+            entry = a_disposable_queue_entry()
             hooks.stash["bulk_queue_made"] = {
                 "name": transaction.get("name", ""),
-                "ids": [made["id"]],
+                "ids": [entry],
+                "retry_from": fixture_call(transaction, "GET", f"/api/v1/admin/queue/{entry:d}")
+                if path == "/api/v1/admin/queue/bulk-retry" else None,
             }
     elif path.startswith("/api/v1/admin/queue/") and len(parts) > 5 and positive_id(parts[5]):
         if parts[5] == "2147483647" or status not in ("200", "204", "400"):
@@ -1030,6 +1031,28 @@ BULK_QUEUE_OUTCOME = {
     "/api/v1/admin/queue/bulk-bounce": "bounced",
     "/api/v1/admin/queue/bulk-delete": None,
 }
+
+
+def bulk_retry_made_due(before, found):
+    if not before or before.get("status") != "deferred":
+        return False
+    state = found.get("status")
+    when = found.get("next_attempt") if state == "pending" else found.get("last_attempt")
+    try:
+        original = datetime.datetime.fromisoformat(before["next_attempt"].replace("Z", "+00:00"))
+        observed = datetime.datetime.fromisoformat(when.replace("Z", "+00:00"))
+        if observed >= original:
+            return False
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+    if state == "pending":
+        return True
+    return (
+        state in ("delivering", "deferred", "bounced")
+        and type(found.get("attempts")) is int
+        and type(before.get("attempts")) is int
+        and found["attempts"] > before["attempts"]
+    )
 
 
 @hooks.after("bulkRetryQueue")
@@ -1072,6 +1095,9 @@ def the_bulk_action_changed_the_entries_made(transaction):
         found = fixture_call(transaction, "GET", f"/api/v1/admin/queue/{entry:d}", expect=(404,))
         if outcome is None and found is not None:
             problems.append(f"entry {entry:d} is still queued ({found.get('status')})")
+        elif outcome == "pending" and found is not None:
+            if not bulk_retry_made_due(made["retry_from"], found):
+                problems.append(f"entry {entry:d} has no evidence of retry before its original schedule")
         elif outcome is not None and (found or {}).get("status") != outcome:
             state = "gone" if found is None else found.get("status")
             problems.append(f"entry {entry:d} is {state}, not {outcome}")

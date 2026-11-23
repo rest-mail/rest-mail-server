@@ -2203,8 +2203,7 @@ The delivery queue, held and scheduled mail operations, `listQueue`,
 `listHeldMessages`, `releaseHeldMessage`, `listScheduledMessages` and
 `cancelScheduledMessage`, reset and seed before each exchange too, refusals
 included (`queued_and_held_mail_of_its_own`, registered before the operations'
-other hooks). What each needs is made after the reset through the API, never in
-the database:
+other hooks). Each target is made after the reset:
 
 - A queue entry is a send from the fixture admin to a reserved `.invalid` address
   (`contract-own-queue-<time>@queue.invalid`), which the server queues for the
@@ -2212,13 +2211,15 @@ the database:
   lead to the entry. A success of the read, retry, bounce or delete gets an entry
   of its own, and retry's 400 (`already_bounced`) gets one bounced first, so it is
   refused for that and not for an entry that is gone.
-- A bulk action's empty filter selects every entry, so it gets one to act on. The
-  documented filter selects nothing by design and needs nothing. After the empty
-  filter's 200, `the_bulk_action_changed_the_entries_made` holds its `affected` to
-  the number of entries made for it, all pending and so eligible for each action,
-  and reads each back: pending after a retry, bounced after a bounce, gone after a
-  delete. A wrong count, an entry not changed, or no entry made fails the exchange
-  (`transaction["fail"]`), so `affected: 0` no longer passes on its shape (#1772).
+- A bulk action's empty filter gets a fresh deferred target from
+  `test:contract-queue-entry-fixture`. Its future attempt time keeps the live
+  worker from claiming it before the request. The documented filter selects
+  nothing by design and needs no target. The after hook requires the exact
+  affected count and reads the target back through the API: bounced, deleted,
+  or retried. For retry, it requires an advanced schedule or a new worker
+  attempt before the original schedule. The worker may claim a row as soon as
+  retry makes it due; an unchanged schedule or an `affected: 0` response still
+  fails (#1772).
 - `listHeldMessages`' 200 (`none_held`) names an account that holds nothing, and
   the reset removed `1`, so it gets an account of its own
   (`contract-own-held-<time>@restmail.test`).
@@ -2228,8 +2229,8 @@ the database:
 `0`, an undecodable id, missing's `2147483647` and the other refusals keep their
 ids. The fixture queue hooks (`list_the_sent_messages_queue_entry`,
 `retry_a_held_entry_after_bulk_examples`, `bounce_the_held_bounce_entry`) stand
-aside after a reset, because the fixture entries they look for are gone. No stash
-value is involved.
+aside after a reset, because the fixture entries they look for are gone. Only the
+bulk actions retain their target for the after hook of the same exchange.
 
 The credential operations, `listCredentials`, `createAppPassword`,
 `revokeCredential`, `listAPIKeys`, `createAPIKey`, `updateAPIKey`, `revokeAPIKey`,

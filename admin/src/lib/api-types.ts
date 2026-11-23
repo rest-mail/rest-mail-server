@@ -6131,7 +6131,7 @@ export interface components {
             sender_name?: string;
             subject?: string;
             tls_cipher?: string;
-            tls_version?: string;
+            tls_version?: string & unknown;
         };
         disableRequest: {
             recovery_code?: string;
