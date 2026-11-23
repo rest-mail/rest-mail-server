@@ -187,10 +187,10 @@ Local PostgreSQL and Helm proofs for the queue rows, not live receiver acceptanc
 
 | AC | Bucket | What is missing |
 |---|---|---|
-| AC01 mail operations preserve state and truthful outcomes | R | The merged submission/compose slices and local unsubscribe proof below do not complete the remaining contract surface or mobile recipient-status acceptance. |
+| AC01 mail operations preserve state and truthful outcomes | R | The merged submission, compose and unsubscribe slices below do not complete the remaining contract surface or mobile recipient-status acceptance. |
 | AC02 scheduling and due dates explicit and reversible | D + R | 7 due-date decisions, then send-later/undo tests |
-| AC03 preferences and notifications end to end | R + H | Account time-zone persistence/search is P (#2214). The API-to-push boundary is proven locally below; real Android/closed-browser receipt still needs a device/browser. |
-| AC04 previews and unsubscribe cannot execute or SSRF | R + D | Local unsubscribe redirect/rebinding proof is below; image/PDF sandbox acceptance remains R, and Office conversion needs a decision. |
+| AC03 preferences and notifications end to end | R + H | Account time-zone persistence/search is P (#2214). The merged API-to-push boundary proof is below; real Android/closed-browser receipt still needs a device/browser. |
+| AC04 previews and unsubscribe cannot execute or SSRF | R + D | The merged unsubscribe redirect/rebinding proof is below; image/PDF sandbox acceptance remains R, and Office conversion needs a decision. |
 | AC05 contacts and calendar round-trip and isolation | **P** | vCard trust gate, `N` names, quoted-printable |
 | AC01 ledger and trust enforce accountability | R + D | `TestAC01AssistantFoundationScopedGrantCeiling` proves existing scoped grant ceilings only. Ledger/trust endpoints are absent; retained #1423 principal, capability, MFA and undo-window questions need answers. |
 | AC02 reviewed proposals use draft/send and policy | R + D | `TestAC02AssistantFoundationDraftSendRequiresWriteAndSend` proves persisted draft/edit/restore, capability refusals, Sent/queue linkage and consumed-draft replay only. Proposal/approval, reason/confidence, assistant ledger/DMARC policy and bounded undo are absent and depend on AC01. |
@@ -211,8 +211,14 @@ PostgreSQL proofs for the personal-mail rows, not client or installation accepta
 - AC01: [`TestAC01LocalSubmissionPreservesSentStateAndRecipientOutcomes`](../internal/api/personal_workflows_db_test.go) uses authenticated SMTP submission, the queue worker, inbound SMTP and the public API. It verifies one Sent copy, independent delivery and refusal for two local recipients, recipient-only attachment metadata, and a scoped message update visible in a later read. The read-only credential cannot change the message. Remote delivery and client presentation are outside this proof.
 - AC03: [`TestIMAPSearchUsesTheAccountZone`](../internal/api/imap_search_zone_db_test.go) uses scoped API credentials to choose, read and clear the zone. An invalid name leaves the saved zone and search behavior unchanged. The same authenticated IMAP connection follows zone changes and returns to UTC on clear. Browser settings UI and real push are outside this proof.
 
-The local `feat/2101-personal-car` adds the following bounded proofs on top of
-`e0b519e65`; these remain local evidence, not a merged-PR, CI or installation claim:
+The following bounded proofs landed in [#2235](https://github.com/rest-mail/rest-mail-server/pull/2235).
+The three named tests passed on the tested head `f3f6f1c0a6cd54db79461ee89dc1be3f027c7e77`
+with Go 1.26.11 and isolated PostgreSQL 16. The required
+[CI](https://github.com/rest-mail/rest-mail-server/actions/runs/45062924997/job/137340157721)
+and [E2E (full topology)](https://github.com/rest-mail/rest-mail-server/actions/runs/45062924972/job/137342475951)
+checks passed on that head. The squash merge `4ed9a5f801ed02de0a483171c062a71fd1faa258`
+has the same Git tree. This is repository evidence, not physical-device, preview
+sandbox or installation acceptance:
 
 - AC01: [`TestAC01OneClickRedirectsRequireAnActualPost`](../internal/api/personal_unsubscribe_db_test.go) uses the production router, scoped API credentials, real PostgreSQL and an observed TLS recipient. Reading options or using a read-only key sends nothing. Redirects 301/302/303 must return `502 unsubscribe_failed` without following a rewritten GET; 307/308 preserve the exact credential-free RFC 8058 POST and report the observed 204. Every case leaves the received message unchanged and creates no outbound queue row. On the base, all three non-preserving redirects returned 200 after issuing GET, while 307/308 passed. The method-preservation guard makes all five cases pass.
 - AC03: [`TestAC03QuietHoursAPIGatesContentFreePushAndRevokedSessions`](../internal/api/personal_notifications_db_test.go) sets, reads and clears preferences through the production router. Read-only, foreign-account, unknown-zone and incomplete-input refusals preserve saved state. Real PostgreSQL arrival receipts survive a dispatcher restart and preference clearing until their original quiet window ends. Exactly one count-only summary reaches each configured live APNs/Web Push sender boundary, with current unread and arrival counts, no message content, no revoked-session push and no replay. Mail stays readable and unchanged apart from the explicit read action. On the base, only APNs received the summary (one notification instead of two): the transactional store silently discarded the Web Push platform configuration. Preserving the configured platforms makes the proof pass. Actual providers, encryption/delivery over their networks, closed-browser receipt and Android remain outside this proof.
