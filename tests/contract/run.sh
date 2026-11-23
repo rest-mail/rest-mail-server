@@ -274,10 +274,10 @@ fuzz)
   chore test:contract-delivery-recipient || echo "the delivery recipient could not be prepared; deliverMessage's fuzz probes answer 404"
   python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/fuzz.xml"
   CONTRACT_RUN_SPEC= CONTRACT_SPEC= python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
-  "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
+  CONTRACT_FUZZ=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
     >"$logs/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
   if drop_unmatched_pin "$logs/contract-fuzz.log" "$out/fuzz"; then
-    "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
+    CONTRACT_FUZZ=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
       >"$logs/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
   fi
   cat "$logs/contract-fuzz.log"

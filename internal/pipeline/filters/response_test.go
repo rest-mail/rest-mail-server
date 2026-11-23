@@ -53,7 +53,7 @@ func TestAC02FilterResponsesRefusedAtByteLimit(t *testing.T) {
 			}},
 		{"javascript", 33 << 20, `{"result":{"type":"action","action":"discard"},"logs":[]}`, pipeline.ActionDiscard, pipeline.ActionDefer,
 			func(url string) (pipeline.Filter, error) {
-				return newJavaScript([]byte(`{"script":"function filter(e) { return e; }"}`), JSSidecar{URL: url})
+				return newJavaScript([]byte(`{"script":"function filter(e) { return e; }","timeout_ms":30000}`), JSSidecar{URL: url})
 			}},
 	}
 	for _, test := range tests {
@@ -73,6 +73,7 @@ func TestAC02FilterResponsesRefusedAtByteLimit(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
+					testDone := t.Context().Done()
 					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						if r.Method == http.MethodGet {
 							w.WriteHeader(http.StatusOK)
@@ -81,7 +82,7 @@ func TestAC02FilterResponsesRefusedAtByteLimit(t *testing.T) {
 						if mode == "declared-oversize" {
 							w.Header().Set("Content-Length", strconv.FormatInt(test.limit+1, 10))
 							w.(http.Flusher).Flush()
-							<-r.Context().Done()
+							<-testDone
 							return
 						}
 						if mode == "gzip-oversize" {
@@ -102,10 +103,10 @@ func TestAC02FilterResponsesRefusedAtByteLimit(t *testing.T) {
 						}
 						if mode == "chunked-oversize" {
 							w.(http.Flusher).Flush()
-							<-r.Context().Done()
+							<-testDone
 						}
 					}))
-					defer server.Close()
+					t.Cleanup(server.Close)
 					filter, err := test.newFilter(server.URL)
 					if err != nil {
 						t.Fatal(err)
@@ -164,20 +165,21 @@ func TestAC02FilterResponseReadBudgetAndAllocation(t *testing.T) {
 }
 
 func TestAC02FilterHTTPTimeoutIncludesResponseBody(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testDone := t.Context().Done()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.(http.Flusher).Flush()
-		<-r.Context().Done()
+		<-testDone
 	}))
-	defer server.Close()
-	filter, err := NewWebhook([]byte(fmt.Sprintf(`{"url":%q,"timeout_ms":30}`, server.URL)))
+	t.Cleanup(server.Close)
+	filter, err := NewWebhook([]byte(fmt.Sprintf(`{"url":%q,"timeout_ms":1000}`, server.URL)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	filter.(*webhookFilter).client.Transport = http.DefaultTransport
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	result, err := filter.Execute(ctx, &pipeline.EmailJSON{})
-	if err != nil || result.Log.Result != "error" || !strings.Contains(result.Log.Detail, "Client.Timeout") || ctx.Err() != nil {
+	if err != nil || result.Log.Result != "error" || !strings.HasPrefix(result.Log.Detail, "read webhook response:") || !strings.Contains(result.Log.Detail, "Client.Timeout") || ctx.Err() != nil {
 		t.Fatalf("stalled response: result %+v, error %v, context %v", result, err, ctx.Err())
 	}
 
