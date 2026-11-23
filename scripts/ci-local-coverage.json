@@ -13,7 +13,7 @@
       "local": "tests/load"
     },
     "Set up Go": {
-      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
+      "sha256": "0efd6e4c431fe112eb734d1d4e970ded179d4694aea3a90fc616cd15dd72a3a6",
       "local": "Go toolchain"
     },
     "Run go vet": {
@@ -91,7 +91,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
+      "sha256": "0efd6e4c431fe112eb734d1d4e970ded179d4694aea3a90fc616cd15dd72a3a6",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
@@ -149,7 +149,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
+      "sha256": "0efd6e4c431fe112eb734d1d4e970ded179d4694aea3a90fc616cd15dd72a3a6",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
@@ -203,7 +203,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
+      "sha256": "0efd6e4c431fe112eb734d1d4e970ded179d4694aea3a90fc616cd15dd72a3a6",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
@@ -257,7 +257,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
+      "sha256": "0efd6e4c431fe112eb734d1d4e970ded179d4694aea3a90fc616cd15dd72a3a6",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
@@ -295,7 +295,7 @@
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
     "Set up Go": {
-      "sha256": "6944163f62b4123b8c04855d562e89afe49ca6ae7aaba4855575747a2d8c297e",
+      "sha256": "0efd6e4c431fe112eb734d1d4e970ded179d4694aea3a90fc616cd15dd72a3a6",
       "local": "Go toolchain"
     },
     "Restore the race build cache": {
@@ -340,8 +340,8 @@
       "sha256": "c132f7ccad42e5d1a5cb8c07d5ae5224d8d8cbad18e779568c481d19e1cd6a82",
       "exception": "Runs on the current working tree, including staged, unstaged and untracked files, or a scratch merge; checkout would discard local work."
     },
-    "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e": {
-      "sha256": "219c537dc39dc674f75c6e268307aa34c0856b65be6778e2b1ba3dcdea5f2fa3",
+    "actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5": {
+      "sha256": "f3f7740182c588bc5427623a0a917f9151b1e772c8da51adf1b17c8e25e723cc",
       "local": "Go toolchain"
     },
     "Install GoReleaser (pinned, checksummed, download retried)": {
