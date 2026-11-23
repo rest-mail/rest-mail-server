@@ -106,8 +106,18 @@ class ProbeConfig(unittest.TestCase):
         fuzz = self.fuzz_config()["fuzz"]
         self.assertNotIn("address", fuzz["pin"])
         for operation, fields in fuzz["pin-valid"].items():
-            if operation != "deliverMessage":
+            if operation not in ("deliverMessage", "linkAccount"):
                 self.assertNotIn("address", fields, operation)
+
+    def test_fuzz_holds_account_link_credentials_for_valid_requests_only(self):
+        fuzz = self.fuzz_config()["fuzz"]
+        self.assertEqual(
+            fuzz["pin-valid"]["linkAccount"],
+            {"address": "someone@example.com", "password": "x"},
+        )
+        self.assertNotIn("address", fuzz["pin"])
+        self.assertNotIn("password", fuzz["pin"])
+        self.assertNotIn("linkAccount", self.config["fuzz"]["pin-valid"])
 
     def test_fuzz_delivers_restmail_probes_to_the_recipient_the_fixtures_make(self):
         # #2051, finding 5972296353a77f68: the run's own updateDomain probes take
