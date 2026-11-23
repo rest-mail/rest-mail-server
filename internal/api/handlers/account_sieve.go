@@ -24,6 +24,15 @@ import (
 // with no sieve step runs no account's script: Sieve is off for the domain. cfg itself is
 // never changed; it may be the domain's shared default.
 func withAccountSieve(db *gorm.DB, cfg *pipeline.PipelineConfig, mailboxID uint) (*pipeline.PipelineConfig, error) {
+	if hasSieveStep(cfg) {
+		rows, err := loadNativeRules(db, mailboxID)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			return withNativeRules(cfg, rows)
+		}
+	}
 	stored, ok, err := activeSieveScript(db, mailboxID)
 	if err != nil || !ok {
 		return cfg, err
@@ -52,6 +61,24 @@ func activeSieveScript(db *gorm.DB, mailboxID uint) (models.SieveScript, bool, e
 func accountSieveOnly(db *gorm.DB, cfg *pipeline.PipelineConfig, mailboxID uint) (*pipeline.PipelineConfig, error) {
 	if cfg == nil || !hasSieveStep(cfg) {
 		return nil, nil
+	}
+	rows, err := loadNativeRules(db, mailboxID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) > 0 {
+		only := &pipeline.PipelineConfig{ID: cfg.ID, DomainID: cfg.DomainID, Direction: cfg.Direction, Active: true,
+			Filters: []pipeline.FilterConfig{{Name: "sieve", Type: pipeline.FilterTypeTransform, Enabled: true}}}
+		after := false
+		for _, step := range cfg.Filters {
+			if step.Name == "sieve" && step.Enabled {
+				after = true
+			}
+			if after && step.Name == "vacation" && step.Enabled {
+				only.Filters = append(only.Filters, step)
+			}
+		}
+		return withNativeRules(only, rows)
 	}
 	stored, ok, err := activeSieveScript(db, mailboxID)
 	if err != nil || !ok {

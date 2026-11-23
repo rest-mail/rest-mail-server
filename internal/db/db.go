@@ -134,6 +134,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.VacationResponse{},
 		&models.Attachment{},
 		&models.SieveScript{},
+		&models.MailRule{},
 		&models.VacationConfig{},
 		// RESTMAIL protocol upgrade cache
 		&models.RESTMAILCapability{},

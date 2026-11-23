@@ -171,6 +171,9 @@ func (e *Engine) ExecuteStage(ctx context.Context, pipeline *PipelineConfig, ema
 
 Loop:
 	for _, fc := range pipeline.Filters {
+		if fc.Enabled && fc.Name == "mail_rules" && fc.AccountRuleMailboxID == 0 {
+			return nil, fmt.Errorf("native account rules require a server-resolved mailbox")
+		}
 		if !fc.Enabled {
 			continue
 		}

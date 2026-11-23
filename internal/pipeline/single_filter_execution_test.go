@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -37,7 +38,7 @@ func (f singleFilterBoundaryFixture) Execute(context.Context, *EmailJSON) (*Filt
 // including its backstop against filters which ignore their context entirely.
 func TestSingleFilterExecutionBoundary(t *testing.T) {
 	for _, mode := range []string{"success", "error", "panic", "blocked"} {
-		t.Run(mode, func(t *testing.T) {
+		run := func(t *testing.T) {
 			release := make(chan struct{})
 			finished := make(chan struct{})
 			failure := errors.New("execution sentinel")
@@ -54,11 +55,13 @@ func TestSingleFilterExecutionBoundary(t *testing.T) {
 				return singleFilterBoundaryFixture{mode: mode, failure: failure, release: release, finished: finished}, nil
 			})
 			engine := NewEngine(registry, slog.New(slog.NewTextHandler(io.Discard, nil)))
-			engine.SetFilterTimeout(10 * time.Millisecond)
+			const deadline = 10 * time.Millisecond
+			engine.SetFilterTimeout(deadline)
+			started := time.Now()
 			result, err := engine.TestFilter(t.Context(), "fixture", []byte(`{}`), &EmailJSON{})
 			if mode == "success" {
 				if err != nil || result == nil || result.Action != ActionContinue {
-					t.Fatal("successful filter result changed")
+					t.Fatalf("successful filter result changed: result=%+v err=%v", result, err)
 				}
 				return
 			}
@@ -69,9 +72,17 @@ func TestSingleFilterExecutionBoundary(t *testing.T) {
 			if mode == "error" && !errors.Is(err, failure) {
 				t.Fatal("execution error lost its cause")
 			}
-			if mode == "blocked" && !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatal("uncooperative filter ignored the configured execution deadline")
+			if mode == "blocked" {
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("uncooperative filter did not hit its execution deadline: %v", err)
+				}
+				if elapsed := time.Since(started); elapsed != deadline {
+					t.Errorf("execution timed out after %s, want %s", elapsed, deadline)
+				}
 			}
+		}
+		t.Run(mode, func(t *testing.T) {
+			synctest.Test(t, run)
 		})
 	}
 }

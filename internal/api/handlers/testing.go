@@ -436,9 +436,20 @@ func restoreTestRow(tx *gorm.DB, row any, keepExisting bool) error {
 		if field.PrimaryKey && zero {
 			continue // Sparse fixtures may let the database assign their ID.
 		}
+		if zero && field.Serializer != nil && field.HasDefaultValue {
+			// An omitted private JSON field must use its database default;
+			// GORM otherwise serializes a nil NOT NULL value as an empty string.
+			continue
+		}
 		values[field.DBName] = value
 	}
-	query := tx.Model(row).Omit(clause.Associations)
+	// Map inserts cannot scan serializer-backed default columns into struct
+	// fields. Only return primary keys; restored rows are read normally later.
+	returning := clause.Returning{}
+	for _, name := range statement.Schema.PrimaryFieldDBNames {
+		returning.Columns = append(returning.Columns, clause.Column{Name: name})
+	}
+	query := tx.Model(row).Omit(clause.Associations).Clauses(returning)
 	if keepExisting {
 		query = query.Clauses(clause.OnConflict{DoNothing: true})
 	}
@@ -456,7 +467,7 @@ func clearTestData(tx *gorm.DB) error {
 	stmts := []string{
 		"DELETE FROM attachments", "DELETE FROM outbound_queue", "DELETE FROM messages",
 		"DELETE FROM quarantine", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
-		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usage",
+		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM mail_rules", "DELETE FROM quota_usage",
 		"DELETE FROM credentials WHERE account_id NOT IN " + testDataAdmins,
 		"DELETE FROM grants WHERE holder_kind = 'account' AND (holder_id NOT IN " + testDataAdmins +
 			" OR (scope LIKE 'mailbox:%' AND scope <> (SELECT 'mailbox:' || address FROM mailboxes WHERE id = grants.holder_id)))",

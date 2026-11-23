@@ -102,7 +102,12 @@ func TestGatewayInboundPolicyDefaultsRequireAbsence(t *testing.T) {
 			if tc.missing {
 				policy = deliveryReadStep{table: "pipelines", columns: []string{"id"}}
 			}
-			d := &deliveryReadDB{steps: []deliveryReadStep{policy, missingGatewayScript()}}
+			steps := []deliveryReadStep{policy}
+			if tc.missing {
+				steps = append(steps, deliveryReadStep{table: "mail_rules", columns: []string{"id"}})
+			}
+			steps = append(steps, missingGatewayScript())
+			d := &deliveryReadDB{steps: steps}
 			h := NewMessageHandler(deliveryReadGorm(t, d), nil, nil, "", nil)
 			r := deliveryRequest(t, "{}", "/api/v1/messages/deliver")
 			got, err := h.localInboundPolicy(r.Context(), models.Mailbox{ID: 2, DomainID: 1})
@@ -119,7 +124,9 @@ func TestGatewayInboundPolicyDefaultsRequireAbsence(t *testing.T) {
 			} else if got.ID != 3 || got.DomainID != 1 || got.Direction != "inbound" || !got.Active || len(got.Filters) != 2 || got.Filters[0].Name != "dmarc_reports_received" || got.Filters[1].Name != "vacation" {
 				t.Fatalf("stored policy changed: %+v", got)
 			}
-			if d.reads != 2 || d.writes != 0 || d.lostContext != 0 {
+			// The default policy enables account filtering, so it now reads the
+			// native rule table before the legacy script; empty policies do not.
+			if d.reads != len(steps) || d.writes != 0 || d.lostContext != 0 {
 				t.Fatalf("reads=%d writes=%d lost contexts=%d", d.reads, d.writes, d.lostContext)
 			}
 		})

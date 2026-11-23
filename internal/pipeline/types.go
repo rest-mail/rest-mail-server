@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"strconv"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/rules"
 )
 
 // EmailJSON is the canonical JSON representation of an email as it flows
 // through the pipeline. It mirrors the MIME structure: nested multipart bodies,
 // structured headers, and separated attachments.
 type EmailJSON struct {
+	// Internal execution evidence; never accepted from a protocol or JSON input.
+	RuleEffects    []rules.Effect    `json:"-"`
+	RuleMatches    []uint            `json:"-"`
 	Envelope       Envelope          `json:"envelope"`
 	Headers        Headers           `json:"headers"`
 	Body           Body              `json:"body"`
@@ -174,11 +179,14 @@ type PipelineConfig struct {
 
 // FilterConfig is the configuration of a single filter step in a pipeline.
 type FilterConfig struct {
-	Name        string          `json:"name"`
-	Type        FilterType      `json:"type"`
-	Enabled     bool            `json:"enabled"`
-	Unskippable bool            `json:"unskippable,omitempty"`
-	Config      json.RawMessage `json:"config,omitempty"`
+	// Set only while resolving an account's stored native rules. A domain
+	// pipeline or protocol JSON cannot supply this execution authority.
+	AccountRuleMailboxID uint            `json:"-"`
+	Name                 string          `json:"name"`
+	Type                 FilterType      `json:"type"`
+	Enabled              bool            `json:"enabled"`
+	Unskippable          bool            `json:"unskippable,omitempty"`
+	Config               json.RawMessage `json:"config,omitempty"`
 }
 
 // ── Custom Filter Definitions ───────────────────────────────────────

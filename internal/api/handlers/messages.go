@@ -2766,10 +2766,15 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// but only when a forward was actually enqueued, so a redirect that cannot be
 	// honoured never loses the message.
 	forwarded := 0
+	var nativeForwards []models.OutboundQueue
 	for _, fwd := range buildRedirectForwards(ctx, emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}, rmail.DomainFromAddress(mailbox.Address), authResults) {
 		row := fwd
 		// "All instances of the message MUST be tagged in the same manner" (RFC 8689 §4.1).
 		row.RequireTLS = params.RequireTLS
+		if nativeForward(emailJSON, row.Recipient) {
+			nativeForwards = append(nativeForwards, row)
+			continue
+		}
 		if err := h.db.Create(&row).Error; err != nil {
 			slog.ErrorContext(ctx, "deliverToLocal: failed to enqueue sieve redirect",
 				"recipient", row.Recipient, "error", err)
@@ -2930,6 +2935,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			}
 		}
 		if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+totalAttBytes); err != nil {
+			return err
+		}
+		if err := commitNativeRuleEffects(tx, &msg, emailJSON, nativeForwards); err != nil {
 			return err
 		}
 		if err := createDeliveredMessage(tx, &msg); err != nil {

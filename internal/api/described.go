@@ -216,6 +216,11 @@ var exampleRequirements = map[string][]string{
 	"fault":     {"database", "database_pool", "session_store", "permission_store", "context_cancelled", "sidecar_response", "error_adapter", "acme_responder"},
 	"network":   {"outside_metrics_allowlist", "restmail_delivery_auth", "without_gateway_certificate"},
 	"state": {
+		// Native rule cases are established through the production API on
+		// PostgreSQL by TestStructuredRuleNamedExamples: an empty account, a
+		// structured rule, an unconverted script, or a delivered effect whose
+		// action/field determines whether undo can succeed (#2108).
+		"no_account_rules", "structured_rule", "raw_sieve", "forward_effect", "changed_rule_effect",
 		"password_only_session", "stale_two_factor_session",
 		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",
 		"active_grant", "active_policy", "calendar_invitation", "client_secret", "discarding_pipeline", "dkim_revocation", "eligible_grant",

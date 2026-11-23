@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/rules"
 )
 
 // JSONB is a custom type for PostgreSQL JSONB columns.
@@ -76,9 +77,10 @@ func MessageReplyParentSQL(prefix string) string {
 const MessageSearchVectorSQL = `to_tsvector('english', left(coalesce(subject, '') || ' ' || coalesce(body_text, ''), 200000))`
 
 type Message struct {
-	ID        uint   `gorm:"primaryKey" json:"id"`
-	MailboxID uint   `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
-	Folder    string `gorm:"size:255;not null;default:INBOX;index:idx_messages_mailbox_folder" json:"folder"`
+	RuleEffects []rules.Effect `gorm:"serializer:json;type:jsonb;not null;default:'[]'" json:"-"`
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	MailboxID   uint           `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
+	Folder      string         `gorm:"size:255;not null;default:INBOX;index:idx_messages_mailbox_folder" json:"folder"`
 	// The RFC 5322 Message-ID header (a string). Careful: the column name
 	// message_id doubles as GORM's conventional FK-column name for relations
 	// referencing Message, so an ambiguous association elsewhere can hijack

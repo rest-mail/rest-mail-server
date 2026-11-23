@@ -138,6 +138,13 @@ func (c accountReadConnection) QueryContext(_ context.Context, query string, arg
 		return nil, err
 	}
 	switch {
+	case strings.Contains(query, `FROM "mail_rules"`):
+		// These legacy-Sieve fixtures have no native rules. The additional
+		// lookup must remain account-scoped, ordered and bounded.
+		if len(args) != 2 || !strings.Contains(query, "mailbox_id =") || !strings.Contains(query, "ORDER BY position, id") || args[1].Value != int64(101) {
+			return nil, errors.New("native rule lookup lost account, ordering or bound")
+		}
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
 	case strings.Contains(query, `FROM "mailboxes"`):
 		if strings.Contains(query, `SELECT "address"`) {
 			if c.state.mode == "own_failure" {
