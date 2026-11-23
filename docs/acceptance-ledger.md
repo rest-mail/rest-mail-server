@@ -183,6 +183,10 @@ Local PostgreSQL and Helm proofs for the queue rows, not live receiver acceptanc
 | AC05 installed cluster stages one to three run | H | cluster |
 | AC06 promotion gated on fresh matching receipts | R + H | `Gate and promote release images` requires same-attempt build digests and a fresh matching image receipt before it writes any SemVer tag. `ReleasePromotionWorkflowTests` proves the workflow step refuses missing, stale, failed and wrong-digest inputs, authorizes a complete receipt, and would write all seven tags if the gate were removed. The existing 21 installed-cluster gate tests still run; normal promotion with installed-cluster stage receipts and the hosted image promotion remain unproven. |
 
+[#2236](https://github.com/rest-mail/rest-mail-server/pull/2236) records partial proof for AC02 and the inherited release AC04 and AC06. [CI](https://github.com/rest-mail/rest-mail-server/actions/runs/45068396303/job/137357558672) and [E2E (full topology)](https://github.com/rest-mail/rest-mail-server/actions/runs/45068396278/job/137358265120) passed on `decbe34aa763c95ac5e46fa6e35d20be164b7924`. The tested head and squash merge `52eb171904e2c84fc87c50a5574bbc0d58470fd4` have identical trees.
+
+The named tests above prove that missing reload observations and missing or mismatched image evidence refuse promotion before registry writes. The promotion test uses simulated registry writes. These PR checks do not establish the first hosted release-image receipt, actual tag promotion, installed-cluster receipts, or strict reload with the external certificate fixture.
+
 ## #2101 — personal and assistant
 
 | AC | Bucket | What is missing |
