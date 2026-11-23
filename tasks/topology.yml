@@ -114,11 +114,6 @@ tasks:
           *) echo "refusing to remove by label '$label'" >&2; exit 2 ;;
         esac
         RESTMAIL_LABEL="$label" VOLUMES=true sh {{.ROOT_DIR}}/tasks/clean.sh
-        # Anything named for this run that somehow lacks the label: the names are the run's own.
-        prefix="restmail-{{.TOPOLOGY}}-"
-        ids=$(docker ps -aq --filter "name=^${prefix}") && [ -z "$ids" ] || docker rm -fv $ids >/dev/null
-        for network in $(docker network ls --format '{{`{{.Name}}`}}' --filter "name=^${prefix}"); do docker network rm "$network" >/dev/null; done
-        for volume in $(docker volume ls -q --filter "name=^${prefix}"); do docker volume rm "$volume" >/dev/null; done
         # What this run made on disk, by the names the plan gives it: the instance's config and
         # the two reference servers' copies of theirs. Nothing else under .cache or .workspace.
         eval "$(python3 -B {{.ROOT_DIR}}/scripts/topology_plan.py "{{.TOPOLOGY}}" --existing-subnets "" --shell)"

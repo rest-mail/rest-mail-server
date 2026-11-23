@@ -63,6 +63,11 @@ TOPOLOGY_PACKAGES = ("/tests/e2e",)
 FIXTURE_PACKAGES = ("/tests/contract/fixtures", "/tests/contract/fixtureplan")
 FAILURE_REPORT_LINES = 400
 TIMEOUT_REPORT_LINES = 30
+DOCKER_READY_SECONDS = 10
+POSTGRES_READY_SECONDS = 60
+DOCKER_PROBE_SECONDS = 2
+DOCKER_START_SECONDS = 300
+STARTUP_POLL_SECONDS = 1
 # CI splits internal/api four ways on runners it has to itself. A shared Mac at a
 # load of 300 cannot finish a quarter of the package inside CI's per-shard limit
 # (#1941), so the limit stays and each shard carries less. Tests still run once.
@@ -197,7 +202,9 @@ def tee(args, root, env, log):
         raise subprocess.CalledProcessError(process.returncode, args)
 
 
-def command(args, root=ROOT, env=None, capture=False, log=None):
+def command(
+    args, root=ROOT, env=None, capture=False, log=None, timeout=None, diagnostics=False
+):
     print("+ " + " ".join(str(arg) for arg in args), flush=True)
     try:
         if log:
@@ -209,9 +216,18 @@ def command(args, root=ROOT, env=None, capture=False, log=None):
             check=True,
             text=True,
             stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if diagnostics else None,
+            timeout=timeout,
         ).stdout
     except FileNotFoundError as error:
         raise CouldNotRun(f"install {args[0]} and rerun (command not found)") from error
+
+
+def command_detail(error):
+    detail = error.stderr or error.stdout or str(error)
+    if isinstance(detail, bytes):
+        detail = detail.decode(errors="replace")
+    return detail.strip()[-2000:]
 
 
 def unwind_on_termination():
@@ -1269,10 +1285,7 @@ class Gate:
         requested = "golang:" + self.env["GOTOOLCHAIN"].removeprefix("go")
         if requested != GO_TEST_IMAGE.split("@", 1)[0]:
             raise CouldNotRun(f"no pinned Linux Go test image for {requested}; update GO_TEST_IMAGE")
-        try:
-            self.run(["docker", "info"], capture=True)
-        except subprocess.CalledProcessError as error:
-            raise CouldNotRun("start Docker; selected Go tests need Linux") from error
+        self.docker_ready("selected Go tests need Linux")
         self.linux_image = GO_TEST_IMAGE
         existed = (
             subprocess.run(
@@ -1353,10 +1366,7 @@ class Gate:
     def postgres(self):
         if not self.packages and not self.api_changed:
             return "NOT REQUIRED: no selected database-backed Go packages"
-        try:
-            self.run(["docker", "info"], capture=True)
-        except subprocess.CalledProcessError as error:
-            raise CouldNotRun("start Docker; the Go tests need PostgreSQL") from error
+        self.docker_ready("the Go tests need PostgreSQL")
         service = self.workflow["jobs"]["test"]["services"]["postgres"]
         self.image = service["image"]
         existed = (
@@ -1365,18 +1375,22 @@ class Gate:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
+                timeout=DOCKER_PROBE_SECONDS,
+                env=self.env,
             ).returncode
             == 0
         )
         if not existed:
-            self.run(["docker", "pull", self.image])
+            self.start_postgres_command(["docker", "pull", self.image], "pull image")
             self.created_image = True
         self.container = f"restmail-{self.loop}-postgres-{self.run_id}"
-        created = self.run(
+        created = self.start_postgres_command(
             [
                 "docker",
                 "run",
                 "-d",
+                "--oom-score-adj",
+                "1000",
                 "--name",
                 self.container,
                 "--label",
@@ -1396,6 +1410,8 @@ class Gate:
                 "POSTGRES_USER=restmail",
                 "-e",
                 "POSTGRES_PASSWORD=restmail",
+                "-e",
+                "POSTGRES_INITDB_ARGS=--locale-provider=icu --icu-locale=en-US --encoding=UTF8",
                 self.image,
                 "-c",
                 "max_connections=400",
@@ -1406,15 +1422,18 @@ class Gate:
                 "-c",
                 "pg_stat_statements.max=100000",
             ],
-            capture=True,
+            "start container",
         )
         self.container_id = (created or "").strip() or None
         print(self.container_id or "", flush=True)
-        port = (
-            self.run(["docker", "port", self.container, "5432/tcp"], capture=True)
-            .strip()
-            .rsplit(":", 1)[1]
-        )
+        binding = self.start_postgres_command(
+            ["docker", "port", self.container, "5432/tcp"], "read published port"
+        ).strip()
+        match = re.fullmatch(r"127\.0\.0\.1:(\d+)", binding)
+        if not match:
+            self.postgres_startup_failure(f"expected a loopback port, got {binding!r}")
+        port = match[1]
+        self.wait_for_postgres()
         self.env.update(
             DB_HOST="127.0.0.1",
             DB_PORT=port,
@@ -1423,9 +1442,46 @@ class Gate:
             DB_PASS="restmail",
             RESTMAIL_IMPORT_LONG_PROOF="1",
         )
-        for attempt in range(60):
-            if (
-                subprocess.run(
+        self.run(
+            ["go", "build", "-o", self.work / "testdb-exec", "./tools/testdb-exec"]
+        )
+
+    def docker_ready(self, purpose):
+        deadline = time.monotonic() + DOCKER_READY_SECONDS
+        detail = "no probe completed"
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                self.run(
+                    ["docker", "info"],
+                    capture=True,
+                    diagnostics=True,
+                    timeout=min(remaining, DOCKER_PROBE_SECONDS),
+                )
+                return
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                detail = command_detail(error)
+            time.sleep(max(0, min(STARTUP_POLL_SECONDS, deadline - time.monotonic())))
+        raise CouldNotRun(
+            f"start Docker or check its context/socket; {purpose}: "
+            f"docker info not ready within {DOCKER_READY_SECONDS}s ({detail})"
+        )
+
+    def start_postgres_command(self, args, phase):
+        try:
+            return self.run(
+                args, capture=True, diagnostics=True, timeout=DOCKER_START_SECONDS
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError(
+                f"PostgreSQL ({self.image}): could not {phase}: {command_detail(error)}"
+            ) from error
+
+    def wait_for_postgres(self):
+        deadline = time.monotonic() + POSTGRES_READY_SECONDS
+        detail = "no probe completed"
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                probe = subprocess.run(
                     [
                         "docker",
                         "exec",
@@ -1438,24 +1494,63 @@ class Gate:
                         "-d",
                         "restmail_test",
                     ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
                     check=False,
-                ).returncode
-                == 0
-            ):
-                self.run(
-                    [
-                        "go",
-                        "build",
-                        "-o",
-                        self.work / "testdb-exec",
-                        "./tools/testdb-exec",
-                    ]
+                    env=self.env,
+                    timeout=min(remaining, DOCKER_PROBE_SECONDS),
                 )
-                return
-            time.sleep(1)
-        raise CouldNotRun("isolated PostgreSQL was not ready within 60 seconds")
+                if probe.returncode == 0:
+                    return
+                detail = (
+                    probe.stderr
+                    or probe.stdout
+                    or f"pg_isready exit {probe.returncode}"
+                ).strip()
+            except subprocess.TimeoutExpired as error:
+                detail = command_detail(error)
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                try:
+                    state = self.run(
+                        [
+                            "docker",
+                            "inspect",
+                            "--format",
+                            "{{.State.Status}} {{.State.ExitCode}}",
+                            self.container,
+                        ],
+                        capture=True,
+                        diagnostics=True,
+                        timeout=min(remaining, DOCKER_PROBE_SECONDS),
+                    ).strip()
+                except (
+                    subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired,
+                ) as error:
+                    detail = command_detail(error)
+                else:
+                    if state.startswith(("exited ", "dead ")):
+                        self.postgres_startup_failure(f"container {state}; {detail}")
+            time.sleep(max(0, min(STARTUP_POLL_SECONDS, deadline - time.monotonic())))
+        self.postgres_startup_failure(
+            f"not ready within {POSTGRES_READY_SECONDS}s; {detail}"
+        )
+
+    def postgres_startup_failure(self, detail):
+        try:
+            logs = subprocess.run(
+                ["docker", "logs", "--tail", "20", self.container],
+                env=self.env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=True,
+                timeout=DOCKER_PROBE_SECONDS,
+            ).stdout
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            logs = f"could not read container logs: {command_detail(error)}"
+        raise RuntimeError(f"PostgreSQL ({self.container}): {detail}\n{logs}")
 
     def go_tests(self):
         remaining = [
@@ -1850,30 +1945,26 @@ class Gate:
 
     def cleanup(self):
         failures = []
-        if self.linux_container:
-            present = (
-                subprocess.run(
-                    ["docker", "container", "inspect", self.linux_container],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                ).returncode
-                == 0
-            )
-            if present and subprocess.run(
-                ["docker", "rm", "-fv", self.linux_container], check=False
-            ).returncode:
-                failures.append("docker rm -fv " + self.linux_container)
-        if self.created_linux_image and subprocess.run(
-            ["docker", "image", "rm", self.linux_image], check=False
-        ).returncode:
+        for name, container_id in (
+            (self.linux_container, None),
+            (self.container, self.container_id),
+        ):
+            if name:
+                try:
+                    self.remove_owned_container(name, container_id)
+                except (
+                    subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired,
+                    RuntimeError,
+                ) as error:
+                    failures.append(f"{name}: {error}")
+        if (
+            self.created_linux_image
+            and subprocess.run(
+                ["docker", "image", "rm", self.linux_image], check=False
+            ).returncode
+        ):
             print(f"WARNING: left image {self.linux_image}: docker image rm refused")
-        # Its own container alone, by the id `docker run` printed (or its unique
-        # name when that never arrived), so a gate ending cannot reach another
-        # gate's database on the same machine (#1942).
-        own = self.container_id or self.container
-        if own and subprocess.run(["docker", "rm", "-fv", own], check=False).returncode:
-            failures.append("docker rm -fv " + own)
         if (
             self.created_image
             and subprocess.run(
@@ -1884,6 +1975,42 @@ class Gate:
             print(f"WARNING: left image {self.image}: docker image rm refused")
         if failures:
             raise RuntimeError("cleanup failed: " + "; ".join(failures))
+
+    def remove_owned_container(self, name, container_id):
+        label = "rest-mail.gate=" + self.run_id
+        identity = (
+            f"id={container_id}" if container_id else f"name=^/{re.escape(name)}$"
+        )
+        candidates = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "-aq",
+                "--no-trunc",
+                "--filter",
+                "label=" + label,
+                "--filter",
+                identity,
+            ],
+            env=self.env,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=DOCKER_PROBE_SECONDS,
+        ).stdout.split()
+        if not candidates:
+            return
+        if len(candidates) != 1 or not re.fullmatch(r"[0-9a-f]{64}", candidates[0]):
+            raise RuntimeError(
+                f"ambiguous container identity from Docker: {candidates!r}"
+            )
+        subprocess.run(
+            ["docker", "rm", "-fv", candidates[0]],
+            env=self.env,
+            check=True,
+            timeout=DOCKER_PROBE_SECONDS,
+        )
+        print(f"cleanup: removed container {candidates[0]} ({label})", flush=True)
 
     def steps(self):
         actions = (

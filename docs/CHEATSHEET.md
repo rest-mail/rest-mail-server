@@ -52,8 +52,8 @@ docker ps                        # the real full picture (rest-mail + reference 
 ```
 
 `chore status` legend: `● up`  `○ down`  `· absent`. Its **orphans** section flags
-stale `rest-mail-*` containers left over from a previous run — clear them with
-`chore purge`.
+stale `rest-mail-*` containers left over from a previous run. Use `chore purge`
+with that run's `RESTMAIL_LABEL`; inspect unlabelled containers separately.
 
 ## Stop a server
 
@@ -95,7 +95,7 @@ Services: `postgres`, `api`, `js-filter`, `smtp-gateway`, `imap-gateway`,
 
 ```sh
 chore db:seed              # seed fixture users into the instance database
-chore purge                # remove all rest-mail-* containers (keeps volumes)
+chore purge                # remove containers carrying RESTMAIL_LABEL (keeps volumes and networks)
 chore clean                # remove what carries RESTMAIL_LABEL, even after a crash (keeps data volumes)
 chore clean --volumes      # DESTRUCTIVE — the labelled data volumes too
 chore postgres:reset       # DESTRUCTIVE — drop the postgres data volume + recreate

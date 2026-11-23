@@ -10,6 +10,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 import yaml
 
@@ -139,7 +140,7 @@ class TheCheckTests(unittest.TestCase):
 class DockerStub(unittest.TestCase):
     """Runs a script with a stub docker that answers from a table and records every call."""
 
-    STATE = {}
+    STATE: ClassVar[dict[str, str]] = {}
 
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -282,7 +283,7 @@ class BuildCacheTests(DockerStub):
 
 
 class CleanTests(DockerStub):
-    STATE = {
+    STATE: ClassVar[dict[str, str]] = {
         "info": "Docker Desktop",
         "containers": "c1\nc2",
         "networks": "n1",
@@ -304,9 +305,29 @@ class CleanTests(DockerStub):
             self.assertIn(f"label={LABEL}", call)
 
     def test_containers_go_with_their_anonymous_volumes(self):
-        self.clean()
-        self.assertIn(["rm", "-fv", "c1", "c2"], self.calls())
+        result = self.clean()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [call for call in self.calls() if call[0] == "rm"],
+            [["rm", "-fv", "c1"], ["rm", "-fv", "c2"]],
+        )
+        for identity in ("c1", "c2"):
+            self.assertIn(
+                f"cleanup: removed container {identity} ({LABEL})", result.stdout
+            )
         self.assertIn(["network", "rm", "n1"], self.calls())
+
+    def test_purge_scope_does_not_remove_volumes_or_networks(self):
+        result = self.clean(CONTAINERS_ONLY="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.calls(),
+            [
+                ["ps", "-aq", "--no-trunc", "--filter", f"label={LABEL}"],
+                ["rm", "-f", "c1"],
+                ["rm", "-f", "c2"],
+            ],
+        )
 
     def test_data_volumes_stay_unless_asked(self):
         result = self.clean()

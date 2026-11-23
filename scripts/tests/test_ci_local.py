@@ -305,6 +305,7 @@ class LinuxGoTests(unittest.TestCase):
     def test_unavailable_docker_fails_closed_before_any_tests(self):
         self.local.linux_packages = [self.loadgen]
         with (
+            patch.object(gate, "DOCKER_READY_SECONDS", 0.01),
             patch.object(
                 self.local, "run",
                 side_effect=subprocess.CalledProcessError(1, ["docker", "info"]),
@@ -331,7 +332,7 @@ class LinuxGoTests(unittest.TestCase):
             ("--- FAIL: TestSources\n", subprocess.CalledProcessError),
             (gate.TIMEOUT_MARK + " after 20m\n", gate.NoVerdict),
         ):
-            def run(args, **kwargs):
+            def run(args, *, output=output, **kwargs):
                 if args[:2] == ["go", "env"]:
                     return json.dumps(self.caches)
                 if "log" in kwargs:
@@ -354,12 +355,22 @@ class LinuxGoTests(unittest.TestCase):
         self.local.created_linux_image = True
         with patch.object(gate.subprocess, "run") as docker:
             docker.return_value.returncode = 0
+            docker.return_value.stdout = "a" * 64
             self.local.cleanup()
         self.assertEqual(
             [call.args[0] for call in docker.call_args_list],
             [
-                ["docker", "container", "inspect", self.local.linux_container],
-                ["docker", "rm", "-fv", self.local.linux_container],
+                [
+                    "docker",
+                    "ps",
+                    "-aq",
+                    "--no-trunc",
+                    "--filter",
+                    "label=rest-mail.gate=" + self.local.run_id,
+                    "--filter",
+                    f"name=^/{re.escape(self.local.linux_container)}$",
+                ],
+                ["docker", "rm", "-fv", "a" * 64],
                 ["docker", "image", "rm", self.local.linux_image],
             ],
         )
@@ -367,7 +378,7 @@ class LinuxGoTests(unittest.TestCase):
     def test_cleanup_accepts_an_already_auto_removed_container(self):
         self.local.linux_container = "restmail-2013-linux-go-" + self.local.run_id
         with patch.object(gate.subprocess, "run") as docker:
-            docker.return_value.returncode = 1
+            docker.return_value.stdout = ""
             self.local.cleanup()
         self.assertEqual(docker.call_count, 1)
 
@@ -1258,6 +1269,7 @@ class VertragShards(unittest.TestCase):
             local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
             local.packages = ["mod/database"]
             with (
+                patch.object(gate, "DOCKER_READY_SECONDS", 0.01),
                 patch.object(
                     local,
                     "run",
@@ -1366,16 +1378,21 @@ class VertragShards(unittest.TestCase):
                 self.assertEqual(local.env["DB_PORT"], "49152")
                 self.assertIn("rest-mail.gate=" + local.run_id, create)
                 self.assertTrue(local.container.endswith("-" + local.run_id))
+                docker.return_value.stdout = "a" * 64
                 local.cleanup()
                 # Removed by the id `docker run` printed: its own container alone.
-                docker.assert_called_with(["docker", "rm", "-fv", "id"], check=False)
+                self.assertEqual(
+                    docker.call_args.args[0], ["docker", "rm", "-fv", "a" * 64]
+                )
                 self.assertFalse(local.created_image)
 
     def test_two_gates_on_one_machine_never_remove_each_others_database(self):
         # A gate's Postgres must outlive every other gate's cleanup: gates with
         # the same loop label share that label, and all share RESTMAIL_LABEL's
         # default, so a removal by label or name pattern would end them all (#1942).
-        workflow = {"jobs": {"test": {"services": {"postgres": {"image": "postgres:16"}}}}}
+        workflow = {
+            "jobs": {"test": {"services": {"postgres": {"image": "postgres:16"}}}}
+        }
         docker_ids = {}
         gates = []
         with tempfile.TemporaryDirectory() as temporary:
@@ -1388,7 +1405,7 @@ class VertragShards(unittest.TestCase):
                     patch.object(
                         local,
                         "run",
-                        side_effect=["", docker_ids[local] + "\n", "127.0.0.1:4915%d\n" % number, ""],
+                        side_effect=["", docker_ids[local] + "\n", f"127.0.0.1:4915{number}\n", ""],
                     ) as commands,
                     patch.object(gate.subprocess, "run") as docker,
                 ):
@@ -1403,24 +1420,49 @@ class VertragShards(unittest.TestCase):
             for ending, other in ((first, second), (second, first)):
                 with patch.object(gate.subprocess, "run") as docker:
                     docker.return_value.returncode = 0
+                    docker.return_value.stdout = docker_ids[ending]
                     ending.cleanup()
                 commands = [call.args[0] for call in docker.call_args_list]
-                self.assertEqual(commands, [["docker", "rm", "-fv", docker_ids[ending]]])
+                self.assertEqual(
+                    commands,
+                    [
+                        [
+                            "docker",
+                            "ps",
+                            "-aq",
+                            "--no-trunc",
+                            "--filter",
+                            "label=rest-mail.gate=" + ending.run_id,
+                            "--filter",
+                            "id=" + docker_ids[ending],
+                        ],
+                        ["docker", "rm", "-fv", docker_ids[ending]],
+                    ],
+                )
                 for command in commands:
                     joined = " ".join(command)
                     self.assertNotIn(docker_ids[other], joined)
                     self.assertNotIn(other.container, joined)
-                    self.assertNotIn("--filter", command)
-                    self.assertNotIn("label=", joined)
 
-    def test_a_container_whose_id_never_arrived_is_removed_by_its_unique_name(self):
+    def test_a_container_whose_id_never_arrived_needs_both_exact_name_and_label(self):
         with tempfile.TemporaryDirectory() as temporary:
             local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, "1942")
             local.container = f"restmail-1942-postgres-{local.run_id}"
             with patch.object(gate.subprocess, "run") as docker:
-                docker.return_value.returncode = 0
+                docker.return_value.stdout = "b" * 64
                 local.cleanup()
-            docker.assert_called_once_with(["docker", "rm", "-fv", local.container], check=False)
+            self.assertEqual(
+                docker.call_args_list[0].args[0][-4:],
+                [
+                    "--filter",
+                    "label=rest-mail.gate=" + local.run_id,
+                    "--filter",
+                    f"name=^/{re.escape(local.container)}$",
+                ],
+            )
+            self.assertEqual(
+                docker.call_args.args[0], ["docker", "rm", "-fv", "b" * 64]
+            )
 
 
 class ShardPlan(unittest.TestCase):
@@ -1600,31 +1642,33 @@ class Wrapper(unittest.TestCase):
             ({"RESTMAIL_LOOP_LABEL": "///"}, None, "local"),
         ]
         for environment, scratch, expected in cases:
-            with self.subTest(environment=environment, scratch=scratch):
-                with patch.dict(os.environ, environment):
-                    os.environ.pop("RESTMAIL_LABEL", None)
-                    if "RESTMAIL_LOOP_LABEL" not in environment:
-                        os.environ.pop("RESTMAIL_LOOP_LABEL", None)
-                    label = gate.loop_label(scratch)
-                    self.assertEqual(label, expected)
-                    with tempfile.TemporaryDirectory() as temporary:
-                        local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, label)
-                        local.packages = ["mod/database"]
-                        local.workflow = workflow
-                        with (
-                            patch.object(
-                                local, "run", side_effect=["", "id", "127.0.0.1:49152\n", ""]
-                            ) as commands,
-                            patch.object(gate.subprocess, "run") as docker,
-                        ):
-                            docker.return_value.returncode = 0
-                            local.postgres()
-                    create = commands.call_args_list[1].args[0]
-                    self.assertIn("rest-mail-loop=" + expected, create)
-                    self.assertNotIn("rest-mail-loop=1941", create)
-                    self.assertRegex(
-                        local.container, rf"^restmail-{re.escape(expected)}-postgres-[0-9a-f]{{10}}$"
-                    )
+            with (
+                self.subTest(environment=environment, scratch=scratch),
+                patch.dict(os.environ, environment),
+            ):
+                os.environ.pop("RESTMAIL_LABEL", None)
+                if "RESTMAIL_LOOP_LABEL" not in environment:
+                    os.environ.pop("RESTMAIL_LOOP_LABEL", None)
+                label = gate.loop_label(scratch)
+                self.assertEqual(label, expected)
+                with tempfile.TemporaryDirectory() as temporary:
+                    local = gate.Gate(ROOT, Path(temporary), Path(temporary), False, label)
+                    local.packages = ["mod/database"]
+                    local.workflow = workflow
+                    with (
+                        patch.object(
+                            local, "run", side_effect=["", "id", "127.0.0.1:49152\n", ""]
+                        ) as commands,
+                        patch.object(gate.subprocess, "run") as docker,
+                    ):
+                        docker.return_value.returncode = 0
+                        local.postgres()
+                create = commands.call_args_list[1].args[0]
+                self.assertIn("rest-mail-loop=" + expected, create)
+                self.assertNotIn("rest-mail-loop=1941", create)
+                self.assertRegex(
+                    local.container, rf"^restmail-{re.escape(expected)}-postgres-[0-9a-f]{{10}}$"
+                )
 
     def test_the_default_label_is_the_scratch_directorys_name(self):
         with patch.dict(os.environ, {"RESTMAIL_SCRATCH": "/home/me/tmp/rest-mail-loop/1942j"}):

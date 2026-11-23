@@ -1047,7 +1047,7 @@ chore testbed:up          # shared testbed: mailnet network + certs volume + dns
 chore instance:up         # bring up the full restmail stack (CONFIG defaults to restmail.test)
 chore instance:down       # stop the restmail stack (preserves data volumes)
 chore instance:restart    # stop + recreate the full stack (rebuilds images)
-chore purge               # remove all rest-mail-* containers (keeps volumes)
+chore purge               # remove containers carrying RESTMAIL_LABEL (keeps volumes and networks)
 chore clean               # remove what carries RESTMAIL_LABEL, even after a crash (keeps data volumes)
 chore clean --volumes     # the labelled data volumes too (destructive)
 chore db:reset            # drop postgres data volume, recreate, then seed (destructive)
