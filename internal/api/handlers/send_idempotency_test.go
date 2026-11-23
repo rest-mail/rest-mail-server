@@ -139,6 +139,53 @@ func TestSendIdempotencyConcurrentAndSequential(t *testing.T) {
 	}
 }
 
+func TestSendIdempotencyKeyCannotSendADifferentDraft(t *testing.T) {
+	fixture := newSendIdempotencyFixture(t)
+	newDraft := func() models.Message {
+		t.Helper()
+		draft := models.Message{
+			MailboxID: fixture.accounts[0].ID, Folder: "Drafts", IsDraft: true,
+			Sender: fixture.accounts[0].Address, Subject: "same content", BodyText: "hello",
+			RecipientsTo: models.JSONB(`["far@remote.example"]`), RecipientsCc: models.JSONB(`[]`),
+		}
+		if err := fixture.db.Create(&draft).Error; err != nil {
+			t.Fatal(err)
+		}
+		return draft
+	}
+	first, second := newDraft(), newDraft()
+	firstPath := fmt.Sprintf("/api/v1/messages/draft/%d/send", first.ID)
+	secondPath := fmt.Sprintf("/api/v1/messages/draft/%d/send", second.ID)
+	original := fixture.request(0, firstPath, "", "first-draft-key")
+	if original.Code != http.StatusCreated {
+		t.Fatalf("first draft: %d %s", original.Code, original.Body)
+	}
+
+	conflict := fixture.request(0, secondPath, "", "first-draft-key")
+	if conflict.Code != http.StatusConflict || !strings.Contains(conflict.Body.String(), `"code":"idempotency_conflict"`) {
+		t.Fatalf("different draft with a live key: %d %s", conflict.Code, conflict.Body)
+	}
+	fixture.counts(t, 1, 1)
+	var drafts int64
+	if err := fixture.db.Model(&models.Message{}).Where("id = ? AND is_draft", second.ID).Count(&drafts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if drafts != 1 {
+		t.Fatal("the refused send consumed the second draft")
+	}
+	replay := fixture.request(0, firstPath, "", "first-draft-key")
+	if replay.Code != http.StatusCreated || replay.Body.String() != original.Body.String() {
+		t.Fatalf("first draft replay after conflict: %d %s", replay.Code, replay.Body)
+	}
+	fixture.counts(t, 1, 1)
+
+	accepted := fixture.request(0, secondPath, "", "second-draft-key")
+	if accepted.Code != http.StatusCreated {
+		t.Fatalf("second draft with a fresh key: %d %s", accepted.Code, accepted.Body)
+	}
+	fixture.counts(t, 2, 2)
+}
+
 func TestSendIdempotencyWaitCancellationAndRollback(t *testing.T) {
 	f := newSendIdempotencyFixture(t)
 	body := fmt.Sprintf(`{"from":%q,"to":["far@remote.example"]}`, f.accounts[0].Address)
