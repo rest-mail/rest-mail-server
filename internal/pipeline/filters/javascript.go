@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -52,6 +51,8 @@ type jsFilter struct {
 	sidecar   JSSidecar
 	onFailure pipeline.Action
 }
+
+const sidecarHTTPHeadroom = 5 * time.Second
 
 func init() {
 	pipeline.DefaultRegistry.Register("javascript", NewJavaScript)
@@ -119,7 +120,7 @@ func newJavaScript(config []byte, sidecar JSSidecar) (pipeline.Filter, error) {
 
 	return &jsFilter{
 		script:    cfg.Script,
-		timeout:   time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		timeout:   filterHTTPTimeout(cfg.TimeoutMS, 500*time.Millisecond, sidecarHTTPHeadroom),
 		sidecar:   sidecar,
 		onFailure: onFailure,
 	}, nil
@@ -158,7 +159,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 	}
 
 	client := &http.Client{
-		Timeout: f.timeout + 5*time.Second, // extra headroom beyond script timeout
+		Timeout: f.timeout + sidecarHTTPHeadroom,
 	}
 
 	resp, err := f.sidecar.Post(ctx, client, "/execute", bodyBytes)
@@ -167,7 +168,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := ReadSidecarResponse(resp)
 	if err != nil {
 		return f.fail("error", fmt.Sprintf("read sidecar response: %v", err)), nil
 	}

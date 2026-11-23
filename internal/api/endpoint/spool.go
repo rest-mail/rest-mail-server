@@ -23,14 +23,19 @@ func Spool(src io.Reader) (*os.File, func(), error) {
 		_ = file.Close()
 		_ = os.Remove(file.Name())
 	}
+	ready := false
+	defer func() {
+		if !ready {
+			done()
+		}
+	}()
 	if _, err := io.Copy(file, src); err != nil {
-		done()
 		return nil, nil, err
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		done()
 		return nil, nil, err
 	}
+	ready = true
 	return file, done, nil
 }
 
