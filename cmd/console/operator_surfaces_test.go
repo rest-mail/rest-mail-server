@@ -193,7 +193,7 @@ func TestAC04ScopedOperatorDiagnostics(t *testing.T) {
 		for _, stmt := range []string{
 			`SELECT pg_sleep(0.01), length('` + literalSecret + `')`,
 			`SELECT /* ` + commentSecret + ` */ length('value'), 2117`,
-			`SET application_name = '` + utilitySecret + `'`,
+			`DO $body$ BEGIN PERFORM length('` + utilitySecret + `'); END; $body$;`,
 		} {
 			if err := s.db.Exec(stmt).Error; err != nil {
 				t.Fatal(err)
