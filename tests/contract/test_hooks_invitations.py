@@ -153,6 +153,32 @@ class Invitations(unittest.TestCase):
         self.start_clean.assert_not_called()
         self.assertEqual(json.loads(transaction["request"]["body"])["token"], "fresh")
 
+    def test_invalid_fuzz_body_keeps_its_bytes_without_invitation_setup(self):
+        body = {"token": "generated", "password": "short"}
+        transaction = self.transaction(ACCEPT_NAME % "200", ACCEPT, body)
+        original = transaction["request"]["body"]
+        with patch.dict("os.environ", {"CONTRACT_FUZZ": "1"}), \
+                patch.object(self.module.subprocess, "run") as prepare:
+            self.module.redeem_a_fresh_invitation(transaction)
+        self.assertEqual(transaction["request"]["body"], original)
+        self.assertNotIn("skip", transaction)
+        self.assertEqual(self.sent, [])
+        prepare.assert_not_called()
+
+    def test_valid_fuzz_body_prepares_its_own_token_without_rewriting(self):
+        body = {"token": "generated", "password": "the recipient chooses this password", "client": "native"}
+        transaction = self.transaction(ACCEPT_NAME % "200", ACCEPT, body)
+        original = transaction["request"]["body"]
+        made = unittest.mock.MagicMock(returncode=0)
+        with patch.dict("os.environ", {"CONTRACT_FUZZ": "1"}), \
+                patch.object(self.module.subprocess, "run", return_value=made) as prepare:
+            self.module.redeem_a_fresh_invitation(transaction)
+        self.assertEqual(transaction["request"]["body"], original)
+        self.assertNotIn("skip", transaction)
+        self.assertEqual(self.sent, [])
+        prepare.assert_called_once()
+        self.assertEqual(json.loads(prepare.call_args.kwargs["env"]["CONTRACT_INVITATION_REQUEST"]), {"token": body["token"]})
+
     def test_a_coverage_probe_hands_its_token_to_the_fixture_in_the_environment(self):
         # chore passes a task no standard input, so the request goes in the
         # environment; a failed fixture says why, and no time limit applies.
