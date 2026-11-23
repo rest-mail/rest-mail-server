@@ -27,7 +27,7 @@ type closeImportSessionRequest struct {
 func (h *MessageImportHandler) registerSessions(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import-sessions",
 		OperationID: "createImportSession", Summary: "Open an import session", Tags: []string{"Messages"}, Status: http.StatusCreated,
-		Description: "Opens an import of many messages into the account, so it is audited as one summary instead of one entry per message. Send the returned id as import_session with each importMessage call, then close it with closeImportSession. Requires mail:import on the account. A session with no import or close for idle_timeout_seconds (one hour) is closed by the server and its summary written. The IMAP gateway opens one at a connection's first APPEND or COPY and closes it at LOGOUT or disconnect, naming the client from its ID command.",
+		Description: "Opens an import of many messages into the account, so it is audited as one summary instead of one entry per message. Send the returned id as import_session with each importMessage call, then close it with closeImportSession. Requires mail:import on the account. A session with no import or close for idle_timeout_seconds (one hour) is closed by the server and its summary written. The IMAP gateway opens one at a connection's first APPEND and closes it at LOGOUT or disconnect, naming the client from its ID command.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...)}, h.openSession)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/messages/import-sessions/{session}",

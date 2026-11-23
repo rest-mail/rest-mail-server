@@ -713,7 +713,7 @@ export interface paths {
         put?: never;
         /**
          * Open an import session
-         * @description Opens an import of many messages into the account, so it is audited as one summary instead of one entry per message. Send the returned id as import_session with each importMessage call, then close it with closeImportSession. Requires mail:import on the account. A session with no import or close for idle_timeout_seconds (one hour) is closed by the server and its summary written. The IMAP gateway opens one at a connection's first APPEND or COPY and closes it at LOGOUT or disconnect, naming the client from its ID command.
+         * @description Opens an import of many messages into the account, so it is audited as one summary instead of one entry per message. Send the returned id as import_session with each importMessage call, then close it with closeImportSession. Requires mail:import on the account. A session with no import or close for idle_timeout_seconds (one hour) is closed by the server and its summary written. The IMAP gateway opens one at a connection's first APPEND and closes it at LOGOUT or disconnect, naming the client from its ID command.
          */
         post: operations["createImportSession"];
         delete?: never;

@@ -82,16 +82,49 @@ that moves the count. The rest need harnesses and decisions first.
 | AC | Bucket | What is missing |
 |---|---|---|
 | AC01 migration preserves real-source data | H | reference Maildir/Dovecot source |
-| AC02 import behaviour and permissions observable | R + H | grant/scoped-credential tests are R; IDLE and audit volume want an install |
+| AC02 import behaviour and permissions observable | R | local wire, storage, grant, notifier and audit proof below; no deployed phone/APNs claim |
 | AC03 export complete, streamed, scoped | **P** | page-limit streaming, `--skip-folder`, bounded-memory measurement |
 | AC03b every export records an attributable audit event | **P** | `mail:export`, sessions, sweeper, per-format tests |
 | AC04 public read access and lifecycle contract | D | retention/erasure/hold decisions |
-| AC05 migration tooling and docs end to end | R + H | runbook is R; the actual source migration is H |
+| AC05 migration tooling and docs end to end | R + H | local runbook and narrow live Dovecot proof below; broader reference matrix not run here |
 | AC01 fork/base and upstream relationship reproducible | H | S3 implementation choice |
 | AC02 version and lock APIs with independent clients | X | real S3 client |
 | AC03 retention survives overwrite/delete/lifecycle/crash | H | object store |
 | AC04 audit anchor uses the supported target | H | deployment |
 | AC05 docs and claims match executed semantics | R | after the above |
+
+Local evidence for the migration car (not issue closure):
+
+- `TestAC02IMAPImportFlagsPermissionsIdleAndAudit` uses the real IMAP gateway,
+  authenticated public routes and PostgreSQL. It verifies flags, folders, dates,
+  IDLE, no historical push vs. an unread live-delivery control, APPEND audit
+  aggregation, and one transfer audit for a multi-message COPY. An already-open
+  app password loses APPEND when its importer grant is removed, while COPY
+  remains a mailbox write. A read-only API key cannot import. Refusals store no
+  message or quota and are auditable.
+- `TestAC05MigrationRunbookCredentialsPartialFailureAndRestart` checks the
+  machine-key refusal, Dovecot hash preservation and password upgrade, account
+  rerun, no-write Maildir dry run, partial quota failure, repair and no-op rerun.
+  The [reference runner](migrating-mail.md#verify-a-cutover-against-dovecot)
+  passed on 2026-11-21 with Dovecot 2.3.19.1 (`9b53102964`, image
+  `sha256:a23e6563ae8153ce40508d69ecb58fb93812edc9135de93c0a748ef30423a66c`)
+  against a local REST Mail HTTPS/IMAPS test installation based on
+  `75a0071b59627e614c6c3a630b229f6f066f25cb`. The `restmail dev` binary
+  (`sha256:4b7cf0a5874a7e896d04fd4337fda9f95c37eb0879d0b577c07a382be368dd24`)
+  imported two messages in two folders and skipped both on rerun. Python
+  `imaplib` matched the folders, original octets, flags and dates, and both
+  clients refused the wrong Dovecot password. This is not a provider or
+  production-cutover claim.
+
+Negative controls (temporary Go overlays, not changes to the guards):
+
+| Guard removed | Observed failure from the named test |
+| --- | --- |
+| APPEND's live importer grant for app passwords | `APPEND after revoking live import grant: &{UID:3 UIDValidity:1}, <nil>; want tagged NO` |
+| Import scope intersection for API keys | `read-only key import: HTTP 200 …; want 403` |
+| Human/recent two-factor requirements for account creation | `passwd-file with machine key: exit 0 …; want HTTP 403 and no created account` |
+| Storage quota reservation ceiling | `maildir over quota: exit 0 …; want nonzero exit and import_failed` |
+| Immediate source IMAP login error handling | `'IMAP source sign-in failed' not found in 'could not list IMAP source folders (completed 0 imports, skipped 0 existing copies; rerun to resume)'` |
 
 ## #2107 — bytes, streaming, MIME
 

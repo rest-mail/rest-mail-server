@@ -221,10 +221,13 @@ folder to the folder in the first answer, as the commands above do, so that it
 stays in one place.
 
 Imports preserve original octets and attachment contents without running spam,
-Sieve, forwarding, vacation, notification or other delivery behavior. Successful
-imports and skips have a transactional `messages.import` audit entry; the admin
-request audit also records refusals without message contents. Quota and message
-metadata commit together; storage failures do not acknowledge a partial import.
+Sieve, forwarding, vacation, phone push or other delivery behavior. An open IMAP
+`IDLE` still sees new messages. The CLI and each IMAP connection that uses
+`APPEND` aggregate imported, skipped and refused counts by folder into one
+`messages.import` audit summary. It is written on close, or after one hour of
+inactivity if the client cannot close the session. Requests without an import
+session are audited individually. Quota, message metadata and import accounting
+commit together; storage failures do not acknowledge a partial import.
 Attachment objects live outside the database transaction. A refused transaction
 may leave an unreferenced content-addressed object; it does not leave a message
 or attachment reference, and a rerun reuses the same object content.
@@ -232,11 +235,56 @@ or attachment reference, and a rerun reuses the same object content.
 Direct IMAP source import, including OAuth, is available alongside Maildir/mbox,
 and all three restore Deleted and keywords. Copying with imapsync also works: the E2E job copies a folder
 from Dovecot with it and compares folders, counts, subjects and flags
-(`scripts/tests/test_imapsync_live.py`). Over IMAP, APPEND and COPY always add a
-message, as the protocol requires, so it is imapsync's own comparison of Message-Id
-and Received headers that makes a second imapsync run add nothing. The wider migration outcome
-stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
+(`scripts/tests/test_imapsync_live.py`). IMAP APPEND and COPY add new messages,
+even where the message ID and octets already match. The exception is APPEND to
+Sent matching a recent authenticated submission that REST Mail already saved.
+For a migration, it is imapsync's own comparison of Message-ID and Received
+headers that makes its second run add nothing. APPEND requires the live
+`mail:import` grant, even on an already signed-in app password. In-account COPY
+is a mailbox write, requires `mail:write` rather than `mail:import`, and records
+one `messages.transfer` audit entry for the whole COPY command. The wider
+migration outcome stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
 this does not claim its full acceptance criteria are complete.
+
+## Verify a cutover against Dovecot
+
+Run the reference proof only on isolated test installations. Use a Dovecot
+passwd-file account with the same address on both installations, absent from
+the target. Seed distinct messages in `INBOX` and at least one other nonempty,
+flat ASCII folder (letters, digits, `_` and `-`); include `\Seen`, `\Deleted`
+and `$Forwarded` flags, and pause all writers for the run. Use supported hashes,
+original dates, and trusted TLS for both IMAP endpoints and the target API.
+Give the fixture account's actual passwd-file record alone to the runner, in a
+mode-0600 temporary file. Do not point it at a production passwd-file or mailbox.
+
+Build `restmail` with `go build -o /absolute/path/to/restmail ./cmd/console`.
+Set the following environment variables; load the three secrets from your secret
+manager rather than writing them in command arguments, terminal history or logs:
+
+| Variable | Value |
+| --- | --- |
+| `MIGRATION_PROOF_CLI` | Absolute path to the `restmail` binary |
+| `MIGRATION_PROOF_API_URL` | Target HTTPS base URL (localhost HTTP also works for a local test) |
+| `MIGRATION_PROOF_SOURCE_IMAPS` and `MIGRATION_PROOF_TARGET_IMAPS` | Distinct `imaps://host[:port]` endpoints |
+| `MIGRATION_PROOF_SOURCE_REVISION` and `MIGRATION_PROOF_TARGET_REVISION` | Exact source version/build and target commit or image digest |
+| `MIGRATION_PROOF_ADDRESS` | The isolated address in the passwd-file |
+| `MIGRATION_PROOF_PASSWD_FILE` | Absolute path to the one-record fixture |
+| `MIGRATION_PROOF_PASSWORD` | Old password of the fixture account |
+| `MIGRATION_PROOF_ADMIN_SESSION` | Fresh native two-factor session with `accounts:write` |
+| `MIGRATION_PROOF_IMPORT_KEY` | Separate API key with `mail:import` for the target mailbox or test domain |
+
+```sh
+RESTMAIL_REFERENCE_MIGRATION=1 python3 -m unittest -v scripts.tests.test_migration_reference_live
+```
+
+The runner checks that the machine key cannot install the account hash, that
+the old password opens the target, and that a wrong source password fails in
+both Python's IMAP client and `restmail`. It then compares the source and target
+folders, message digests, flags and dates via the independent IMAP client,
+including after a no-op rerun. Keep the JSON receipt with its revision IDs and
+counts. Use a fresh test account for another full run; the runner deliberately
+does not delete test mail or accounts. This fixture proof does not cover the
+full migration matrix, aliases, or production cutover.
 
 ## Exporting an account's mail
 
