@@ -107,7 +107,7 @@ type deliverMessageBody struct {
 	// NULL. TLSCipher is accepted for wire completeness but only the version is
 	// persisted on the message.
 	ReceivedTLS *bool  `json:"received_tls,omitempty"`
-	TLSVersion  string `json:"tls_version,omitempty" pattern:"^[^\\x00]*$" message:"must not contain a NUL byte"`
+	TLSVersion  string `json:"tls_version,omitempty" maxLength:"16" maxLengthMessage:"must be at most 16 characters" pattern:"^[^\\x00]*$" patternMessage:"must not contain a NUL byte" pattern2:"^(TLS1[.][0-3])?$" pattern2Message:"must be empty or one of TLS1.0, TLS1.1, TLS1.2, TLS1.3" description:"Empty or one of TLS1.0, TLS1.1, TLS1.2, TLS1.3."`
 	TLSCipher   string `json:"tls_cipher,omitempty"`
 	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
 	// REST Mail sends on, a Sieve redirect, goes with TLS required too.

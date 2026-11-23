@@ -2413,11 +2413,6 @@
     The inbound MX sends how the message arrived (TLS).
     The oracle omits it.
 - operation: deliverMessage
-  difference: "request body application/json.properties.tls_version: openapi.yaml absent, generated *"
-  reason: >-
-    The inbound MX sends how the message arrived (TLS).
-    The oracle omits it.
-- operation: deliverMessage
   difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
   reason: >-
     Addresses are taken as the gateway gives them, internationalised ones included (EAI): the
