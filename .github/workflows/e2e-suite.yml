@@ -268,6 +268,10 @@ jobs:
           dirname "$selected" >> "$GITHUB_PATH"
           "$selected" version
 
+      - name: Prove contract session renewal
+        if: inputs.contract-phases == 'gate' || inputs.contract-phases == 'fuzz'
+        run: python3 -B tests/contract/test_fuzz_auth_lifetime.py -v
+
       - name: Prepare stable contract queue state for fuzz
         if: inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures
