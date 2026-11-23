@@ -9,9 +9,10 @@ from successful transactions remain enabled. The first run enforces the full
 surface gate.
 
 A fuzz run (a report named fuzz.xml) also holds deliverMessage's address and
-restmailDeliver's recipients at the recipient the fixtures make, updateMessage's
-unchanged_since where no mod-sequence passes it, and discovery's domain at the
-hosted fixture in a fuzz-only description. A coverage run does not.
+restmailDeliver's recipients at the recipient the fixtures make, linkAccount's
+valid credentials at its fixture, updateMessage's unchanged_since where no
+mod-sequence passes it, and discovery's domain at the hosted fixture in a
+fuzz-only description. A coverage run does not.
 
 A run narrowed to operations without a pinned field has nothing for that pin to
 hold, and Vertrag refuses a pin that matches nothing. Such a run names the fields
@@ -141,6 +142,7 @@ def fuzz_valid_pins():
     plan = json.loads(FIXTURE_PLAN.read_text())
     return {
         "deliverMessage": {"address": plan["delivery_recipient"]["address"]},
+        "linkAccount": {"address": "someone@example.com", "password": "x"},
         "updateMessage": {"unchanged_since": UNCHANGED_SINCE},
     }
 
