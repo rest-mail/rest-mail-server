@@ -116,7 +116,7 @@ jobs:
 
       - name: Set up Go
         id: go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -313,7 +313,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go for both generated descriptions
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -465,7 +465,7 @@ jobs:
         run: python3 -m unittest discover -s tests/load -p 'test_*.py'
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -584,7 +584,7 @@ jobs:
         uses: ./.github/actions/setup-python
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -755,7 +755,7 @@ jobs:
         uses: ./.github/actions/setup-python
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -830,7 +830,7 @@ jobs:
         uses: ./.github/actions/setup-python
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -957,7 +957,7 @@ jobs:
         uses: ./.github/actions/setup-python
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1116,7 +1116,7 @@ jobs:
         uses: ./.github/actions/setup-python
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1323,7 +1323,7 @@ jobs:
       - name: Set up Python
         uses: ./.github/actions/setup-python
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1348,7 +1348,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1453,7 +1453,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up Go for the served API description
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1515,7 +1515,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up Go for the served API description
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1622,7 +1622,7 @@ jobs:
           "$RUNNER_TEMP/bin/vertrag" run --config vertrag.yml --phases examples
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
@@ -1684,7 +1684,7 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/scripts/ci/docker-retry" >> "$GITHUB_PATH"
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.11"
           cache: true
