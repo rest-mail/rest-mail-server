@@ -123,6 +123,13 @@ func withRequestConstraints(doc map[string]interface{}) {
 			}
 			properties, _ := schema["properties"].(map[string]interface{})
 			switch operation.OperationID {
+			case "importMessage":
+				flags := properties["flags"].(map[string]interface{})
+				items := flags["items"].(map[string]interface{})
+				items["minLength"] = 1
+				items["maxLength"] = 255
+				items["pattern"] = `^(\\([sS][eE][eE][nN]|[aA][nN][sS][wW][eE][rR][eE][dD]|[fF][lL][aA][gG][gG][eE][dD]|[dD][rR][aA][fF][tT]|[dD][eE][lL][eE][tT][eE][dD])|[\x21\x23\x24\x26\x27\x2b-\x5b\x5e-\x7a\x7c-\x7e]+)$`
+				flags["description"] = "IMAP system flags \\Seen, \\Answered, \\Flagged, \\Draft and \\Deleted, in any case, and at most 100 distinct case-insensitive keywords of 1–255 ASCII bytes (RFC 3501 atoms without backslash). Repeated flags are accepted and deduplicated. Empty, unknown system and malformed flags are refused 422 validation_failed naming flags."
 			case "bulkRetryQueue", "bulkBounceQueue", "bulkDeleteQueue":
 				ids := properties["ids"].(map[string]interface{})
 				items := ids["items"].(map[string]interface{})
