@@ -166,16 +166,19 @@ func SignDKIM(ctx context.Context, db *gorm.DB, masterKey, senderDomain, raw str
 
 // domainKey loads the key a hosted domain signs its mail with, and the domain's A-label
 // name, the signing identity (RFC 8616 §5). A domain that is not hosted here or has no key
-// gives a nil key and no error: there is nothing to sign with. A key that cannot be loaded
-// (wrong or missing MASTER_KEY, corrupt ciphertext) or parsed is an error, so the caller
-// fails closed. what names the signing in the log.
+// gives a nil key and no error: there is nothing to sign with. A lookup, key load or parse
+// failure is an error, so the caller fails closed. what names the signing in the log.
 func domainKey(ctx context.Context, db *gorm.DB, masterKey, senderDomain, what string) (models.Domain, crypto.Signer, string, error) {
 	var domain models.Domain
 	if db == nil || senderDomain == "" {
 		return domain, nil, "", nil
 	}
-	if err := db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
-		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
+	if err := db.WithContext(ctx).Where("name = ?", senderDomain).First(&domain).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return domain, nil, "", nil
+	} else if err != nil {
+		return domain, nil, "", fmt.Errorf("%s: load signing domain %q: %w", what, senderDomain, err)
+	}
+	if domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
 		return domain, nil, "", nil
 	}
 	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, masterKey)
