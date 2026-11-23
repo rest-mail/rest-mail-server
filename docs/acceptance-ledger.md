@@ -152,9 +152,9 @@ Local streaming evidence (not an acceptance closure):
 | AC | Bucket | What is missing |
 |---|---|---|
 | AC01 retry cannot duplicate durable effects | **P** | replay after restart on three routes |
-| AC02 local and remote mail share truthful outcomes | R + H | worker paths are R; real receiver is H |
-| AC03 slow destination cannot monopolise the queue | R | worker tests with stalled destinations |
-| AC03b in-flight limit configurable and distinguishable | R | chart exposure + docs; the metric is **P** |
+| AC02 local and remote mail share truthful outcomes | **P** + H | controlled worker outcomes are proven; a real receiver is still needed |
+| AC03 slow destination cannot monopolise the queue | **P** | stalled-peer isolation and worker restart under the configured cap |
+| AC03b in-flight limit configurable and distinguishable | **P** | chart default, override and zero; held rows excluded from alertable backlog |
 | AC04 receiver backoff policy explicit and isolated | D | domain-vs-MX decision not recorded |
 | AC05 DSN actions and provenance cannot mislead | **P** | delivering-row races fenced |
 | AC01 transport defaults enforced | R | defaults + chart |
@@ -163,7 +163,7 @@ Local streaming evidence (not an acceptance closure):
 | AC04 complaint ingestion attributable and safe | D | ingestion provider decision |
 | AC05 reputation controls isolate a domain | R + H | logic is R; real reputation signal is H |
 
-Local PostgreSQL and Helm proofs for the queue rows, not live receiver acceptance:
+Merged queue proof: [#2237](https://github.com/rest-mail/rest-mail-server/pull/2237) passed [CI](https://github.com/rest-mail/rest-mail-server/actions/runs/45082479895/job/137401470655), [full-topology E2E](https://github.com/rest-mail/rest-mail-server/actions/runs/45082479907/job/137402053284) and [Helm Chart](https://github.com/rest-mail/rest-mail-server/actions/runs/45082479895/job/137394344848) at `aeaf6cfc18a574faaaab3c9bcb439d1b9ee8acbf`. The tested tree matches squash commit `7cefc402129badaf057cac3b07f5d36d82dc20bf` on `main`. The PostgreSQL and Helm observations below do not cover a live receiver, the domain-versus-MX backoff decision, or the separate transport and reputation criteria.
 
 - AC02: [`TestAC02LocalAndRemoteSubmissionReportWorkerOutcomes`](../internal/api/queue_async_outcomes_db_test.go) submits through the send and draft APIs and authenticated SMTP. All three acknowledge a durable Sent copy and pending queue rows; only the worker produces the local greylist retry, policy refusal and eventual delivery. The sender sees the corresponding per-recipient states and gets one DSN per permanent failure, including a controlled remote NXDOMAIN, and none for greylisting or success.
 - AC03: [`TestAC03StalledDestinationCannotMonopolizeQueueAcrossRestart`](../internal/gateway/queue/destination_restart_db_test.go) holds one SMTP session open while three other destinations use the remaining workers. Killing the worker process leaves the live reservation in PostgreSQL. The replacement advances other mail, reclaims the orphan after its heartbeat goes stale and drains the held rows without charging them for waiting.
