@@ -4518,6 +4518,7 @@ export interface components {
         };
         ImportMessageBody: {
             always_store?: boolean;
+            /** @description IMAP system flags \Seen, \Answered, \Flagged, \Draft and \Deleted, in any case, and at most 100 distinct case-insensitive keywords of 1–255 ASCII bytes (RFC 3501 atoms without backslash). Repeated flags are accepted and deduplicated. Empty, unknown system and malformed flags are refused 422 validation_failed naming flags. */
             flags?: string[];
             folder?: string;
             /** Format: date-time */
