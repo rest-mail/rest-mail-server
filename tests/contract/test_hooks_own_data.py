@@ -69,6 +69,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
             self.server.keys.clear()
             self.server.accounts.clear()
             self.server.queue.clear()
+            self.server.queue_attempts.clear()
             self.server.tls_reports.clear()
             self.server.serial = 3
             return self.answer(200, {"status": "reset_complete"})
@@ -116,8 +117,10 @@ class FixtureAPI(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         entry = re.fullmatch(r"/api/v1/admin/queue/(\d+)", path)
         if entry and int(entry[1]) in self.server.queue:
-            recipient, status, _ = self.server.queue[int(entry[1])]
-            return self.answer(200, {"id": int(entry[1]), "recipient": recipient, "status": status})
+            identifier = int(entry[1])
+            recipient, status, _ = self.server.queue[identifier]
+            return self.answer(200, {"id": identifier, "recipient": recipient, "status": status,
+                                     **self.server.queue_attempts.get(identifier, {})})
         if path != "/api/v1/admin/queue":
             return self.answer(404)
         wanted = parse_qs(query)["recipient"]
@@ -154,6 +157,7 @@ class OwnDataHooks(unittest.TestCase):
         self.server.imports = []
         self.server.settings = {}
         self.server.queue = {}
+        self.server.queue_attempts = {}
         self.server.made = []
         self.server.folders = []
         self.server.tls_reports = []
@@ -181,8 +185,19 @@ class OwnDataHooks(unittest.TestCase):
         self.hooks = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"vertrag_hooks": self.stub}):
             spec.loader.exec_module(self.hooks)
+        fixture = patch.object(self.hooks.fixture_command, "run", side_effect=self.make_deferred_queue_entry)
+        self.queue_fixture = fixture.start()
+        self.addCleanup(fixture.stop)
         origin = f"http://127.0.0.1:{self.server.server_port}"
         self.stub.stash["setup_admin_tokens"] = {origin: "setup-session"}
+
+    def make_deferred_queue_entry(self, command):
+        self.assertEqual(command, "test:contract-queue-entry-fixture")
+        self.server.serial += 1
+        entry = self.server.serial
+        self.server.queue[entry] = ["contract-retry@retry.invalid", "deferred", None]
+        self.server.queue_attempts[entry] = {"next_attempt": "2099-01-01T00:00:00Z", "attempts": 0}
+        return types.SimpleNamespace(stdout="QUEUE_ENTRY_FIXTURE=" + json.dumps({"id": entry}))
 
     def clean_starts_on(self):
         patcher = patch.dict(os.environ, {"CONTRACT_RESET_SEED": "1"})
@@ -1183,6 +1198,8 @@ class OwnDataHooks(unittest.TestCase):
                 del self.server.queue[entry]
             else:
                 self.server.queue[entry][1] = outcome
+                if outcome == "pending":
+                    self.server.queue_attempts[entry]["next_attempt"] = "2026-01-01T00:00:00Z"
             self.assertIsNone(self.bulk_answered(transaction, 1), path)
             self.assertNotIn("bulk_queue_made", self.stub.stash)
 
@@ -1196,9 +1213,9 @@ class OwnDataHooks(unittest.TestCase):
             failure = self.bulk_answered(transaction, 0)
             self.assertIn("affected 0, but the hook made 1 eligible entry", failure)
             if outcome is None:
-                self.assertIn(f"entry {entry:d} is still queued (pending)", failure)
+                self.assertIn(f"entry {entry:d} is still queued (deferred)", failure)
             elif outcome == "bounced":
-                self.assertIn(f"entry {entry:d} is pending, not bounced", failure)
+                self.assertIn(f"entry {entry:d} is deferred, not bounced", failure)
 
     def test_a_bulk_empty_filter_fails_on_a_wrong_count_or_an_unchanged_entry(self):
         self.clean_starts_on()
@@ -1208,7 +1225,7 @@ class OwnDataHooks(unittest.TestCase):
         self.assertEqual(
             self.bulk_answered(transaction, 1),
             "the bulk action did not change the entries made for it: "
-            f"entry {entry:d} is pending, not bounced",
+            f"entry {entry:d} is deferred, not bounced",
         )
         # The entry changed, but the count is not what was made.
         transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-delete", {"filter": {}})
@@ -1223,6 +1240,35 @@ class OwnDataHooks(unittest.TestCase):
         (entry,) = self.server.queue
         del self.server.queue[entry]
         self.assertIn(f"entry {entry:d} is gone, not pending", self.bulk_answered(transaction, 1))
+
+    def test_bulk_retry_race_uses_a_deferred_target_before_the_request(self):
+        self.clean_starts_on()
+        transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
+        self.queue_fixture.assert_called_once_with("test:contract-queue-entry-fixture")
+        (entry,) = self.server.queue
+        self.assertEqual(self.server.queue[entry][1], "deferred")
+        self.assertEqual(json.loads(transaction["request"]["body"]), {"filter": {}})
+
+    def test_bulk_retry_race_accepts_a_new_worker_attempt_not_an_unchanged_schedule(self):
+        self.clean_starts_on()
+        for state, attempts, last_attempt, succeeds in (
+            ("delivering", 1, "2026-01-01T00:00:00Z", True),
+            ("deferred", 1, "2026-01-01T00:00:00Z", True),
+            ("bounced", 1, "2026-01-01T00:00:00Z", True),
+            ("delivering", 0, "2026-01-01T00:00:00Z", False),
+            ("delivering", 1, "2099-01-01T00:00:00Z", False),
+            ("pending", 0, None, False),
+        ):
+            with self.subTest(state=state, attempts=attempts, last_attempt=last_attempt):
+                transaction = self.bulk_exchange("/api/v1/admin/queue/bulk-retry", {"filter": {}})
+                (entry,) = self.server.queue
+                self.server.queue[entry][1] = state
+                self.server.queue_attempts.setdefault(entry, {}).update(attempts=attempts, last_attempt=last_attempt)
+                failure = self.bulk_answered(transaction, 1)
+                if succeeds:
+                    self.assertIsNone(failure)
+                else:
+                    self.assertIsNotNone(failure)
 
     def test_a_bulk_empty_filter_with_nothing_made_for_it_fails(self):
         # The control: a hook that makes nothing after the reset leaves an
