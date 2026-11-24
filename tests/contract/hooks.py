@@ -6170,6 +6170,19 @@ def a_used_send_idempotency_key(transaction):
     sent = headers.get("Idempotency-Key")
     if not sent:
         return
+    if os.environ.get("CONTRACT_FUZZ") == "1" and " > 201 > " in transaction.get("name", ""):
+        # A generated key must reach the handler unchanged. Even a same-length
+        # replacement can collide when a short key truncates the timestamp.
+        address = session_address(transaction)
+        if address in (ADMIN, mfa_admin.ADDRESS, mfa_admin.PROBE_ADDRESS) and len(sent.encode()) <= 255:
+            subprocess.run(
+                ["chore", "test:contract-send-key-fixture"],
+                env=dict(os.environ, CONTRACT_SEND_KEY_REQUEST=json.dumps({"address": address, "key": sent})),
+                check=True,
+                capture_output=True,
+                timeout=fixture_command.TIMEOUT_SECONDS,
+            )
+        return
     key = "contract-send-" + str(time.time_ns())
     if " > 409 > " not in transaction.get("name", "") or sent != "contract-idempotency-conflict":
         headers["Idempotency-Key"] = key[-len(sent):] if len(sent) < len(key) else key + "x" * (len(sent) - len(key))

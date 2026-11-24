@@ -1074,6 +1074,21 @@ tasks:
         printf '%s' "$CONTRACT_INVITATION_REQUEST" |
           docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --invitation-probe
 
+  test:contract-send-key-fixture:
+    desc: Prepare a fresh send key on the disposable contract topology
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{if and .TOPOLOGY_CONFIG (eq .CONFIG .TOPOLOGY_CONFIG)}}restmail.test{{else}}{{.CONFIG}}{{end}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        [ -n "${CONTRACT_SEND_KEY_REQUEST:-}" ] || { echo "CONTRACT_SEND_KEY_REQUEST names no key" >&2; exit 1; }
+        printf '%s' "$CONTRACT_SEND_KEY_REQUEST" |
+          docker exec -i -- "${CONTRACT_FIXTURE_PROJECT}-api" ${RESTMAIL_FIXTURE_EXEC:-go run ./tests/contract/fixtures} --test-domain=restmail.test --send-key-probe
+
   test:e2e:
     desc: 'Run e2e tests against an already-running topology (use `chore e2e` to also bring it up + tear down)'
     cmds:

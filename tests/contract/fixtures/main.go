@@ -27,6 +27,7 @@ func main() {
 	retryOnly := flag.Bool("retry-only", false, "replenish only the retry example's queue entry, leaving every other fixture as it is")
 	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
 	invitationProbe := flag.Bool("invitation-probe", false, "prepare an invitation for the generated token read as JSON on stdin")
+	sendKeyProbe := flag.Bool("send-key-probe", false, "prepare a disposable account's generated send key read as JSON on stdin")
 	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
 	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
 	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
@@ -36,7 +37,7 @@ func main() {
 	reportPhase := flag.String("report-targets", "", "top up the held mail one report-only phase consumes (authorization or ownership); no gate calls this")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *invitationProbe, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *queueEntryOnly, *reportPhase != ""} {
+	for _, on := range []bool{*linkOnly, *invitationProbe, *sendKeyProbe, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *queueEntryOnly, *reportPhase != ""} {
 		if on {
 			modes++
 		}
@@ -53,9 +54,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "cannot load contract fixture database configuration")
 		os.Exit(1)
 	}
+	if *sendKeyProbe && cfg.IsProduction() {
+		fmt.Fprintln(os.Stderr, "send key fixtures are disabled in production")
+		os.Exit(1)
+	}
 	database, err := db.WaitForDB(cfg, 10*time.Second)
 	if err == nil {
-		if *invitationProbe {
+		if *sendKeyProbe {
+			err = prepareSendKeyRequest(database, *domain, os.Stdin)
+		} else if *invitationProbe {
 			var request struct {
 				Token string `json:"token"`
 			}
