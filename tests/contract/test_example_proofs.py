@@ -542,7 +542,9 @@ class Workflows(unittest.TestCase):
         self.assertIs(download["continue-on-error"], True)
         judge = next(s for s in union["steps"] if "scripts/example_proofs.py" in s.get("run", ""))
         self.assertIn('--live "$RUNNER_TEMP/live-proofs"', judge["run"])
-        self.assertIn("-lt 4", judge["run"])
+        self.assertIn("for shard in 1 2 3 4; do", judge["run"])
+        self.assertIn('artifact="example-proofs-api-$shard"', judge["run"])
+        self.assertIn('[[ ! -f "$proof" || ! -s "$proof" ]]', judge["run"])
         self.assertNotIn("continue-on-error", judge)
         gate = self.e2e["e2e"]
         self.assertIn("e2e-proofs", gate["needs"])
