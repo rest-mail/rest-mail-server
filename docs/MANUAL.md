@@ -1015,7 +1015,7 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `QUEUE_SMTP_DATA_BLOCK_TIMEOUT` | `3m` | Outbound SMTP: writing each 64 KiB block of the message |
 | `QUEUE_SMTP_FINAL_REPLY_TIMEOUT` | `10m` | Outbound SMTP: the reply to the final `.` |
 | `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
-| `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
+| `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461). Disabling it prevents the production SMTP gateway from starting; non-production logs a warning. |
 | `DANE_RESOLVER` | (empty) | Loopback address of a DNSSEC-validating resolver, such as `127.0.0.1:53`; set, outbound SMTP applies DANE (RFC 7672) to DNSSEC-secure recipient domains. Any other address stops the SMTP gateway |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables. SMTP gateway only |

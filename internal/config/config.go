@@ -1838,7 +1838,7 @@ func (c *Config) ValidateListenerSecurity(role ListenerRole) error {
 	case RoleSMTPGateway:
 		findings = append(findings, c.smtpListenerFindings()...)
 		findings = append(findings, c.srsSecretFindings()...)
-		findings = append(findings, queueTLSInsecureFindings()...)
+		findings = append(findings, outboundTLSFindings()...)
 		findings = append(findings, removedCleartextPortFindings("SMTP_PORT_SUBMISSION", 587, "SMTP_PORT_SUBMISSION_TLS", 465)...)
 	case RoleIMAPGateway:
 		findings = append(findings, c.imapListenerFindings()...)
@@ -2003,18 +2003,17 @@ func (c *Config) dbTransportFindings() []string {
 		c.DBSSLMode())}
 }
 
-// queueTLSInsecureFindings flags QUEUE_TLS_INSECURE=true, which makes the SMTP
-// gateway's outbound delivery skip TLS certificate verification (and forces
-// MTA-STS enforcement off). It is honored in development for test delivery, but
-// in production it silently downgrades every outbound TLS connection, so it is
-// refused there. The exact-"true" match mirrors the check in
-// cmd/smtp-gateway/main.go so the refusal fires on precisely the value that
-// enables the insecure behavior.
-func queueTLSInsecureFindings() []string {
-	if os.Getenv("QUEUE_TLS_INSECURE") != "true" {
-		return nil
+// outboundTLSFindings reports explicit outbound TLS downgrades using the same
+// parsing rules as the SMTP gateway and config loader.
+func outboundTLSFindings() []string {
+	var findings []string
+	if os.Getenv("QUEUE_TLS_INSECURE") == "true" {
+		findings = append(findings, "QUEUE_TLS_INSECURE=true disables TLS certificate verification for outbound delivery (and turns MTA-STS enforcement off) — unset it so outbound TLS is verified")
 	}
-	return []string{"QUEUE_TLS_INSECURE=true disables TLS certificate verification for outbound delivery (and turns MTA-STS enforcement off) — unset it so outbound TLS is verified"}
+	if !getEnvBool("MTASTS_ENFORCE", true) {
+		findings = append(findings, "MTASTS_ENFORCE=false disables recipient MTA-STS enforcement — unset it to honor enforce policies")
+	}
+	return findings
 }
 
 // apiTLSTerminatedByProxy reports the operator's acknowledgement that a
