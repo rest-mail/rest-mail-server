@@ -31,6 +31,39 @@ def run(sha=A, event="merge_group", status="completed", conclusion="success", jo
     return {"id": run_id, "head_sha": sha, "event": event, "status": status, "conclusion": conclusion, "jobs": jobs}
 
 
+class GitHubAPI(unittest.TestCase):
+    path = "repos/o/r/actions/runs/1/jobs?filter=latest&per_page=100"
+
+    def test_a_transient_server_error_retries_the_same_read(self):
+        for status in (502, 503, 504):
+            with self.subTest(status=status):
+                failed = subprocess.CompletedProcess([], 1, "", f"gh: Server Error (HTTP {status})\n")
+                succeeded = subprocess.CompletedProcess([], 0, '{"jobs": []}', "")
+                err = io.StringIO()
+                with mock.patch.object(audit.subprocess, "run", side_effect=[failed, succeeded]) as command, \
+                        redirect_stderr(err):
+                    self.assertEqual(audit.gh_api(self.path), {"jobs": []})
+                read = mock.call(["gh", "api", self.path], capture_output=True, text=True)
+                self.assertEqual(command.call_args_list, [read, read])
+                self.assertIn(f"HTTP {status}", err.getvalue())
+
+    def test_a_second_failure_stays_an_error(self):
+        first = subprocess.CompletedProcess([], 1, "", "gh: Server Error (HTTP 502)\n")
+        second = subprocess.CompletedProcess([], 1, "", "gh: Server Error (HTTP 503)\n")
+        with mock.patch.object(audit.subprocess, "run", side_effect=[first, second]) as command, \
+                redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, r"HTTP 503"):
+                audit.gh_api(self.path)
+        self.assertEqual(command.call_count, 2)
+
+    def test_a_permission_error_is_not_retried(self):
+        failed = subprocess.CompletedProcess([], 1, "", "gh: Forbidden (HTTP 403)\n")
+        with mock.patch.object(audit.subprocess, "run", return_value=failed) as command:
+            with self.assertRaisesRegex(RuntimeError, r"HTTP 403"):
+                audit.gh_api(self.path)
+        self.assertEqual(command.call_count, 1)
+
+
 class Judge(unittest.TestCase):
     def test_a_merge_with_its_successful_delta_run_passes(self):
         verdict = audit.judge(A, False, [run()])

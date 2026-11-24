@@ -120,7 +120,11 @@ def changed_paths(sha):
 
 
 def gh_api(path):
-    result = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+    command = ["gh", "api", path]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0 and re.search(r"\(HTTP 50[234]\)$", result.stderr.rstrip()):
+        print(f"Retrying gh api {path}: {result.stderr.strip()}", file=sys.stderr)
+        result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"gh api {path} failed: {result.stderr.strip()}")
     return json.loads(result.stdout)
