@@ -33,11 +33,6 @@ func TestAC03StalledDestinationCannotMonopolizeQueueAcrossRestart(t *testing.T) 
 	peers := map[string]string{slowDomain: stall.addr("")}
 	now := time.Now()
 	slow := queueFor(t, db, sender.Address, slowDomain, now.Add(-time.Hour))
-	var held []models.OutboundQueue
-	for index := range 4 {
-		row := queueFor(t, db, sender.Address, slowDomain, now.Add(-time.Hour+time.Duration(index+1)*time.Second))
-		held = append(held, readRow(t, db, row.ID))
-	}
 	fast := map[string]*timedMX{}
 	var other []models.OutboundQueue
 	for _, domain := range []string{"first.test", "second.test", "third.test"} {
@@ -61,6 +56,11 @@ func TestAC03StalledDestinationCannotMonopolizeQueueAcrossRestart(t *testing.T) 
 		if peer.stalledSessions() == 0 || stall.stalledSessions() != 1 {
 			t.Fatalf("destination %s did not occupy one worker alongside the stalled peer: %d sessions there, %d at stalled peer (cap 1)", domain, peer.stalledSessions(), stall.stalledSessions())
 		}
+	}
+	var held []models.OutboundQueue
+	for index := range 4 {
+		row := queueFor(t, db, sender.Address, slowDomain, now.Add(-time.Hour+time.Duration(index+1)*time.Second))
+		held = append(held, readRow(t, db, row.ID))
 	}
 	for _, peer := range fast {
 		peer.releaseHold()
