@@ -1649,6 +1649,7 @@ to three transactions for `getDomain` alone, using the same served description.
 Every invocation uses the ordinary full-description own-data path. The runner
 requires a passing, nonempty JUnit report, exactly one reset/seed trace per
 exchange, the same endpoint, and unchanged exchange counts across repetitions.
+Each trace must name the selected operation ID from the actual exchange.
 The receipt, reports and traces remain in `.cache/contract/isolation/`. Hosted
 CI retains `receipt.json` and each selection's `resets.jsonl` under
 `contract-isolation/` in `e2e-container-logs`. Per-selection JUnit reports stay
