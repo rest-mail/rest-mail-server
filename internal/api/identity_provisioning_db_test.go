@@ -169,6 +169,18 @@ func TestIdentityProvisioningAndRecoverySafeguards(t *testing.T) {
 		recovering, independent := accounts["recovering"], accounts["independent"]
 		signedIn := identitySession(t, identityLogin(router, recovering.user.Address, accessPassword, identityTOTP(t, recovering.secret)), recovering.user.Address)
 		otherSession := identitySession(t, identityLogin(router, independent.user.Address, accessPassword, ""), independent.user.Address)
+		requireRefreshStatuses := func(t *testing.T, accountID uint, want ...string) {
+			t.Helper()
+			var statuses []string
+			if err := db.Model(&models.RefreshToken{}).Where("account_id = ?", accountID).Order("id").Pluck("status", &statuses).Error; err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(statuses, want) {
+				t.Fatalf("account %d refresh statuses = %v, want %v", accountID, statuses, want)
+			}
+		}
+		requireRefreshStatuses(t, recovering.user.ID, models.RefreshTokenActive)
+		requireRefreshStatuses(t, independent.user.ID, models.RefreshTokenActive)
 		const backup = "disposable@external.test"
 		const otherBackup = "pending@external.test"
 		register := func(session, backup, password string) *httptest.ResponseRecorder {
@@ -234,6 +246,21 @@ func TestIdentityProvisioningAndRecoverySafeguards(t *testing.T) {
 		otherFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", independent.user.ID)
 		identityStatus(t, doRequest(router, http.MethodGet, ownFolders, signedIn.AccessToken, ""), http.StatusUnauthorized, "unauthorized")
 		identityStatus(t, doRequest(router, http.MethodGet, otherFolders, otherSession.AccessToken, ""), http.StatusOK, "")
+		t.Run("recovery_retires_only_the_recovered_accounts_refresh_session", func(t *testing.T) {
+			refresh := func(token string) *httptest.ResponseRecorder {
+				return identityCall(router, "/refresh", "", map[string]string{"refresh_token": token})
+			}
+			requireRefreshStatuses(t, recovering.user.ID, models.RefreshTokenRevoked)
+			identityStatus(t, refresh(signedIn.RefreshToken), http.StatusUnauthorized, "unauthorized")
+			requireRefreshStatuses(t, recovering.user.ID, models.RefreshTokenRevoked)
+			requireRefreshStatuses(t, independent.user.ID, models.RefreshTokenActive)
+			rotated := identitySession(t, refresh(otherSession.RefreshToken), independent.user.Address)
+			if rotated.User.ID != independent.user.ID || rotated.RefreshToken == otherSession.RefreshToken {
+				t.Fatal("independent session must rotate its refresh token and preserve its account")
+			}
+			requireRefreshStatuses(t, independent.user.ID, models.RefreshTokenRotated, models.RefreshTokenActive)
+			identityStatus(t, doRequest(router, http.MethodGet, otherFolders, rotated.AccessToken, ""), http.StatusOK, "")
+		})
 		identitySession(t, identityLogin(router, independent.user.Address, accessPassword, ""), independent.user.Address)
 		identityStatus(t, identityLogin(router, recovering.user.Address, recoveredPassword, ""), http.StatusUnauthorized, "totp_required")
 		restored := identitySession(t, identityLogin(router, recovering.user.Address, recoveredPassword, identityTOTP(t, recovering.secret)), recovering.user.Address)
