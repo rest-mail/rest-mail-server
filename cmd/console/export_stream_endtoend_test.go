@@ -155,6 +155,7 @@ func TestExportMaildirStreamsAFolderPastThePageLimitInBoundedMemory(t *testing.T
 	)
 	s := newMigrationServer(t)
 	id := s.newAccount(t, "large@"+migrationDomain)
+	empty := s.newAccount(t, "empty@"+migrationDomain)
 	messages := make([]string, count)
 	for i := range count {
 		messages[i] = largeMessage(i, size)
@@ -175,7 +176,6 @@ func TestExportMaildirStreamsAFolderPastThePageLimitInBoundedMemory(t *testing.T
 		return []string{"--server", s.apiURL, "--account-id", strconv.FormatUint(uint64(id), 10), "--path", path, "--json"}
 	}
 
-	empty := s.newAccount(t, "empty@"+migrationDomain)
 	baseArgs := args(filepath.Join(t.TempDir(), "empty"))
 	baseArgs[3] = strconv.FormatUint(uint64(empty), 10)
 	code, _, errs, base := runExportChild(t, "stream", key, baseArgs...)
