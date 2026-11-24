@@ -31,6 +31,7 @@ class SelectedGate(unittest.TestCase):
         ratchet=0,
         complete=False,
         nothing_to_pin=False,
+        own_data=False,
     ):
         with tempfile.TemporaryDirectory(prefix="selected contract ") as directory:
             work = Path(directory)
@@ -43,6 +44,7 @@ class SelectedGate(unittest.TestCase):
                 "reports.py",
                 "probes.py",
                 "probe_refusals.py",
+                "own_data.py",
             ):
                 shutil.copy2(ROOT / "tests/contract" / name, helpers / name)
             (helpers / "fixtures").mkdir()
@@ -145,6 +147,14 @@ class SelectedGate(unittest.TestCase):
                 CALLS=str(calls_file),
             )
             env.pop("CONTRACT_LOGS", None)
+            env.pop("CONTRACT_OWN_DATA_OUTPUT", None)
+            output = work / ".cache/contract"
+            if own_data:
+                output.mkdir()
+                shared_report = output / "own-data.xml"
+                shared_report.write_text("previous shared report")
+                output = work / "private selection"
+                env["CONTRACT_OWN_DATA_OUTPUT"] = str(output)
             if nothing_to_pin:
                 env["NOTHING_TO_PIN"] = "1"
             if complete:
@@ -154,7 +164,8 @@ class SelectedGate(unittest.TestCase):
                 command = command.replace("{{.CLI_ARGS}}", shlex.join(selection))
                 args = ["sh", "-c", command]
             else:
-                args = ["bash", str(helpers / "run.sh"), "gate", *selection]
+                phase = "own-data" if own_data else "gate"
+                args = ["bash", str(helpers / "run.sh"), phase, *selection]
             result = subprocess.run(
                 args,
                 cwd=work,
@@ -168,8 +179,21 @@ class SelectedGate(unittest.TestCase):
             )
             self.assertTrue(calls_file.exists(), result.stdout + result.stderr)
             calls = [json.loads(line) for line in calls_file.read_text().splitlines()]
-            report = (work / ".cache/contract/summary.md").read_text()
+            if own_data:
+                self.assertEqual(shared_report.read_text(), "previous shared report")
+                self.assertTrue((output / "openapi.json").is_file())
+                config = yaml.safe_load((output / "vertrag-own-data.yml").read_text())
+                self.assertEqual(Path(config["spec"]).resolve(), (output / "openapi.json").resolve())
+                self.assertEqual(Path(config["unproven"]), output / "unproven-own-data.json")
+                self.assertTrue((output / "own-data.xml").is_file())
+            report = (output / "summary.md").read_text()
             return result, calls, report
+
+    def test_own_data_selection_keeps_its_report_separate(self):
+        result, calls, report = self.run_gate(SELECTIONS[1], own_data=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([call["phase"] for call in calls], ["examples"])
+        self.assertIn("| own data | 1 | 1 | 0 | 0 |", report)
 
     def test_selected_probe_failures_are_not_success(self):
         for selection in SELECTIONS:

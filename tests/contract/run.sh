@@ -45,6 +45,7 @@ if [ ${#select[@]} -gt 0 ]; then
 fi
 
 out=.cache/contract
+if [ "$phase" = own-data ]; then out=${CONTRACT_OWN_DATA_OUTPUT:-$out}; fi
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
 if [ "$phase" = gate ]; then
@@ -53,7 +54,10 @@ if [ "$phase" = gate ]; then
 fi
 # Every phase consumes the exact description served by this server. The saved
 # bytes are also the coverage/security inventory, even when Vertrag reads its URL.
-served="$PWD/$out/openapi.json"
+case "$out" in
+  /*) served="$out/openapi.json" ;;
+  *) served="$PWD/$out/openapi.json" ;;
+esac
 export CONTRACT_SPEC="$served"
 names=("$phase")
 if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes ownership-messages); fi
