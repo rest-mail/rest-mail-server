@@ -1,3 +1,4 @@
+import type { SessionAccess } from "../../lib/access";
 import { holdsCapability } from "../../lib/domainPolicy";
 import { DomainDmarcReports } from "./DomainDmarcReports";
 import { DomainRelay } from "./DomainRelay";
@@ -5,7 +6,9 @@ import { DomainSuppressions } from "./DomainSuppressions";
 
 interface DomainPolicySectionsProps {
   domainId: number;
+  domainName: string;
   capabilities: readonly string[] | undefined;
+  scopedCapabilities?: SessionAccess["scopedCapabilities"];
 }
 
 const box = "border p-6";
@@ -16,19 +19,27 @@ const boxStyle = { borderColor: "var(--gray-border)" };
  * shows only when the session holds the capability its route needs; the API
  * still checks it, and the domain scope, on every request.
  */
-export function DomainPolicySections({ domainId, capabilities }: DomainPolicySectionsProps) {
-  if (!holdsCapability(capabilities, "domains:read")) return null;
-  const canWrite = holdsCapability(capabilities, "domains:write");
+export function DomainPolicySections({ domainId, domainName, capabilities, scopedCapabilities }: DomainPolicySectionsProps) {
+  const domainScope = `domain:${domainName.toLowerCase()}`;
+  const domainCapabilities = [
+    ...(capabilities ?? []),
+    ...(scopedCapabilities ?? [])
+      .filter((entry) => entry.scope === domainScope)
+      .map((entry) => entry.capability),
+  ];
+  if (!holdsCapability(domainCapabilities, "domains:read")) return null;
+  const canClear = holdsCapability(domainCapabilities, "domains:write");
+  const canEditRelay = holdsCapability(capabilities, "domains:write");
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
       <div className={`${box} lg:col-span-2`} style={boxStyle}>
         <DomainDmarcReports domainId={domainId} />
       </div>
       <div className={box} style={boxStyle}>
-        <DomainSuppressions domainId={domainId} canClear={canWrite} />
+        <DomainSuppressions domainId={domainId} canClear={canClear} />
       </div>
       <div className={box} style={boxStyle}>
-        <DomainRelay domainId={domainId} canEdit={canWrite} />
+        <DomainRelay domainId={domainId} canEdit={canEditRelay} />
       </div>
     </div>
   );

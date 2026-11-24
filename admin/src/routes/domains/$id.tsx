@@ -41,7 +41,6 @@ function DomainDetailsPage() {
     dmarc_policy: "none",
   });
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const capabilities = useAuthStore((state) => state.user?.capabilities);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -396,7 +395,9 @@ function DomainDetailsPage() {
 
       <DomainPolicySections
         domainId={currentDomain.id}
-        capabilities={capabilities}
+        domainName={currentDomain.name}
+        capabilities={user?.capabilities}
+        scopedCapabilities={user?.scopedCapabilities}
       />
     </AppShell>
   );
