@@ -142,6 +142,11 @@ def run(command, **kwargs):
     return subprocess.run(command, text=True, capture_output=True, check=True, **kwargs)
 
 
+def count_reload_failures(container, marker):
+    logs = run(["docker", "logs", container])
+    return (logs.stdout + logs.stderr).count(marker)
+
+
 def host(topology):
     import topology_plan
     topology_plan.validate(topology)
@@ -199,6 +204,9 @@ def host(topology):
                 if internal:
                     listener.update(client_cert="/pairs/imap-gateway/internal-imap.crt", client_key="/pairs/imap-gateway/internal-imap.key")
                 plan["listeners"].append(listener)
+        diagnostics = {service: (f"{project}-{service}", "certificate reload failed") for service in services}
+        diagnostics["HTTPS front"] = (project + "-smtp-gateway-https", "tls-front: certificate reload failed")
+        before = {service: count_reload_failures(*log) for service, log in diagnostics.items()}
         completed = subprocess.run(["docker", "run", "--rm", "-i", "--name", project + "-tls-reload", "--label", label,
                                     "--network", network, *mounts, HELPER, "python", "-c", Path(__file__).read_text(), "--inside"],
                                    input=json.dumps(plan), text=True)
@@ -208,12 +216,10 @@ def host(topology):
         inspected = json.loads(run(["docker", "inspect", f"{project}-{service}"]).stdout)[0]
         if inspected["State"]["StartedAt"] != starts[service]:
             raise ValueError(f"{service}: restarted during the reload proof")
-        logs = run(["docker", "logs", f"{project}-{service}"])
-        if (logs.stdout + logs.stderr).count("certificate reload failed") < 2:
-            raise ValueError(f"{service}: missing and invalid failures were not both reported")
-    front_logs = run(["docker", "logs", project + "-smtp-gateway-https"])
-    if (front_logs.stdout + front_logs.stderr).count("tls-front: certificate reload failed") < 2:
-        raise ValueError("HTTPS front did not report both reload failures")
+    for service, log in diagnostics.items():
+        added = count_reload_failures(*log) - before[service]
+        if added < 2:
+            raise ValueError(f"{service}: expected two new reload failures, observed {added}")
     print(f"tls-reload authorized topology={topology} listeners=6 phases=5 services_restarted=0")
     return 0
 
