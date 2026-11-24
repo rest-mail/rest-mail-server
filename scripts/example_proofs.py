@@ -105,6 +105,7 @@ def runner_proofs(directory, kind, examples, passed, only=None):
         return {}, [f"{label}: did not finish"]
     if inventory.get("proven") != len(pairs):
         return {}, [f"{label}: its inventory disagrees with its proof list"]
+    requirement = LIVE_REQUIREMENTS[kind] if only is None else None
     failed = {(item.get("operation"), item.get("example")) for item in unsettled}
     proven, refused = {}, []
     for op, name in pairs:
@@ -114,6 +115,8 @@ def runner_proofs(directory, kind, examples, passed, only=None):
             reason = "is not in the examples"
         elif only is not None and (op, name) != only:
             reason = "is not what this run sends"
+        elif requirement is not None and (pair.get("requires") or {}) != requirement:
+            reason = "is not selected by this runner"
         elif (pair.get("requires") or {}) != inventory.get("requires"):
             reason = "needs something other than what this run provided"
         elif (op, name) in failed:

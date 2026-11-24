@@ -292,6 +292,27 @@ class LiveProofs(unittest.TestCase):
         self.write("inventory", {"requires": {"body": "over_cap"}, "proven": 1, "unproven": 0})
         self.assert_refused("needs something other than what this run provided")
 
+    def test_a_receipt_only_counts_in_its_configured_requirement_runner(self):
+        requirement = {"body": "over_cap"}
+        examples = {"getThing": {"refused": {"requires": requirement, "response": {"status": 413}}}}
+        self.write("inventory", {"requires": requirement, "proven": 1, "unproven": 0})
+        self.write("getThing-refused", {
+            "summary": {"passed": True},
+            "results": [{"status": "pass", "expected": "413", "actual": "413"}],
+        })
+        result = self.judge(examples)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("getThing/refused is not selected by this runner", result.stdout)
+        self.assertIn("0 of 1 examples that need setup are proven", result.stdout)
+
+        over_cap = self.live / "over-cap"
+        over_cap.mkdir()
+        for receipt in self.run_dir.glob("anonymous-*.json"):
+            shutil.copyfile(receipt, over_cap / receipt.name.replace("anonymous-", "over-cap-", 1))
+        result = self.judge(examples)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1 of 1 examples that need setup are proven", result.stdout)
+
     def test_a_failed_exchange_elsewhere_keeps_the_runners_real_proofs(self):
         examples = {"getThing": {
             "refused": LIVE_PAIR,
