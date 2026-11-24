@@ -24,6 +24,7 @@ Usage: own_data.py <vertrag-run.yml> <out.yml>
 """
 
 import argparse
+from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
 
@@ -367,7 +368,7 @@ MOVED = (
 PROVIDES = {"state": ["calendar_invitation", "disposable_data", "held_message"]}
 
 
-def configure(config, operations=None):
+def configure(config, operations=None, *, output_directory=Path(".cache/contract")):
     if operations is not None and (not operations or set(operations) - set(MOVED)):
         raise ValueError("select at least one operation from the own-data phase")
     # Vertrag unions CLI operation IDs with these configured ones, so keeping
@@ -380,7 +381,7 @@ def configure(config, operations=None):
         provides[key] = sorted(set(provides.get(key, [])) | set(values))
     config["provides"] = provides
     # The gate's list of what it could not send is its own.
-    config["unproven"] = ".cache/contract/unproven-own-data.json"
+    config["unproven"] = str(output_directory / "unproven-own-data.json")
     return config
 
 
@@ -415,8 +416,9 @@ def main(argv):
     selected = selection.parse_args(argv[2:])
     with open(source) as stream:
         config = yaml.safe_load(stream)
+    config = configure(config, selected.operation_id, output_directory=Path(out).parent)
     with open(out, "w") as stream:
-        yaml.safe_dump(configure(config, selected.operation_id), stream, sort_keys=False, allow_unicode=True)
+        yaml.safe_dump(config, stream, sort_keys=False, allow_unicode=True)
     return 0
 
 

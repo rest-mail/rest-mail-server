@@ -88,14 +88,15 @@ class FixtureIsolation(unittest.TestCase):
     def test_isolation_runs_the_ordinary_phase_without_restarting_the_server(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"CONTRACT_ENDPOINT": "http://api:8080"}), \
                 patch.object(fixture_isolation.subprocess, "run") as run, \
-                patch.object(fixture_isolation.shutil, "copyfile"), \
                 patch.object(fixture_isolation, "observations", return_value=4) as observe:
             self.assertEqual(fixture_isolation.run(output=Path(directory)), 0)
             self.assertEqual(run.call_count, 9)
-            for call in run.call_args_list:
+            for call, observation in zip(run.call_args_list, observe.call_args_list, strict=True):
                 self.assertEqual(call.args[0][:4], ["bash", "tests/contract/run.sh", "own-data", "--operation-id"])
                 self.assertEqual(call.kwargs["env"]["CONTRACT_ENDPOINT"], "http://api:8080")
+                self.assertEqual(Path(call.kwargs["env"]["CONTRACT_OWN_DATA_OUTPUT"]) / "own-data.xml", observation.args[0])
                 self.assertTrue(call.kwargs["check"])
+            self.assertEqual(len({call.args[0].parent for call in observe.call_args_list}), 9)
             self.assertEqual(observe.call_count, 9)
             self.assertEqual(len(json.loads((Path(directory) / "receipt.json").read_text())["runs"]), 9)
             self.assertEqual(json.loads((Path(directory) / "receipt.json").read_text())["status"], "passed")

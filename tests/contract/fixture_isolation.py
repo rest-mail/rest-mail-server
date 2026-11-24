@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import random
-import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 
@@ -68,10 +67,14 @@ def run(operations=DEFAULT_OPERATIONS, *, seed=2099, repeats=2, output=Path(".ca
         directory.mkdir(parents=True, exist_ok=True)
         trace = directory / "resets.jsonl"
         trace.write_text("")
-        env = {**os.environ, "CONTRACT_LOGS": str(directory), "CONTRACT_ISOLATION_TRACE": str(trace)}
+        env = {
+            **os.environ,
+            "CONTRACT_LOGS": str(directory),
+            "CONTRACT_ISOLATION_TRACE": str(trace),
+            "CONTRACT_OWN_DATA_OUTPUT": str(directory),
+        }
         subprocess.run(["bash", "tests/contract/run.sh", "own-data", "--operation-id", operation], env=env, check=True)
         report = directory / "own-data.xml"
-        shutil.copyfile(".cache/contract/own-data.xml", report)
         count = observations(report, trace, endpoint)
         if operation in counts and counts[operation] != count:
             raise RuntimeError(f"{operation}: exchange count changed from {counts[operation]} to {count}")
