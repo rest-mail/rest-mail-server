@@ -89,7 +89,8 @@ def results(report_path, ops):
     probes built from a transaction that is not a refusal.
 
     A probe is named "coverage: <path> > <summary> > <status>[ > <type>] ·
-    <where> · <what>", the transaction it was built from first.
+    <where> · <what>", the transaction it was built from first. A probe that
+    cannot be matched to the description makes the report invalid.
     """
     probed, probes_failed = set(), set()
     for case in ET.parse(report_path).getroot().iter("testcase"):
@@ -98,7 +99,9 @@ def results(report_path, ops):
             continue
         parts = name[len(PROBE):].split(" · ", 1)[0].split(" > ")
         op = ops.get((parts[0], parts[1])) if len(parts) >= 3 else None
-        if op is None or refusal(parts[2]):
+        if op is None:
+            raise ValueError("Coverage report probe does not match the description: " + " > ".join(parts[:3]))
+        if refusal(parts[2]):
             continue
         if case.find("skipped") is not None:
             continue
