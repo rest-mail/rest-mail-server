@@ -5892,7 +5892,10 @@ def redeem_a_fresh_invitation(transaction):
     if asked_for_a_clean_start():
         start_clean(transaction)
     body = hooks.get_json(transaction)
-    if a_later_request_of_the_coverage_process(transaction) and " > 200 > " in transaction.get("name", ""):
+    preserve_generated_body = (
+        os.environ.get("CONTRACT_FUZZ") == "1" or a_later_request_of_the_coverage_process(transaction)
+    )
+    if preserve_generated_body and " > 200 > " in transaction.get("name", ""):
         if (
             isinstance(body, dict)
             and isinstance(body.get("token"), str) and body["token"].strip()
