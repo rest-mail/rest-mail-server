@@ -36,6 +36,7 @@ func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 	created := time.Date(2024, 2, 29, 12, 30, 15, 123456000, time.UTC)
 	seeded := []models.Contact{
 		{Email: "blocked@example.test", Name: "Élodie, A;B\\C\nD", TrustLevel: "blocked", Source: "manual"},
+		{Email: "same-name@example.test", Name: "same-name@example.test", TrustLevel: "auto", Source: "manual"},
 		{Email: "unnamed@example.test", Name: "", TrustLevel: "auto", Source: "sent"},
 		{Email: "trusted@example.test", Name: strings.Repeat("Long näme ", 20), TrustLevel: "trusted", Source: "import"},
 	}
@@ -51,7 +52,7 @@ func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 
 	destination := newMigrationServer(t)
 	to := destination.newAccount(t, "vcard-to@"+migrationDomain)
-	if got := importVCard(t, destination, to, destination.session, restoreTrust, exported, http.StatusOK); got != `{"imported":3,"skipped":0}` {
+	if got := importVCard(t, destination, to, destination.session, restoreTrust, exported, http.StatusOK); got != `{"imported":4,"skipped":0}` {
 		t.Fatalf("import: %s", got)
 	}
 	want := listRoundTripContacts(t, source, from)
@@ -71,7 +72,7 @@ func TestExportedContactsImportWithEveryStoredField(t *testing.T) {
 		Update("trust_level", "blocked").Error; err != nil {
 		t.Fatal(err)
 	}
-	if got := importVCard(t, destination, to, destination.session, restoreTrust, exported, http.StatusOK); got != `{"imported":0,"skipped":3}` {
+	if got := importVCard(t, destination, to, destination.session, restoreTrust, exported, http.StatusOK); got != `{"imported":0,"skipped":4}` {
 		t.Fatalf("second import: %s", got)
 	}
 	var trust string
@@ -89,6 +90,7 @@ func TestExportedContactsImportAsAutoUnlessTrustIsAsked(t *testing.T) {
 	from := source.newAccount(t, "vcard-auto-from@"+migrationDomain)
 	for _, contact := range []models.Contact{
 		{Email: "blocked@example.test", Name: "Blocked", TrustLevel: "blocked", Source: "manual"},
+		{Email: "same-name@example.test", Name: "same-name@example.test", TrustLevel: "trusted", Source: "manual"},
 		{Email: "unnamed@example.test", TrustLevel: "auto", Source: "sent"},
 		{Email: "trusted@example.test", Name: "Trusted", TrustLevel: "trusted", Source: "import"},
 	} {
@@ -102,7 +104,7 @@ func TestExportedContactsImportAsAutoUnlessTrustIsAsked(t *testing.T) {
 	destination := newMigrationServer(t)
 	to := destination.newAccount(t, "vcard-auto-to@"+migrationDomain)
 	key := dataExportKey(t, destination, to, "vcard-auto-to@"+migrationDomain, models.CapMailWrite)
-	if got := importVCard(t, destination, to, key, "", exported, http.StatusOK); got != `{"imported":3,"skipped":0}` {
+	if got := importVCard(t, destination, to, key, "", exported, http.StatusOK); got != `{"imported":4,"skipped":0}` {
 		t.Fatalf("import: %s", got)
 	}
 	want := listRoundTripContacts(t, source, from)
@@ -208,17 +210,8 @@ func listRoundTripContacts(t *testing.T, server *migrationServer, account uint) 
 	if err := json.NewDecoder(response.Body).Decode(&answer); err != nil || response.StatusCode != http.StatusOK {
 		t.Fatalf("list contacts: HTTP %d (%v)", response.StatusCode, err)
 	}
-	byEmail := map[string]roundTripContact{}
-	for _, contact := range answer.Data {
-		byEmail[contact.Email] = contact
-	}
-	out := make([]roundTripContact, 0, len(answer.Data))
-	for _, email := range []string{"blocked@example.test", "unnamed@example.test", "trusted@example.test"} {
-		if contact, ok := byEmail[email]; ok {
-			out = append(out, contact)
-		}
-	}
-	return out
+	sort.Slice(answer.Data, func(left, right int) bool { return answer.Data[left].Email < answer.Data[right].Email })
+	return answer.Data
 }
 
 // cardsWithoutUID is an export's cards in address order, unfolded and without the UID, which
