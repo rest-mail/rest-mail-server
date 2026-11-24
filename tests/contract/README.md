@@ -2940,9 +2940,10 @@ in-process proofs for the same commit and runs `scripts/example_proofs.py --live
 It fails on any example no runner proved, and the required `E2E (full topology)`
 check needs it.
 
-A live pair counts only with a finished run, a proof list that agrees with the
-run's inventory, the requirement the run provided, and that pair's own passing
-Vertrag verdict. A missing, empty, malformed, failed, skipped or tool-error result
+A live pair counts only if the runner is configured to select it, the run finished,
+its proof list agrees with the inventory, the run provided the pair's requirement,
+and the pair has its own passing Vertrag verdict. A missing, empty, malformed,
+failed, skipped or tool-error result
 counts for nothing and is named in the output. One failed pair does not take the
 runner's other proofs with it. Only the merge queue proves this in the topology;
 local evidence must not be described as a CI result.
