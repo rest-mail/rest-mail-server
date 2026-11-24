@@ -103,6 +103,43 @@ class ParallelTopology(unittest.TestCase):
             }):
                 self.assertEqual(e2e_reference_up.main(["--restart-resolver"]), 23)
 
+    def test_peer_docker_shim_preserves_ci_retry_without_recursing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            lock = work / "resolver.lock"
+            lock.touch()
+            docker = work / "docker"
+            docker.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$@"\n[ "$1" != restart ] || exit 19\n'
+            )
+            docker.chmod(0o700)
+            guard = work / "bash-env"
+            retry_directory = str(ROOT / "scripts/ci/docker-retry")
+            guard.write_text(
+                'case "$PATH" in\n'
+                '    "$CI_RETRY_DIRECTORY":*) ;;\n'
+                '    *) echo "peer shim still precedes CI retry shim" >&2; exit 97 ;;\n'
+                'esac\n'
+            )
+            env = {
+                **os.environ,
+                "PATH": os.pathsep.join((retry_directory, directory, os.environ["PATH"])),
+                "BASH_ENV": str(guard),
+                "CI_RETRY_DIRECTORY": retry_directory,
+                "RESTMAIL_E2E_DNS_LOCK": str(lock),
+            }
+            for arguments, expected, forwarded in (
+                (["run", "test-image"], 0, ["run", "--oom-score-adj", "1000", "--log-driver", "json-file", "test-image"]),
+                (["restart", "private-resolver"], 19, ["restart", "private-resolver"]),
+            ):
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run(
+                        [sys.executable, "-B", e2e_reference_up.__file__, "private-resolver", "docker", *arguments],
+                        env=env, capture_output=True, text=True, timeout=600,
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), forwarded)
+
     def test_every_existing_bringup_proof_remains(self):
         startup = self.tasks["e2e:up"]["cmds"]
         tasks = [command["task"] for command in startup if isinstance(command, dict)]

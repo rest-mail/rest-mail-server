@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 
 
 DOCKER_SHIM = """#!/bin/sh
+export PATH="$RESTMAIL_PEER_DOCKER_PATH"
 if [ "$#" -eq 2 ] && [ "$1" = restart ] && [ "$2" = "$RESTMAIL_PEER_RESOLVER" ]; then
     exec "$RESTMAIL_PEER_PYTHON" -B "$RESTMAIL_PEER_WRAPPER" --restart-resolver
 fi
@@ -30,7 +31,8 @@ def main(arguments):
     if not lock_path:
         return subprocess.call(command)
 
-    docker = shutil.which("docker")
+    original_path = os.environ["PATH"]
+    docker = shutil.which("docker", path=original_path)
     if not docker:
         print("reference startup: docker not found on PATH", file=sys.stderr)
         return 127
@@ -41,8 +43,9 @@ def main(arguments):
         shim.chmod(0o700)
         return subprocess.call(command, env={
             **os.environ,
-            "PATH": directory + os.pathsep + os.environ["PATH"],
+            "PATH": directory + os.pathsep + original_path,
             "RESTMAIL_PEER_DOCKER": str(Path(docker).absolute()),
+            "RESTMAIL_PEER_DOCKER_PATH": original_path,
             "RESTMAIL_PEER_PYTHON": sys.executable,
             "RESTMAIL_PEER_RESOLVER": resolver,
             "RESTMAIL_PEER_WRAPPER": str(Path(__file__).resolve()),
