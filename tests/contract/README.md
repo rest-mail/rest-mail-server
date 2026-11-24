@@ -1649,9 +1649,12 @@ to three transactions for `getDomain` alone, using the same served description.
 Every invocation uses the ordinary full-description own-data path. The runner
 requires a passing, nonempty JUnit report, exactly one reset/seed trace per
 exchange, the same endpoint, and unchanged exchange counts across repetitions.
-Reports and traces remain in `.cache/contract/isolation/receipt.json` and its
-per-selection directories. The full `test:contract-own-data` task runs this
-check before the whole own-data phase. Private topologies run it with
+The receipt, reports and traces remain in `.cache/contract/isolation/`. Hosted
+CI retains `receipt.json` and each selection's `resets.jsonl` under
+`contract-isolation/` in `e2e-container-logs`. Per-selection JUnit reports stay
+on the runner. A receipt still marked `running` records partial progress, not a
+pass. The full `test:contract-own-data` task runs this check before the whole
+own-data phase. Private topologies run it with
 `chore topology:contract:own-data TOPOLOGY=<name>`; `topology:ci` includes it
 after the ordinary contract gate and tears down on failure too.
 `test_own_data_isolated_schedule` and

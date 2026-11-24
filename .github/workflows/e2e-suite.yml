@@ -421,6 +421,17 @@ jobs:
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
           cp .cache/contract/replayed-probes.jsonl .cache/contract/lost-probes.txt "$out/" 2>/dev/null || true
           cp -R .cache/contract/api-coverage "$out/" 2>/dev/null || true
+          isolation=.cache/contract/isolation
+          if [ -f "$isolation/receipt.json" ]; then
+            mkdir -p "$out/contract-isolation"
+            cp "$isolation/receipt.json" "$out/contract-isolation/"
+            for trace in "$isolation"/*/resets.jsonl; do
+              [ -f "$trace" ] || continue
+              selection=${trace%/resets.jsonl}
+              mkdir -p "$out/contract-isolation/${selection##*/}"
+              cp "$trace" "$out/contract-isolation/${selection##*/}/"
+            done
+          fi
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
           for c in $(docker ps -aq); do

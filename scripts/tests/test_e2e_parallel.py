@@ -238,6 +238,37 @@ class IndependentContractPairs(unittest.TestCase):
         download = next(step for step in self.jobs["e2e-proofs"]["steps"] if step.get("name") == "Download the live proofs")
         self.assertEqual(download["with"]["name"], "live-example-proofs")
 
+    def test_container_logs_preserve_only_the_isolation_receipt_and_reset_traces(self):
+        collect = next(step for step in self.suite["steps"] if step.get("name") == "Collect container logs")
+        evidence = {
+            "receipt.json": '{"status":"running"}\n',
+            "01-alone-getDomain/resets.jsonl": '{"name":"getDomain","origin":"http://api:8080"}\n',
+            "02-alone-createFolder/resets.jsonl": '{"name":"createFolder","origin":"http://api:8080"}\n',
+        }
+        for has_receipt in (False, True):
+            with self.subTest(has_receipt=has_receipt), tempfile.TemporaryDirectory() as directory:
+                workspace = Path(directory)
+                docker = workspace / "docker"
+                docker.write_text("#!/bin/sh\nexit 0\n")
+                docker.chmod(0o755)
+                isolation = workspace / ".cache/contract/isolation"
+                files = {**evidence, "01-alone-getDomain/own-data.xml": "not an archived trace"}
+                for name, content in files.items():
+                    if name == "receipt.json" and not has_receipt:
+                        continue
+                    path = isolation / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(content)
+                execution = subprocess.run(
+                    ["bash", "-eo", "pipefail", "-c", collect["run"]], cwd=workspace,
+                    env={**os.environ, "RUNNER_TEMP": directory, "PATH": f"{directory}:{os.environ['PATH']}"},
+                    capture_output=True, text=True, timeout=600,
+                )
+                self.assertEqual(execution.returncode, 0, execution.stderr)
+                archive = workspace / "e2e-logs/contract-isolation"
+                archived = {path.relative_to(archive).as_posix(): path.read_text() for path in archive.rglob("*") if path.is_file()}
+                self.assertEqual(archived, evidence if has_receipt else {})
+
 
 if __name__ == "__main__":
     unittest.main()
