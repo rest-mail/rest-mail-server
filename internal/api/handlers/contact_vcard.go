@@ -42,8 +42,9 @@ type vcardProperty struct {
 
 // vcardCard is what has been read of the card being read.
 type vcardCard struct {
-	index int
-	name  string
+	index        int
+	name         string
+	explicitName bool
 	// structuredName is the name the card's first N gives, kept for a card with no FN,
 	// which vCard 2.1 allows.
 	structuredName string
@@ -130,8 +131,14 @@ func (c *vcardCard) read(property vcardProperty) {
 	case "FN":
 		// A card may name a person several ways; the first is the one kept.
 		if c.name == "" {
-			if value, ok := text("name"); ok {
+			if value, ok := text("name"); ok && value != "" {
 				c.name = value
+				for _, param := range property.params {
+					if strings.EqualFold(param, "X-RESTMAIL-EXPLICIT-NAME=TRUE") {
+						c.explicitName = true
+						break
+					}
+				}
 			}
 		}
 	case "N":
@@ -214,7 +221,7 @@ func (c *vcardCard) finish(each func(models.Contact, map[string]string) error) (
 	for _, address := range c.addresses {
 		entry := importContactEntry{Email: address, Name: name}
 		// An exported contact with no name carries its address as FN, which vCard requires.
-		if entry.Name == address {
+		if entry.Name == address && !c.explicitName {
 			entry.Name = ""
 		}
 		raw, err := json.Marshal(entry)

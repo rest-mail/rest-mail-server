@@ -189,11 +189,14 @@ func writeVCard(writer io.Writer, exporter *mailExporter, contact exportedContac
 		return errors.New("the server returned a contact without an id or valid email")
 	}
 	name := contact.Name
+	nameProperty := "FN"
 	if name == "" {
 		name = contact.Email
+	} else if name == contact.Email {
+		nameProperty += ";X-RESTMAIL-EXPLICIT-NAME=TRUE"
 	}
 	lines := []string{"BEGIN:VCARD", "VERSION:4.0", "UID:" + exporter.base.String() + fmt.Sprintf("/api/v1/accounts/%d/contacts/%d", exporter.account, contact.ID),
-		"FN:" + vcardText(name), "EMAIL:" + vcardText(contact.Email)}
+		nameProperty + ":" + vcardText(name), "EMAIL:" + vcardText(contact.Email)}
 	for _, field := range []struct{ name, value string }{
 		{"X-RESTMAIL-TRUST-LEVEL", contact.TrustLevel}, {"X-RESTMAIL-SOURCE", contact.Source},
 	} {
