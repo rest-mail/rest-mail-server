@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -376,4 +377,50 @@ func TestRateLimit_TemplateConfigKeyMatches(t *testing.T) {
 		t.Fatalf("template rate_limit config %s does not populate max_per_hour "+
 			"(config key mismatch: the configured limit is silently ignored)", rlConfig)
 	}
+}
+
+func TestRateLimit_HourSpansPacedMinuteWindows(t *testing.T) {
+	var configuration json.RawMessage
+	for _, filter := range pipeline.DefaultOutboundPipeline(0).Filters {
+		if filter.Name == "rate_limit" {
+			configuration = filter.Config
+			break
+		}
+	}
+	if len(configuration) == 0 {
+		t.Fatal("default outbound pipeline has no rate_limit configuration")
+	}
+
+	start := time.Unix(0, 0)
+	now := start
+	store := newRateLimitStore()
+	store.now = func() time.Time { return now }
+	factory := rateLimitFactory(store)
+	check := func(account string, wantAction pipeline.Action, wantRefusal string) {
+		t.Helper()
+		filter, err := factory(configuration)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message := validEmail()
+		message.Metadata = map[string]string{"auth_account": account}
+		result, err := filter.Execute(context.Background(), message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != wantAction || result.RejectMsg != wantRefusal {
+			t.Fatalf("account %s after %s: got %s (%q), want %s (%q)",
+				account, now.Sub(start), result.Action, result.RejectMsg, wantAction, wantRefusal)
+		}
+	}
+
+	for range 100 {
+		check("first", pipeline.ActionContinue, "")
+		now = now.Add(3500 * time.Millisecond)
+	}
+	check("first", pipeline.ActionDefer, "450 Hourly sending limit exceeded")
+	check("second", pipeline.ActionContinue, "")
+
+	now = start.Add(time.Hour + time.Second)
+	check("first", pipeline.ActionContinue, "")
 }
