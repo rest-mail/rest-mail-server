@@ -95,6 +95,15 @@ class Gate(unittest.TestCase):
         ]
         self.assertEqual(self.run_gate(cases, []), 1)
 
+    def test_a_probe_that_does_not_match_the_description_fails_the_gate(self):
+        passing = case("coverage: /api/v1/admin/aliases > Create an alias > 201 · body · valid", False)
+        for name in (
+            "coverage: /api/v1/admin/domains > A stale summary > 201 · body · valid",
+            "coverage: /api/v1/admin/domains > Create a domain",
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(self.run_gate([passing, case(name, True)], []), 1)
+
     def test_an_operation_probed_only_from_a_refusal_stays_in_the_baseline(self):
         # Its refused probes pass, but they are not judged, so they cannot take
         # it out of the baseline.
