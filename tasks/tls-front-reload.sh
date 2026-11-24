@@ -6,11 +6,11 @@ shift
 front_config="${TMPDIR:-/tmp}/front.conf"
 front_pid="${TMPDIR:-/tmp}/front.pid"
 printf '%b' "$config" > "$front_config"
+previous=$(cksum "$@")
 nginx -e /dev/stderr -c "$front_config" -g "daemon off; pid $front_pid;" &
 server=$!
 trap 'kill -TERM "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true' EXIT
 trap 'exit 0' TERM INT
-previous=$(cksum "$@")
 while kill -0 "$server" 2>/dev/null; do
     sleep "${TLS_FRONT_RELOAD_INTERVAL:-5}"
     if current=$(cksum "$@" 2>&1); then
