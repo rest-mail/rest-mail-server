@@ -11,6 +11,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
@@ -75,6 +76,43 @@ func postmasterExampleFixture(t *testing.T, operation string) (*credentialFixtur
 
 func TestPostmasterRequiredExamples(t *testing.T) {
 	testPostmasterRequiredExamples(t, "")
+}
+
+func TestPostmasterGrantRefusalPreservesRouteAndAudit(t *testing.T) {
+	fixture, path := postmasterExampleFixture(t, "deleteGrant")
+	grantID := path[strings.LastIndex(path, "/")+1:]
+	const address = "postmaster@postmaster.test"
+	var domain models.Domain
+	if err := fixture.db.Where("name = ?", "postmaster.test").First(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	before, err := repositories.ResolveSetupRecipient(fixture.db, address, domain.ID)
+	if err != nil || before.Mailbox.ID == 0 {
+		t.Fatalf("resolve postmaster before removal: mailbox %d, error %v", before.Mailbox.ID, err)
+	}
+	response := fixture.do(http.MethodDelete, path, fixture.session, "")
+	if response.Code != http.StatusConflict || grantErrorCode(response) != "postmaster_required" {
+		t.Fatalf("remove its receive grant: %d %s; want 409 postmaster_required", response.Code, response.Body)
+	}
+	var retained models.Grant
+	if err := fixture.db.Where("id = ?", grantID).First(&retained).Error; err != nil || retained.HolderID != before.Mailbox.ID || retained.Mode != models.GrantActive {
+		t.Fatalf("retain active receiver grant %s for mailbox %d: holder %d, mode %s, error %v", grantID, before.Mailbox.ID, retained.HolderID, retained.Mode, err)
+	}
+	after, err := repositories.ResolveSetupRecipient(fixture.db, address, domain.ID)
+	if err != nil || after.Mailbox.ID != before.Mailbox.ID {
+		t.Fatalf("resolve postmaster after refusal: mailbox %d, error %v; want mailbox %d", after.Mailbox.ID, err, before.Mailbox.ID)
+	}
+	var entries []models.AuditEntry
+	if err := fixture.db.Where("method = ?", http.MethodDelete).Find(&entries).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("audit DELETE events: got %d; want only the refusal", len(entries))
+	}
+	entry := entries[0]
+	if entry.Outcome != models.AuditOutcomeFailed || entry.Status != http.StatusConflict || entry.ErrorCode != "postmaster_required" || entry.Route != "/api/v1/admin/grants/{id}" || entry.Target["id"] != grantID {
+		t.Fatalf("audit refusal: %s %d %s %s target %v; want failed 409 postmaster_required for grant %s", entry.Outcome, entry.Status, entry.ErrorCode, entry.Route, entry.Target, grantID)
+	}
 }
 
 func TestPostmasterRequiredExamplesWithVertrag(t *testing.T) {
