@@ -2956,8 +2956,8 @@ other pair still fails there.
 ### In-process example proofs
 
 Give `RESTMAIL_EXAMPLE_PROOFS` a fresh path for each run. The Go writer merges an
-existing file, so reusing one can hide a skipped or failing proof. Then check it
-with `python3 scripts/example_proofs.py openapi-example.json <proofs.json>`.
+existing file, so reusing one can hide a skipped or failing proof. With PyYAML
+installed, check it with `python3 scripts/example_proofs.py openapi-example.json <proofs.json>`.
 
 Its last lines are the record of what it judged, one count per population, and
 each pair is counted in exactly one: `N of M examples that need setup are proven`

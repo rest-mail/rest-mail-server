@@ -103,11 +103,12 @@ class ExampleProofs(unittest.TestCase):
         self.assertEqual(example_proofs.unproven(examples, {"neverSent": ["found"]}, unsent),
                          [("neverSent", "gone", {"sent": "never"})])
 
-    def judge_with_unsent(self, examples, proofs, *flags):
+    def judge_with_unsent(self, examples, proofs, *flags,
+                          config="exclude-operation-id:\n  - neverSent\n"):
         """main() against a vertrag.yml that never sends neverSent: its printed lines and exit."""
         root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, root)
-        (root / "vertrag.yml").write_text("exclude-operation-id:\n  - neverSent\n")
+        (root / "vertrag.yml").write_text(config)
         (root / "examples.json").write_text(json.dumps(examples))
         (root / "proofs.json").write_text(json.dumps(proofs))
         saved, example_proofs.ROOT = example_proofs.ROOT, root
@@ -116,6 +117,39 @@ class ExampleProofs(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = example_proofs.main([*flags, str(root / "examples.json"), str(root / "proofs.json")])
         return code, out.getvalue().splitlines()
+
+    def test_excluded_pairs_need_proof_regardless_of_yaml_formatting(self):
+        for config in (
+            '"exclude-operation-id": ["neverSent"]\n',
+            "exclude-operation-id:\n  - neverSent  # intentionally not sent\n",
+            "exclude-operation-id: [\n  neverSent,\n]\n",
+        ):
+            with self.subTest(config=config):
+                examples = {"neverSent": {"found": {}}}
+                code, lines = self.judge_with_unsent(examples, {}, "--defer-live", config=config)
+                self.assertEqual(code, 1, lines)
+                self.assertIn(
+                    "neverSent/found: the live run never sends neverSent, and no in-process test proved it",
+                    lines,
+                )
+                code, lines = self.judge_with_unsent(examples, {"neverSent": ["found"]}, config=config)
+                self.assertEqual(code, 0, lines)
+                self.assertIn(
+                    "1 of 1 examples with no setup, of operations the live run never sends, are proven in process",
+                    lines,
+                )
+
+    def test_malformed_exclusions_cannot_report_success(self):
+        for config in (
+            "exclude-operation-id: neverSent\n",
+            "exclude-operation-id: [false]\n",
+            "exclude-operation-id: [\n",
+            "[neverSent]\n",
+        ):
+            with self.subTest(config=config), contextlib.redirect_stderr(io.StringIO()) as errors:
+                code, lines = self.judge_with_unsent({}, {}, config=config)
+                self.assertEqual(code, 1, lines)
+                self.assertIn("vertrag.yml:", errors.getvalue())
 
     def test_the_summary_counts_each_judged_pair_exactly_once(self):
         # #2099 AC06: the summary is the record of what was proven. A pair of an operation the

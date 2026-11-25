@@ -28,6 +28,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # What tests/contract/live_requirements.py selects: its result files, by requirement.
@@ -63,18 +65,15 @@ def never_sent(root):
     """The operations no phase of the live run sends: vertrag.yml's
     exclude-operation-id (#1334). Every example of these must be proven in
     process."""
-    excluded, listing = [], False
-    for line in (root / "vertrag.yml").read_text().splitlines():
-        if line.startswith("exclude-operation-id:"):
-            listing = True
-            inline = line.split(":", 1)[1].split("#", 1)[0].strip()
-            if inline.startswith("[") and inline.endswith("]"):
-                excluded.extend(op.strip() for op in inline[1:-1].split(",") if op.strip())
-                break
-        elif listing and line.startswith("  - "):
-            excluded.append(line[4:].strip())
-        elif listing and line.strip() and not line.startswith("#"):
-            break
+    config = yaml.safe_load((root / "vertrag.yml").read_text())
+    if not isinstance(config, dict):
+        raise ValueError("expected a YAML mapping")
+    excluded = config.get("exclude-operation-id", [])
+    if not isinstance(excluded, list) or any(
+        not isinstance(operation, str) or not operation.strip()
+        for operation in excluded
+    ):
+        raise ValueError("exclude-operation-id must be a list of non-empty operation IDs")
     return frozenset(excluded)
 
 
@@ -136,7 +135,6 @@ def live_proofs(root, examples):
     """What every live run under root proved, and what it does not count. Nothing a
     runner failed at is an error here: the pair is simply not proven by it."""
     sys.path.insert(0, str(ROOT / "tests/contract"))
-    # Beside the runners' own rule for a proof; this needs PyYAML, so only --live loads it.
     from live_requirements import passed
 
     root = Path(root)
@@ -219,6 +217,11 @@ def main(argv):
     if not proofs_paths:
         print(__doc__)
         return 2
+    try:
+        unsent = never_sent(ROOT)
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        print(f"vertrag.yml: {error}", file=sys.stderr)
+        return 1
     proofs = {}
     for proofs_path in proofs_paths:
         try:
@@ -237,7 +240,7 @@ def main(argv):
         live, refused = live_proofs(args.live, examples)
         for reason in refused:
             print(reason)
-    missing, deferred, counts = coverage(examples, proofs, live, never_sent(ROOT), args.defer_live)
+    missing, deferred, counts = coverage(examples, proofs, live, unsent, args.defer_live)
     who = "no runner" if args.live else "no in-process test"
     for op, name, requires in missing:
         if requires == {"sent": "never"}:
