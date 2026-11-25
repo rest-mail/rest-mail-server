@@ -28,11 +28,12 @@ type imapSourceFixture struct {
 	raw, flags, folders                    string
 	size                                   *int
 	count                                  int
-	stall, refuse                          bool
+	refuse                                 bool
 	startTLS, refuseTLS, stallTLS, preauth bool
 	stallHandshake                         bool
 	startTLSSeen                           chan struct{}
 	handshakeSeen                          chan struct{}
+	fetchStalled                           chan struct{}
 	mu                                     sync.Mutex
 	commands                               []string
 }
@@ -135,11 +136,12 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 			case "EXAMINE":
 				_, _ = fmt.Fprintf(conn, "* %d EXISTS\r\n* OK [UIDVALIDITY 9] stable\r\n* OK [UIDNEXT 11] next\r\n%s OK [READ-ONLY] examined\r\n", f.count, tag)
 			case "UID":
-				if f.stall {
-					continue
-				}
 				if !strings.Contains(line, "BODY.PEEK[]<0.") || !strings.Contains(line, "UID FETCH 1:10") {
 					_, _ = fmt.Fprintf(conn, "%s BAD expected bounded UID BODY.PEEK\r\n", tag)
+					continue
+				}
+				if f.fetchStalled != nil {
+					close(f.fetchStalled)
 					continue
 				}
 				size := len(f.raw)
@@ -238,15 +240,35 @@ func TestIMAPRefusesLossAndBoundsReads(t *testing.T) {
 func TestIMAPCancellationAndVisitorFailure(t *testing.T) {
 	for _, stall := range []bool{false, true} {
 		t.Run(fmt.Sprint(stall), func(t *testing.T) {
-			f := &imapSourceFixture{raw: "Subject: original\r\n\r\nbody", count: 1, stall: stall}
+			f := &imapSourceFixture{raw: "Subject: original\r\n\r\nbody", count: 1}
+			if stall {
+				f.fetchStalled = make(chan struct{})
+			}
 			options := newIMAPFixture(t, f)
-			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			failure := errors.New("destination refused")
-			start := time.Now()
-			err := IMAP(ctx, options, 1024, func(string, apitypes.ImportMessageBody) error { return failure })
-			if err == nil || time.Since(start) > 30*time.Second || (!stall && !errors.Is(err, failure)) {
-				t.Fatalf("transfer failed to stop: %v", err)
+			done := make(chan error, 1)
+			go func() {
+				done <- IMAP(ctx, options, 1024, func(string, apitypes.ImportMessageBody) error { return failure })
+			}()
+			if stall {
+				select {
+				case <-f.fetchStalled:
+					cancel()
+				case err := <-done:
+					t.Fatalf("transfer stopped before the source stalled: %v", err)
+				case <-time.After(30 * time.Second):
+					t.Fatal("source did not reach the pending fetch")
+				}
+			}
+			select {
+			case err := <-done:
+				if err == nil || errors.Is(err, failure) == stall {
+					t.Fatalf("transfer stopped with an unexpected result: %v", err)
+				}
+			case <-time.After(30 * time.Second):
+				t.Fatal("transfer did not stop after cancellation or visitor failure")
 			}
 		})
 	}
