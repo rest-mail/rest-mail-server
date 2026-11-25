@@ -144,7 +144,14 @@ func browserFixture(t *testing.T, csrfGuard, secure bool, csrfFault ...string) *
 			cookie.Secure = secure
 			http.SetCookie(w, cookie)
 		}
-		answer(w, 200, `{"data":{"user":{"id":7}}}`)
+		switch fault {
+		case "refresh missing account":
+			answer(w, 200, `{"data":{}}`)
+		case "refresh changed account":
+			answer(w, 200, `{"data":{"user":{"id":8}}}`)
+		default:
+			answer(w, 200, `{"data":{"user":{"id":7}}}`)
+		}
 	})
 	mux.HandleFunc("POST /api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		revoked = true
@@ -232,7 +239,7 @@ func TestBrowserSessionProof(t *testing.T) {
 			}
 		}
 	}
-	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage", "account events", "refused reset", "refused recovery", "refresh", "logout", "revoked refresh"} {
+	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage", "account events", "refused reset", "refused recovery", "refresh", "refreshed own folders", "logout", "revoked refresh"} {
 		if !seen[operation] {
 			t.Errorf("missing receipt for %s", operation)
 		}
@@ -240,6 +247,18 @@ func TestBrowserSessionProof(t *testing.T) {
 	bytes, err := json.Marshal(result)
 	if err != nil || strings.Contains(string(bytes), "contract-secret") || strings.Contains(string(bytes), "fixture") {
 		t.Fatal("receipt contains a credential")
+	}
+}
+
+func TestBrowserSessionRefreshRequiresSameAccount(t *testing.T) {
+	for _, fault := range []string{"refresh missing account", "refresh changed account"} {
+		t.Run(fault, func(t *testing.T) {
+			server := browserFixture(t, true, true, fault)
+			result, err := prove(server.URL, fixtureDescription(), principal{Address: "admin@restmail.test", Password: "fixture"})
+			if err == nil || err.Error() != "browser refresh did not preserve the account id" || result.Passed {
+				t.Fatalf("expected an account continuity failure; passed=%t, err=%v", result.Passed, err)
+			}
+		})
 	}
 }
 

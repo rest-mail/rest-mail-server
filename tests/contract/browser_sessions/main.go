@@ -400,24 +400,33 @@ func prove(endpoint string, spec description, fixture principal, starts ...sessi
 	if err != nil {
 		return result, err
 	}
-	if err = sessionCookies(refresh.Cookies(), false); err != nil {
+	refreshedCookies := refresh.Cookies()
+	if err = sessionCookies(refreshedCookies, false); err != nil {
 		return result, err
 	}
+	previousCookies := b.cookies
+	b.cookies = refreshedCookies
 	data, _ = body["data"].(map[string]interface{})
 	if data["access_token"] != nil || data["refresh_token"] != nil {
 		return result, errors.New("browser refresh exposes a token")
 	}
-	for _, old := range b.cookies {
+	refreshedUser, _ := data["user"].(map[string]interface{})
+	if refreshedID, _ := refreshedUser["id"].(float64); refreshedID != id {
+		return result, errors.New("browser refresh did not preserve the account id")
+	}
+	for _, old := range previousCookies {
 		if old.Name != auth.RefreshCookieName && old.Name != auth.CSRFCookieName {
 			continue
 		}
-		for _, fresh := range refresh.Cookies() {
+		for _, fresh := range refreshedCookies {
 			if fresh.Name == old.Name && fresh.Value == old.Value {
 				return result, fmt.Errorf("refresh did not rotate %s", old.Name)
 			}
 		}
 	}
-	b.cookies = refresh.Cookies()
+	if _, _, err = check("refreshed own folders", csrfMissing, http.MethodGet, "/api/v1/accounts/"+account+"/folders", nil, 200, ""); err != nil {
+		return result, err
+	}
 	remember(b.cookies)
 	logout, _, err := check("logout", csrfValid, http.MethodPost, "/api/v1/auth/logout", nil, 204, "")
 	if err != nil {

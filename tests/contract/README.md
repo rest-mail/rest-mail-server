@@ -3015,9 +3015,10 @@ safe reads with all three invalid variants against a valid-header control.
 Invalid resource IDs and malformed JSON keep negative probes away from handler
 mutations. A valid-header folder request
 must reach validation, and an own-account event stream must open using cookies.
-Refresh must return browser cookies without body tokens; logout must expire all
-three cookies and refuse another refresh with the revoked cookie. The probe revokes its own
-session on failure as well.
+Refresh must preserve the signed-in account ID and return browser cookies without
+body tokens. The refreshed cookies must still open that account's folder list.
+Logout must expire all three cookies and refuse another refresh with the revoked
+cookie. The probe revokes its own session on failure as well.
 
 Failures stop the gate. `browser-sessions.json` records operation, principal and
 status only, with `passed` true only after the whole proof. Local HTTP fixtures
