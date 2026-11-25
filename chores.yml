@@ -1243,6 +1243,9 @@ tasks:
     desc: Start all three instances together; finish only when every instance answers healthy
     cmds:
       - |
+        lock=$(mktemp "${TMPDIR:-/tmp}/restmail-peer-dns.XXXXXXXX") || exit 1
+        trap 'rm -f "$lock"' EXIT
+        export RESTMAIL_E2E_DNS_LOCK="$lock"
         "${CHORE_BIN:-chore}" e2e:mail1 & mail1=$!
         "${CHORE_BIN:-chore}" e2e:mail2 & mail2=$!
         "${CHORE_BIN:-chore}" e2e:restmail & restmail=$!
@@ -1256,7 +1259,8 @@ tasks:
     desc: Start and wait for the first reference instance
     cmds:
       - >-
-        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF1 | default "mail1"}}
+        {{.REFERENCE_PATH}}python3 -B scripts/e2e_reference_up.py '{{.RESTMAIL_DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF1 | default "mail1"}}
         {{.REFERENCE_PLACEMENT}}
         HOSTNAME=mail1.test
         POSTGRES_IP={{.MAIL1_POSTGRES_IP | default "10.99.0.41"}}
@@ -1272,7 +1276,8 @@ tasks:
     cmds:
       - cp tests/e2e/testdata/rspamd-verdict/*.conf .workspace/reference-mailserver/configs/{{.TOPOLOGY_REF2 | default "mail2"}}/rspamd-overlay/
       - >-
-        {{.REFERENCE_PATH}}"${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF2 | default "mail2"}}
+        {{.REFERENCE_PATH}}python3 -B scripts/e2e_reference_up.py '{{.RESTMAIL_DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+        "${CHORE_BIN:-chore}" -C .workspace/reference-mailserver up CONFIG={{.TOPOLOGY_REF2 | default "mail2"}}
         {{.REFERENCE_PLACEMENT}}
         HOSTNAME=mail2.test
         POSTGRES_IP={{.MAIL2_POSTGRES_IP | default "10.99.0.42"}}

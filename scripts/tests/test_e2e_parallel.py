@@ -1,13 +1,20 @@
+import importlib.util
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from textwrap import dedent
+from unittest.mock import patch
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+helper_spec = importlib.util.spec_from_file_location("e2e_reference_up", ROOT / "scripts/e2e_reference_up.py")
+e2e_reference_up = importlib.util.module_from_spec(helper_spec)
+helper_spec.loader.exec_module(e2e_reference_up)
 
 
 class ParallelTopology(unittest.TestCase):
@@ -24,6 +31,9 @@ class ParallelTopology(unittest.TestCase):
                     "import os, pathlib, sys, time\n"
                     "work = pathlib.Path(os.environ['WORK'])\n"
                     "task = sys.argv[1]\n"
+                    "lock = pathlib.Path(os.environ['RESTMAIL_E2E_DNS_LOCK'])\n"
+                    "assert lock.is_file()\n"
+                    "(work / (task + '.lock')).write_text(str(lock))\n"
                     "(work / (task + '.started')).touch()\n"
                     "deadline = time.monotonic() + 600\n"
                     "while len(list(work.glob('*.started'))) < 3:\n"
@@ -40,6 +50,95 @@ class ParallelTopology(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, int(bool(failed)), result.stderr)
                 self.assertEqual(len(list(work.glob("*.finished"))), 3)
+                locks = {marker.read_text() for marker in work.glob("*.lock")}
+                self.assertEqual(len(locks), 1)
+                self.assertFalse(Path(locks.pop()).exists())
+
+    def test_peer_dns_restarts_do_not_overlap_and_errors_still_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            lock = work / "resolver.lock"
+            lock.touch()
+            docker = work / "docker"
+            docker.write_text(f"#!{sys.executable}\n" + dedent("""\
+                import os, sys, time
+                from pathlib import Path
+
+                if sys.argv[1:] != ["restart", "private-resolver"]:
+                    sys.exit(23)
+                active = Path(os.environ["WORK"]) / "restart-active"
+                active.touch(exist_ok=False)
+                time.sleep(0.5)
+                active.unlink()
+                sys.exit(19 if os.environ.get("PEER") == "mail2" else 0)
+                """))
+            docker.chmod(0o700)
+            peer = dedent("""\
+                import os, subprocess, sys, time
+                from pathlib import Path
+
+                work = Path(os.environ["WORK"])
+                (work / (sys.argv[1] + ".ready")).touch()
+                deadline = time.monotonic() + 10
+                while len(list(work.glob("*.ready"))) < 2:
+                    if time.monotonic() >= deadline:
+                        sys.exit(9)
+                    time.sleep(0.01)
+                sys.exit(subprocess.call(["docker", "restart", "private-resolver"],
+                                        env={**os.environ, "PEER": sys.argv[1]}))
+                """)
+            with patch.dict(os.environ, {
+                "PATH": directory + os.pathsep + os.environ["PATH"],
+                "WORK": directory,
+                "RESTMAIL_E2E_DNS_LOCK": str(lock),
+            }), ThreadPoolExecutor(max_workers=2) as pool:
+                runs = [pool.submit(e2e_reference_up.main, ["private-resolver", sys.executable, "-c", peer, name])
+                        for name in ("mail1", "mail2")]
+                self.assertEqual([run.result(timeout=15) for run in runs], [0, 19])
+                self.assertEqual(e2e_reference_up.main(["private-resolver", "docker", "restart", "other"]), 23)
+            with patch.dict(os.environ, {
+                "RESTMAIL_E2E_DNS_LOCK": str(lock),
+                "RESTMAIL_PEER_DOCKER": str(docker),
+                "RESTMAIL_PEER_RESOLVER": "other",
+            }):
+                self.assertEqual(e2e_reference_up.main(["--restart-resolver"]), 23)
+
+    def test_peer_docker_shim_preserves_ci_retry_without_recursing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            lock = work / "resolver.lock"
+            lock.touch()
+            docker = work / "docker"
+            docker.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$@"\n[ "$1" != restart ] || exit 19\n'
+            )
+            docker.chmod(0o700)
+            guard = work / "bash-env"
+            retry_directory = str(ROOT / "scripts/ci/docker-retry")
+            guard.write_text(
+                'case "$PATH" in\n'
+                '    "$CI_RETRY_DIRECTORY":*) ;;\n'
+                '    *) echo "peer shim still precedes CI retry shim" >&2; exit 97 ;;\n'
+                'esac\n'
+            )
+            env = {
+                **os.environ,
+                "PATH": os.pathsep.join((retry_directory, directory, os.environ["PATH"])),
+                "BASH_ENV": str(guard),
+                "CI_RETRY_DIRECTORY": retry_directory,
+                "RESTMAIL_E2E_DNS_LOCK": str(lock),
+            }
+            for arguments, expected, forwarded in (
+                (["run", "test-image"], 0, ["run", "--oom-score-adj", "1000", "--log-driver", "json-file", "test-image"]),
+                (["restart", "private-resolver"], 19, ["restart", "private-resolver"]),
+            ):
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run(
+                        [sys.executable, "-B", e2e_reference_up.__file__, "private-resolver", "docker", *arguments],
+                        env=env, capture_output=True, text=True, timeout=600,
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), forwarded)
 
     def test_every_existing_bringup_proof_remains(self):
         startup = self.tasks["e2e:up"]["cmds"]
@@ -55,6 +154,8 @@ class ParallelTopology(unittest.TestCase):
             # CONFIG is the reference server's name, which a private topology replaces (#2062).
             variable = "TOPOLOGY_REF1" if reference == "mail1" else "TOPOLOGY_REF2"
             self.assertTrue(any(f'dkim:provision\n        CONFIG={{{{.{variable} | default "{reference}"}}}}' in command or f'dkim:provision CONFIG={{{{.{variable} | default "{reference}"}}}}' in command for command in startup if isinstance(command, str)))
+            self.assertTrue(any("scripts/e2e_reference_up.py" in command and "reference-mailserver up" in command
+                                for command in self.tasks[f"e2e:{reference}"]["cmds"] if isinstance(command, str)))
             waits = [command for command in self.tasks[f"e2e:{reference}"]["cmds"] if isinstance(command, dict) and command["task"] == "mailserver:wait"]
             self.assertEqual([wait["vars"]["CONFIG"] for wait in waits], [f'{{{{.{variable} | default "{reference}"}}}}'])
         self.assertIn("RESTMAIL_INTERNAL_MTLS=true", self.tasks["e2e:restmail"]["cmds"][0])
