@@ -1,5 +1,6 @@
 """Isolation selections fail on skipped work, stale caches and unreset counters."""
 
+from contextlib import chdir
 import copy
 import json
 import os
@@ -30,21 +31,45 @@ class FixtureIsolation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             report, trace = Path(directory) / "report.xml", Path(directory) / "trace.jsonl"
             report.write_text('<testsuite><testcase name="found"/></testsuite>')
-            trace.write_text(json.dumps({"name": "found", "origin": "http://api:8080"}) + "\n")
-            self.assertEqual(fixture_isolation.observations(report, trace, "http://api:8080"), 1)
+            trace.write_text(json.dumps({"name": "found", "origin": "http://api:8080", "operation": "getDomain"}) + "\n")
+            self.assertEqual(fixture_isolation.observations(report, trace, "http://api:8080", operation="getDomain"), 1)
             for xml, resets in (
                 ('<testsuite/>', trace.read_text()),
                 ('<testsuite><testcase name="found"><skipped/></testcase></testsuite>', trace.read_text()),
                 ('<testsuite><testcase name="found"><failure/></testcase></testsuite>', trace.read_text()),
                 ('<testsuite><testcase name="found"><error/></testcase></testsuite>', trace.read_text()),
                 ('<testsuite><testcase name="found"/></testsuite>', ''),
-                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"another","origin":"http://api:8080"}\n'),
-                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"found","origin":"http://other:8080"}\n'),
+                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"another","origin":"http://api:8080","operation":"getDomain"}\n'),
+                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"found","origin":"http://other:8080","operation":"getDomain"}\n'),
+                ('<testsuite><testcase name="found"/></testsuite>', '{"name":"found","origin":"http://api:8080"}\n'),
             ):
                 report.write_text(xml)
                 trace.write_text(resets)
                 with self.subTest(xml=xml, resets=resets), self.assertRaises(RuntimeError):
-                    fixture_isolation.observations(report, trace, "http://api:8080")
+                    fixture_isolation.observations(report, trace, "http://api:8080", operation="getDomain")
+
+    def test_isolation_does_not_pass_when_a_different_operation_runs(self):
+        endpoint = "http://api:8080"
+
+        def run_child(command, *, env, check):
+            self.assertEqual(command[-1], "getDomain")
+            self.assertTrue(check)
+            report = Path(env.get("CONTRACT_OWN_DATA_OUTPUT", ".cache/contract")) / "own-data.xml"
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text('<testsuite><testcase name="created"/></testsuite>')
+            Path(env["CONTRACT_ISOLATION_TRACE"]).write_text(
+                json.dumps({"name": "created", "origin": endpoint, "operation": "createFolder"}) + "\n"
+            )
+
+        with tempfile.TemporaryDirectory() as directory, chdir(directory), \
+                patch.dict(os.environ, {"CONTRACT_ENDPOINT": endpoint}), \
+                patch.object(fixture_isolation.subprocess, "run", side_effect=run_child):
+            output = Path(directory) / "isolation"
+            with self.assertRaisesRegex(RuntimeError, "expected operation getDomain, got 'createFolder'"):
+                fixture_isolation.run(("getDomain",), output=output)
+            receipt = json.loads((output / "receipt.json").read_text())
+            self.assertEqual(receipt["status"], "running")
+            self.assertEqual(receipt["runs"], [])
 
     def test_stale_cache_and_counter_control_turns_isolation_red(self):
         fixture = test_hooks_own_data.OwnDataHooks()
@@ -52,6 +77,7 @@ class FixtureIsolation(unittest.TestCase):
         self.addCleanup(fixture.doCleanups)
         fixture.clean_starts_on()
         transaction = fixture.transaction(200, "/api/v1/admin/domains/1")
+        transaction["operationId"] = "getDomain"
         origin = fixture.hooks.origin_of(transaction)
         stale = {"sender_mailboxes": {origin: {"stale": 999}}, "budget_used": 1}
         fixture.stub.stash.update(copy.deepcopy(stale))
@@ -70,8 +96,15 @@ class FixtureIsolation(unittest.TestCase):
             self.assertNotIn("budget_used", fixture.stub.stash)
             self.assertEqual(counter["used"], 0)
 
-        with patch.object(fixture.hooks.reset_seed, "reset_and_seed", side_effect=resetting):
-            fixture.hooks.start_clean(transaction)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(fixture.hooks.reset_seed, "reset_and_seed", side_effect=resetting):
+            trace = Path(directory) / "resets.jsonl"
+            with patch.dict(os.environ, {"CONTRACT_ISOLATION_TRACE": str(trace)}):
+                fixture.hooks.start_clean(transaction)
+            self.assertEqual(trace.read_text().count("\n"), 1)
+            self.assertEqual(json.loads(trace.read_text()), {
+                "name": transaction["name"], "origin": origin, "operation": "getDomain",
+            })
         assert_clean()
         self.assertEqual([call[1] for call in fixture.server.calls], ["/api/v1/admin/test/reset", "/api/v1/admin/test/seed"])
         # Deliberate breaks: skip the server reset, then retain the stale cache.

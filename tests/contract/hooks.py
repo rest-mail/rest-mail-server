@@ -176,7 +176,11 @@ def start_clean(transaction):
     trace = os.environ.get("CONTRACT_ISOLATION_TRACE")
     if trace:
         with open(trace, "a") as stream:
-            stream.write(json.dumps({"name": transaction.get("name"), "origin": origin}) + "\n")
+            stream.write(json.dumps({
+                "name": transaction.get("name"),
+                "origin": origin,
+                "operation": transaction.get("operationId"),
+            }) + "\n")
 
 
 OWN_DOMAIN = "contract-own-domain.test"

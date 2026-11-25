@@ -35,7 +35,7 @@ def schedule(operations, seed=2099, repeats=2):
     return result
 
 
-def observations(report, trace, endpoint):
+def observations(report, trace, endpoint, *, operation):
     cases = list(ET.parse(report).getroot().iter("testcase"))
     if not cases:
         raise RuntimeError("isolation executed zero exchanges")
@@ -49,6 +49,9 @@ def observations(report, trace, endpoint):
         raise RuntimeError("isolation reset trace does not name every executed exchange")
     if {reset["origin"] for reset in resets} != {endpoint.rstrip("/")}:
         raise RuntimeError("isolation reset a different server")
+    for reset in resets:
+        if reset.get("operation") != operation:
+            raise RuntimeError(f"isolation expected operation {operation}, got {reset.get('operation')!r}")
     return len(cases)
 
 
@@ -75,7 +78,7 @@ def run(operations=DEFAULT_OPERATIONS, *, seed=2099, repeats=2, output=Path(".ca
         }
         subprocess.run(["bash", "tests/contract/run.sh", "own-data", "--operation-id", operation], env=env, check=True)
         report = directory / "own-data.xml"
-        count = observations(report, trace, endpoint)
+        count = observations(report, trace, endpoint, operation=operation)
         if operation in counts and counts[operation] != count:
             raise RuntimeError(f"{operation}: exchange count changed from {counts[operation]} to {count}")
         counts[operation] = count
