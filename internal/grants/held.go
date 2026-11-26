@@ -7,17 +7,16 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/pkg/capability"
 	"gorm.io/gorm"
 )
 
 // Wildcard is the capability that stands for every capability (superadmin's).
 const Wildcard = "*"
 
-// Entry is one capability held at one scope.
-type Entry struct {
-	Scope      string `json:"scope"`
-	Capability string `json:"capability"`
-}
+// Entry is one capability held at one scope. Its wire form lives in
+// pkg/capability so API clients can use it without linking this package.
+type Entry = capability.Entry
 
 // Held is what an account holds right now: a capability at a scope for each
 // capability of each of its unexpired grants that is active, or eligible and
