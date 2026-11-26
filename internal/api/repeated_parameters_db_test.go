@@ -21,9 +21,9 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // seenByFilters is a filter that writes down what the pipeline hands every filter after it.

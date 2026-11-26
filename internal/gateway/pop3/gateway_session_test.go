@@ -13,7 +13,7 @@ import (
 
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // sessionAPI is an API that opens a POP3 connection session and records the

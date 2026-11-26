@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // A refused alias and an arrival past the hop limit are refusals of deliverMessage's own,

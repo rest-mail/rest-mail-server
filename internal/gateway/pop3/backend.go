@@ -15,10 +15,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 

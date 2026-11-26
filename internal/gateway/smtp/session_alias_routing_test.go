@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // aliasRefusedBody is what GET /api/mailboxes answers with its 403 for a reserved alias

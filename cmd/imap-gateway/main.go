@@ -13,7 +13,6 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/bancheck"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/imap"
@@ -24,6 +23,7 @@ import (
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/version"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
@@ -154,7 +154,8 @@ func main() {
 	// API's dedicated internal listener (API_INTERNAL_BASE_URL) presenting the
 	// gateway client certificate; all token/credential routes keep using the
 	// public API_BASE_URL. Disabled → single plain client, unchanged.
-	var apiOpts []apiclient.Option
+	// Each call to the API is traced as a client span (#1580).
+	apiOpts := []apiclient.Option{apiclient.WithDoer(tracing.Do)}
 	// Every mail client's connection gets a session with the API, opened and
 	// used on the internal listener with this gateway's own client certificate,
 	// which is what tells the API it is the IMAP gateway (#1586).

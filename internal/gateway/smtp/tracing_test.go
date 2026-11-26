@@ -17,9 +17,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/tracing/tracingtest"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
@@ -78,7 +79,7 @@ func TestTracing_GatewayToAPIToPipelineIsOneTrace(t *testing.T) {
 	rec := tracingtest.Record(t)
 	api := tracedAPI(t)
 
-	h := newSMTPHarnessWith(t, Clients{Delivery: apiclient.New(api.URL), Submission: apiclient.New(api.URL)}, newMockStore(), false, true)
+	h := newSMTPHarnessWith(t, Clients{Delivery: apiclient.New(api.URL, apiclient.WithDoer(tracing.Do)), Submission: apiclient.New(api.URL, apiclient.WithDoer(tracing.Do))}, newMockStore(), false, true)
 	h.ehlo()
 	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "250" {
 		t.Fatalf("MAIL FROM = %q", r)

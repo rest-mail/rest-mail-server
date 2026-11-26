@@ -10,8 +10,8 @@ import (
 
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil/reloadtest"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // TestPOP3ListenersServeRenewedCertificate proves both POP3 listeners pick up

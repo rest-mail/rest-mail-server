@@ -11,7 +11,7 @@ import (
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // The same name in both forms, in modified UTF-7 as a session writes it before UTF-8 is enabled.

@@ -13,12 +13,12 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	pipelinefilters "github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // senderRoute delivers a message down one path a sender can reach, and says why it was refused.

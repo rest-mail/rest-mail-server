@@ -25,8 +25,8 @@ import (
 	rmcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"gorm.io/gorm"
 )
 

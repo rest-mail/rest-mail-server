@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // RFC 3501 §6.3.11 / RFC 9051 §6.3.12: "If a date-time is specified, the

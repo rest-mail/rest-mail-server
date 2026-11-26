@@ -17,7 +17,6 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"github.com/rest-mail/rest-mail-server/pkg/envelope"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
@@ -77,6 +76,31 @@ type Client struct {
 	// span is the connection's span (#1580): each call is traced as its child
 	// when the call's own context has none. Nil: calls start their own trace.
 	span trace.Span
+
+	// do sends every request. It is plainDo unless WithDoer replaced it; the
+	// gateways pass one that traces each call.
+	do Doer
+}
+
+// Doer sends req with client. requestID is the connection's ID (#1580), or
+// empty when it has none. A Doer may wrap the call, for example in a trace
+// span, but must send req with client.
+type Doer func(client *http.Client, req *http.Request, requestID string) (*http.Response, error)
+
+// plainDo sends req with client and nothing else.
+func plainDo(client *http.Client, req *http.Request, _ string) (*http.Response, error) {
+	return client.Do(req)
+}
+
+// WithDoer makes the client send every request through do. The gateways use it
+// to trace each call to the API; with no option, requests go out unwrapped. A
+// nil do is ignored.
+func WithDoer(do Doer) Option {
+	return func(c *Client) {
+		if do != nil {
+			c.do = do
+		}
+	}
 }
 
 // WithSpan returns a copy of c whose calls are traced as children of span, the
@@ -105,7 +129,7 @@ func (c *Client) send(client *http.Client, req *http.Request) (*http.Response, e
 	if c.span != nil && !trace.SpanContextFromContext(req.Context()).IsValid() {
 		req = req.WithContext(trace.ContextWithSpan(req.Context(), c.span))
 	}
-	return tracing.Do(client, req, c.requestID)
+	return c.do(client, req, c.requestID)
 }
 
 // Option configures a Client at construction time.
@@ -162,6 +186,7 @@ func New(baseURL string, opts ...Option) *Client {
 		internalBaseURL:    baseURL,
 		internalHTTPClient: httpClient,
 		msgDeadline:        defaultRequestTimeout,
+		do:                 plainDo,
 	}
 	for _, opt := range opts {
 		opt(c)

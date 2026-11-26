@@ -18,9 +18,9 @@ import (
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	gatewayimap "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 )

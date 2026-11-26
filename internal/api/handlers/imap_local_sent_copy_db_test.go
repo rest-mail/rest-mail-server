@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	gatewaysmtp "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // sentCopyLocalBackend answers that only recipient is on this server and

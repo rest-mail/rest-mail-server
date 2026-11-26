@@ -14,9 +14,9 @@ import (
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // imapZoneSession is one IMAP connection to the real gateway, on the real API,

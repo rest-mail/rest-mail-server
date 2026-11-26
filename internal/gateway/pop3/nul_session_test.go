@@ -13,8 +13,8 @@ import (
 
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // nulStored holds a NUL in a header, in text and in a raw attachment.

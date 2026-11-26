@@ -8,7 +8,7 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // These tests are for issue #1553: COPY and APPEND each add a message, even when

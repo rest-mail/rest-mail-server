@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // TestAuthenticate_LogsMaskedFailure verifies a failed IMAP login emits a

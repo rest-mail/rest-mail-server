@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // TestRetrieve_DowngradesUTF8Headers proves RETR hands a client that did not
