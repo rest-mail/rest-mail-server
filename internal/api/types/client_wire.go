@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/pkg/capability"
+	"github.com/rest-mail/rest-mail-server/pkg/mailmodel"
 )
 
 type loginRequest struct {
@@ -62,16 +62,16 @@ type sendMessageRequest struct {
 	// account's address as RFC 5322 Sender. Requires mail:send_on_behalf.
 	OnBehalf bool `json:"on_behalf,omitempty"`
 	// Sender is resolved by the server, never accepted from a request body.
-	Sender        string                  `json:"-"`
-	From          string                  `json:"from,omitempty"`
-	To            []string                `json:"to,omitempty"`
-	Cc            []string                `json:"cc,omitempty"`
-	Bcc           []string                `json:"bcc,omitempty"`
-	Subject       string                  `json:"subject,omitempty"`
-	BodyText      string                  `json:"body_text,omitempty"`
-	BodyHTML      string                  `json:"body_html,omitempty"`
-	InReplyTo     string                  `json:"in_reply_to,omitempty"`
-	CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
+	Sender        string                   `json:"-"`
+	From          string                   `json:"from,omitempty"`
+	To            []string                 `json:"to,omitempty"`
+	Cc            []string                 `json:"cc,omitempty"`
+	Bcc           []string                 `json:"bcc,omitempty"`
+	Subject       string                   `json:"subject,omitempty"`
+	BodyText      string                   `json:"body_text,omitempty"`
+	BodyHTML      string                   `json:"body_html,omitempty"`
+	InReplyTo     string                   `json:"in_reply_to,omitempty"`
+	CalendarEvent *mailmodel.CalendarEvent `json:"calendar_event,omitempty"`
 	// ListUnsubscribe, when set, publishes where a recipient unsubscribes
 	// (#144). Absent, the message carries no List-Unsubscribe fields.
 	ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
@@ -225,54 +225,54 @@ type setDKIMKeyBody struct {
 }
 
 type Message struct {
-	Class             string                `json:"class" enums:"newsletter,receipt,notification,person" description:"Derived on read from the stored headers or, when none are stored, the stored source's header section, and from the class a Sieve rule recorded at delivery, in this order. receipt: a Sieve rule added the imap4flags keyword $receipt; no header says a message is a receipt, so nothing else assigns this class. newsletter: otherwise valid List-Id or HTTP(S)/mailto List-Unsubscribe (list-shaped); notification: otherwise Auto-Submitted auto-generated/auto-replied or Precedence bulk/list/junk; person: otherwise, including malformed signals. Only newsletter may collapse; person must never be hidden. Mail delivered before Sieve rules could assign receipt has no recorded rule class and is not backfilled. Not an authenticity or safety verdict"`
-	ID                uint                  `json:"id"`
-	MailboxID         uint                  `json:"mailbox_id"`
-	Folder            string                `json:"folder"`
-	MsgID             string                `json:"message_id" description:"The RFC 5322 Message-ID"`
-	InReplyTo         string                `json:"in_reply_to"`
-	References        string                `json:"references"`
-	ThreadID          string                `json:"thread_id"`
-	Due               *time.Time            `json:"due,omitempty"`
-	DueSource         *string               `json:"due_source,omitempty" enums:"user,rule,parsed"`
-	SnoozedUntil      *time.Time            `json:"snoozed_until,omitempty" description:"The thread's snooze deadline, when snoozed; search and direct reads still include it"`
-	AwaitingSince     *time.Time            `json:"awaiting_since,omitempty" description:"When the thread's last message came from this account. Absent when someone else wrote last. Derived on read"`
-	Sender            string                `json:"sender"`
-	SenderName        string                `json:"sender_name"`
-	RecipientsTo      json.RawMessage       `json:"recipients_to"`
-	RecipientsCc      json.RawMessage       `json:"recipients_cc"`
-	Subject           string                `json:"subject"`
-	BodyText          string                `json:"body_text,omitempty"`
-	BodyHTML          string                `json:"body_html,omitempty"`
-	Headers           json.RawMessage       `json:"headers,omitempty" description:"The message's header fields as it arrived, each name with its values; an empty array when none were recorded (mail sent from here, drafts, mail delivered by a gateway, and imported or federated mail whose fields come to 64 KiB or more). GET /messages/{id}/raw answers them all"`
-	SealedHash        string                `json:"sealed_hash,omitempty" description:"SHA-256 receipt seal (restmail-seal-v1); covers the exact stored source and displayed headers and bodies. Absent on historical unsealed messages. Does not authenticate the author or establish safety"`
-	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
-	SizeBytes         int                   `json:"size_bytes"`
-	RawSize           int                   `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
-	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count POP3 RETR sends a client that has not enabled UTF-8: the stored raw message with its headers downgraded to ASCII (RFC 6857) and every line ending in CRLF; 0 when not measured"`
-	POP3UTF8Size      int                   `json:"pop3_utf8_size" description:"The octet count POP3 RETR sends a client that has enabled UTF-8: the stored raw message with every line ending in CRLF; 0 when not measured"`
-	IMAPSize          int                   `json:"imap_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has not enabled UTF-8, with headers 7-bit and non-textual data transfer-encoded (RFC 3501 section 7.4.2); the stored message does not change; 0 when no raw message is stored"`
-	IMAPUTF8Size      int                   `json:"imap_utf8_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has enabled UTF-8; 0 when no raw message is stored"`
-	ReceivedTLS       *bool                 `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
-	TLSVersion        string                `json:"tls_version,omitempty"`
-	HasAttachments    bool                  `json:"has_attachments"`
-	IsAnswered        bool                  `json:"is_answered,omitempty"`
-	IsRead            bool                  `json:"is_read"`
-	IsDSN             bool                  `json:"is_dsn" description:"A delivery status notification this server generated"`
-	IsFlagged         bool                  `json:"is_flagged"`
-	IsStarred         bool                  `json:"is_starred"`
-	IsDraft           bool                  `json:"is_draft"`
-	Keywords          []string              `json:"keywords,omitempty"`
-	IMAPDeleted       bool                  `json:"imap_deleted,omitempty"`
-	ModSeq            uint64                `json:"mod_seq,omitempty" minimum:"1" description:"The message's IMAP mod-sequence (RFC 7162 §3.1): it rises whenever the message is stored or moved into its folder and whenever a flag changes, and never falls. Send it back as unchanged_since to change the message only if nothing changed it since"`
-	IsDeleted         bool                  `json:"is_deleted"`
-	ReceivedAt        time.Time             `json:"received_at"`
-	DateHeader        *time.Time            `json:"date_header"`
-	CreatedAt         time.Time             `json:"created_at"`
-	UpdatedAt         time.Time             `json:"updated_at"`
-	Mailbox           *Mailbox              `json:"mailbox,omitempty" description:"Present only when the mailbox association is loaded"`
-	AuthResults       []pipeline.AuthResult `json:"auth_results,omitempty" description:"The SPF, DKIM, ARC and DMARC verdicts this server reached at delivery; omitted when it reached none, as on a sent message or a draft"`
-	AuthVerdict       string                `json:"auth_verdict,omitempty" enums:"signed,unsigned,mismatch" description:"One state for the reader, derived from auth_results. mismatch means DMARC failed; unsigned means nothing verified, which is not a failure. None of these says a message is safe"`
+	Class             string                 `json:"class" enums:"newsletter,receipt,notification,person" description:"Derived on read from the stored headers or, when none are stored, the stored source's header section, and from the class a Sieve rule recorded at delivery, in this order. receipt: a Sieve rule added the imap4flags keyword $receipt; no header says a message is a receipt, so nothing else assigns this class. newsletter: otherwise valid List-Id or HTTP(S)/mailto List-Unsubscribe (list-shaped); notification: otherwise Auto-Submitted auto-generated/auto-replied or Precedence bulk/list/junk; person: otherwise, including malformed signals. Only newsletter may collapse; person must never be hidden. Mail delivered before Sieve rules could assign receipt has no recorded rule class and is not backfilled. Not an authenticity or safety verdict"`
+	ID                uint                   `json:"id"`
+	MailboxID         uint                   `json:"mailbox_id"`
+	Folder            string                 `json:"folder"`
+	MsgID             string                 `json:"message_id" description:"The RFC 5322 Message-ID"`
+	InReplyTo         string                 `json:"in_reply_to"`
+	References        string                 `json:"references"`
+	ThreadID          string                 `json:"thread_id"`
+	Due               *time.Time             `json:"due,omitempty"`
+	DueSource         *string                `json:"due_source,omitempty" enums:"user,rule,parsed"`
+	SnoozedUntil      *time.Time             `json:"snoozed_until,omitempty" description:"The thread's snooze deadline, when snoozed; search and direct reads still include it"`
+	AwaitingSince     *time.Time             `json:"awaiting_since,omitempty" description:"When the thread's last message came from this account. Absent when someone else wrote last. Derived on read"`
+	Sender            string                 `json:"sender"`
+	SenderName        string                 `json:"sender_name"`
+	RecipientsTo      json.RawMessage        `json:"recipients_to"`
+	RecipientsCc      json.RawMessage        `json:"recipients_cc"`
+	Subject           string                 `json:"subject"`
+	BodyText          string                 `json:"body_text,omitempty"`
+	BodyHTML          string                 `json:"body_html,omitempty"`
+	Headers           json.RawMessage        `json:"headers,omitempty" description:"The message's header fields as it arrived, each name with its values; an empty array when none were recorded (mail sent from here, drafts, mail delivered by a gateway, and imported or federated mail whose fields come to 64 KiB or more). GET /messages/{id}/raw answers them all"`
+	SealedHash        string                 `json:"sealed_hash,omitempty" description:"SHA-256 receipt seal (restmail-seal-v1); covers the exact stored source and displayed headers and bodies. Absent on historical unsealed messages. Does not authenticate the author or establish safety"`
+	CalendarEventsRaw json.RawMessage        `json:"calendar_events,omitempty"`
+	SizeBytes         int                    `json:"size_bytes"`
+	RawSize           int                    `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
+	DowngradedSize    int                    `json:"downgraded_size" description:"The octet count POP3 RETR sends a client that has not enabled UTF-8: the stored raw message with its headers downgraded to ASCII (RFC 6857) and every line ending in CRLF; 0 when not measured"`
+	POP3UTF8Size      int                    `json:"pop3_utf8_size" description:"The octet count POP3 RETR sends a client that has enabled UTF-8: the stored raw message with every line ending in CRLF; 0 when not measured"`
+	IMAPSize          int                    `json:"imap_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has not enabled UTF-8, with headers 7-bit and non-textual data transfer-encoded (RFC 3501 section 7.4.2); the stored message does not change; 0 when no raw message is stored"`
+	IMAPUTF8Size      int                    `json:"imap_utf8_size" description:"The octet count of the message as an IMAP FETCH sends it to a session that has enabled UTF-8; 0 when no raw message is stored"`
+	ReceivedTLS       *bool                  `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
+	TLSVersion        string                 `json:"tls_version,omitempty"`
+	HasAttachments    bool                   `json:"has_attachments"`
+	IsAnswered        bool                   `json:"is_answered,omitempty"`
+	IsRead            bool                   `json:"is_read"`
+	IsDSN             bool                   `json:"is_dsn" description:"A delivery status notification this server generated"`
+	IsFlagged         bool                   `json:"is_flagged"`
+	IsStarred         bool                   `json:"is_starred"`
+	IsDraft           bool                   `json:"is_draft"`
+	Keywords          []string               `json:"keywords,omitempty"`
+	IMAPDeleted       bool                   `json:"imap_deleted,omitempty"`
+	ModSeq            uint64                 `json:"mod_seq,omitempty" minimum:"1" description:"The message's IMAP mod-sequence (RFC 7162 §3.1): it rises whenever the message is stored or moved into its folder and whenever a flag changes, and never falls. Send it back as unchanged_since to change the message only if nothing changed it since"`
+	IsDeleted         bool                   `json:"is_deleted"`
+	ReceivedAt        time.Time              `json:"received_at"`
+	DateHeader        *time.Time             `json:"date_header"`
+	CreatedAt         time.Time              `json:"created_at"`
+	UpdatedAt         time.Time              `json:"updated_at"`
+	Mailbox           *Mailbox               `json:"mailbox,omitempty" description:"Present only when the mailbox association is loaded"`
+	AuthResults       []mailmodel.AuthResult `json:"auth_results,omitempty" description:"The SPF, DKIM, ARC and DMARC verdicts this server reached at delivery; omitted when it reached none, as on a sent message or a draft"`
+	AuthVerdict       string                 `json:"auth_verdict,omitempty" enums:"signed,unsigned,mismatch" description:"One state for the reader, derived from auth_results. mismatch means DMARC failed; unsigned means nothing verified, which is not a failure. None of these says a message is safe"`
 }
 
 type Mailbox struct {
