@@ -306,3 +306,34 @@ func TestGatewaySessionSurvivesALongIdle(t *testing.T) {
 		t.Fatalf("folders after the idle limit = %d, want 401", code)
 	}
 }
+
+// The authorization matrix's principals (tests/contract/authorization.py) hold
+// no gateway session: an account's signed-in session, an app password sent as
+// HTTP Basic, or nothing. closeGatewaySession takes only a gateway session's
+// own token (GatewaySessionAuth), so the matrix cannot send its 204 as any of
+// them: its cells stay unsent. This proves what the matrix would ask: from the
+// gateway's own certificate, each of those credentials is refused 400
+// session_required and closes nothing.
+func TestGatewaySessionCloseRefusesTheMatrixPrincipalsCredentials(t *testing.T) {
+	g := newGatewayFixture(t)
+	token := g.open(imapCN, "imap")
+	for _, tc := range []struct{ principal, authorization string }{
+		{"none", ""},
+		{"signed-in session", "Bearer " + g.session},
+		{"app password as Basic", basic(g.address, g.app.Password)},
+	} {
+		t.Run(tc.principal, func(t *testing.T) {
+			rr := g.as(imapCN, http.MethodDelete, "/api/v1/gateway-sessions/current", tc.authorization, "")
+			if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), `"session_required"`) {
+				t.Fatalf("close as %s = %d %s, want 400 session_required", tc.principal, rr.Code, rr.Body.String())
+			}
+			if code := g.folders(imapCN, token); code != http.StatusOK {
+				t.Fatalf("the gateway's session after a close as %s: folders = %d, want 200", tc.principal, code)
+			}
+		})
+	}
+	var open int64
+	if err := g.db.Model(&models.GatewaySession{}).Where("closed_at IS NULL").Count(&open).Error; err != nil || open != 1 {
+		t.Fatalf("open sessions after the refused closes = %d (%v), want 1", open, err)
+	}
+}

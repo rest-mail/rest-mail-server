@@ -38,6 +38,17 @@ the credential"), so its admin is that administrator from the start (#1162).
 The account with no password cannot sign in, so it has no separate credential
 from `none`; there is no agent principal until the model has agents (#341).
 
+closeGatewaySession's 204 stays unsent for every principal ("a hook changed
+the credential"), and that is the honest answer here: the operation takes only
+a gateway session's own token (GatewaySessionAuth), which no principal holds,
+so its hook sends a freshly opened session's token instead. Vertrag 0.47 can
+leave it out only through `skip`, which would also drop this run's passing 204
+example, so it is not skipped. What the matrix would ask is proven in process:
+TestGatewaySessionCloseRefusesTheMatrixPrincipalsCredentials sends no
+credential, a signed-in session and an app password as Basic from the IMAP
+gateway's certificate, and each is refused 400 session_required and closes
+nothing (#2099).
+
 The same flat roles make two operations report a bypass that is not one, so
 the matrix does not send them (OWN_ACCOUNT). Saving a draft without a from
 and listing scheduled sends name no mailbox: both act on the caller's own
