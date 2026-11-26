@@ -122,7 +122,7 @@ messages a day, though `p=none` is enough, and requires the `From:` domain to
 align with SPF or DKIM
 ([Google, Email sender guidelines](https://support.google.com/a/answer/81126)).
 Outlook.com has required the same of senders above 5,000 a day since May 5,
-2025 ([Microsoft, 2025](https://techcommunity.microsoft.com/blog/microsoftdefenderforoffice365blog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730)).
+2025 ([Microsoft, 2025](https://techcommunity.microsoft.com/blog/microsoftthreatprotectionblog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730)).
 See [Bulk mail](bulk-mail.md).
 
 ## What goes wrong
@@ -198,7 +198,7 @@ and look for `dmarc=pass` in its `Authentication-Results`.
 - [RFC 7960](https://www.rfc-editor.org/rfc/rfc7960): DMARC and indirect email flows.
 - PCWorld: [Yahoo email anti-spoofing policy breaks mailing lists (2014)](https://www.pcworld.com/article/444768/yahoo-email-antispoofing-policy-breaks-mailing-lists.html).
 - Google: [Email sender guidelines](https://support.google.com/a/answer/81126).
-- Microsoft: [Outlook's new requirements for high-volume senders (2025)](https://techcommunity.microsoft.com/blog/microsoftdefenderforoffice365blog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730).
+- Microsoft: [Outlook's new requirements for high-volume senders (2025)](https://techcommunity.microsoft.com/blog/microsoftthreatprotectionblog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730).
 - REST Mail: [`internal/pipeline/filters/dmarc_check.go`](../../../internal/pipeline/filters/dmarc_check.go),
   [`internal/dmarcreport/`](../../../internal/dmarcreport/),
   [`internal/dns/mail_records.go`](../../../internal/dns/mail_records.go).
