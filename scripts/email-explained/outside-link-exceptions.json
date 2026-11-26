@@ -3,5 +3,10 @@
     "url": "https://security.googleblog.com/2019/04/gmail-making-email-more-secure-with-mta.html",
     "reason": "Google's security blog answers the daily checker with HTTP 429 (rate limited). Opened by hand on 2026-11-21: the post is live and still describes Gmail's MTA-STS and TLS reporting rollout, which the guide cites.",
     "expires": "2027-02-21"
+  },
+  {
+    "url": "https://techcommunity.microsoft.com/blog/microsoftthreatprotectionblog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730",
+    "reason": "Microsoft Tech Community answers GitHub's runners with HTTP 403 (#2298). Opened by hand on 2026-11-26: the post is live at this address (the old microsoftdefenderforoffice365blog path now redirects here) and still sets Outlook's SPF, DKIM and DMARC requirements for senders of more than 5,000 messages a day, which the guide cites.",
+    "expires": "2027-02-26"
   }
 ]

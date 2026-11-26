@@ -50,7 +50,7 @@ Gmail's current guidelines
 Microsoft followed for Outlook.com: from May 5, 2025, domains sending more
 than 5,000 messages a day must pass SPF, DKIM and DMARC, and mail that does not
 is rejected with `550 5.7.515`
-([Microsoft, 2025](https://techcommunity.microsoft.com/blog/microsoftdefenderforoffice365blog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730)).
+([Microsoft, 2025](https://techcommunity.microsoft.com/blog/microsoftthreatprotectionblog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730)).
 
 And the rules are being enforced: "Starting November 2025, Gmail is ramping up
 its enforcement on non-compliant traffic. Messages that fail to meet the email
@@ -139,7 +139,7 @@ No page, no confirmation. The rules that make it safe (§3.1, §4):
 - Google: [New Gmail protections for a safer, less spammy inbox (2023)](https://blog.google/products/gmail/gmail-security-authentication-spam-protection/),
   [Email sender guidelines](https://support.google.com/a/answer/81126),
   [Email sender guidelines FAQ](https://support.google.com/a/answer/14229414) (read 2026-10-23).
-- Microsoft: [Outlook's new requirements for high-volume senders (2025)](https://techcommunity.microsoft.com/blog/microsoftdefenderforoffice365blog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730).
+- Microsoft: [Outlook's new requirements for high-volume senders (2025)](https://techcommunity.microsoft.com/blog/microsoftthreatprotectionblog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730).
 - [RFC 2369](https://www.rfc-editor.org/rfc/rfc2369): List-Unsubscribe and the other list header fields.
 - [RFC 8058](https://www.rfc-editor.org/rfc/rfc8058): Signaling One-Click Functionality for List Email Headers.
 - REST Mail: [`internal/api/handlers/list_unsubscribe.go`](../../../internal/api/handlers/list_unsubscribe.go),
