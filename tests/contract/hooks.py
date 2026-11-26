@@ -4236,9 +4236,16 @@ def pace_the_coverage_sends(transaction):
     # coverage and fuzz processes send them back to back. The outbound pipeline's
     # rate_limit filter holds a sender's mail past 20 a minute (202, held), so
     # forward's success example, sent after the send and draft probes, was held
-    # and its valid probes skipped. Spacing the sends keeps them under it; the
-    # other processes send few enough.
-    if in_the_coverage_process() or os.environ.get("CONTRACT_FUZZ") == "1":
+    # and its valid probes skipped. Spacing the sends keeps them under it.
+    # The authorization phase sends as many: each message cell's resource is a
+    # real send by the administrator, made just before the cell, so unpaced it
+    # sent about 40 in two seconds and ten cells were held and unsent (#2099).
+    # The other processes send few enough.
+    if (
+        in_the_coverage_process()
+        or os.environ.get("CONTRACT_FUZZ") == "1"
+        or os.environ.get("CONTRACT_AUTHORIZATION") == "1"
+    ):
         rate_limits.pace_sends()
 
 
