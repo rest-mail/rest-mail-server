@@ -17,8 +17,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"github.com/rest-mail/rest-mail-server/pkg/envelope"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )

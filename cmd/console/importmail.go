@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	shared "github.com/rest-mail/rest-mail-server/pkg/mailimport"
 )
 

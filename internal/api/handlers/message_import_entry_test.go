@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // importMessage imports a message that has been decoded already, past the route's reading of a

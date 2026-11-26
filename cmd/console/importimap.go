@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 const importIMAPUsage = `restmail import-imap — copy an IMAP account through the public import API

@@ -13,10 +13,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

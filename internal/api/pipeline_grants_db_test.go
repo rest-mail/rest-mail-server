@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func TestGrants_DomainAdminPipelinePagesMatchTheirDomain(t *testing.T) {

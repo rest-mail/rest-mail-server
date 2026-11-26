@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // Every write that answers with a full message answers the mod_seq the trigger stored, not the

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func TestTypedMessageUpdatePreservesFalseFlags(t *testing.T) {

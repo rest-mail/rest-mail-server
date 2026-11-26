@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"net/http"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"

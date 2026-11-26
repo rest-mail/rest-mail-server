@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 )
 

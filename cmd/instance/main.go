@@ -25,10 +25,10 @@ import (
 
 	"github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/fleet"
 	"github.com/rest-mail/rest-mail-server/internal/instance"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func main() {

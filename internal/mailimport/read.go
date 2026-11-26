@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	shared "github.com/rest-mail/rest-mail-server/pkg/mailimport"
 )
 

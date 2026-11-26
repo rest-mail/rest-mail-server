@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // `restmail status` asks a server what it is and which version it runs.

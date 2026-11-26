@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"io"
 	"net/http"
 	"net/url"

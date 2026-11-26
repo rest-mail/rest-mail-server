@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func TestImportedDeletedVisibilityClearingAndPermanentRemoval(t *testing.T) {

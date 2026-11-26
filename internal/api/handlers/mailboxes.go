@@ -11,12 +11,12 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 )
 

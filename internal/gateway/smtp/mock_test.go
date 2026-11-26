@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and

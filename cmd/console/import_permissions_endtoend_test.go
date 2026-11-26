@@ -18,12 +18,12 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/rest-mail/rest-mail-server/internal/api"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/importsession"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 const migrationImportMail = "From: source@example.net\r\nSubject: historical message\r\nMessage-ID: <historical@example.net>\r\n\r\nprivate historical body\r\n"

@@ -9,8 +9,8 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )

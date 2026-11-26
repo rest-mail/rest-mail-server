@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func TestImportMboxChecksMetadataBeforeCallingAPI(t *testing.T) {

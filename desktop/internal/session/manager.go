@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	keyring "github.com/zalando/go-keyring"
 )
 

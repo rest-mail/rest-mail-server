@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // receivedMessage is a message carrying n Received: fields.

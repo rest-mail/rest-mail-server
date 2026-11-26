@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func sourceMaildir(t *testing.T) string {

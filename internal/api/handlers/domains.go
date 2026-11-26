@@ -11,7 +11,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/crypto"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
@@ -19,6 +18,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"golang.org/x/net/idna"
 	"gorm.io/gorm"
 )

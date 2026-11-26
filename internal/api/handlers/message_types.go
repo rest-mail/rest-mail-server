@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // Message is a message in an account as the mail routes answer it: its envelope, its bodies,

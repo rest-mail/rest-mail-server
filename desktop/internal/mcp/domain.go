@@ -13,7 +13,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/desktop/internal/localstore"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/thunderbird"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 type SessionClient interface {

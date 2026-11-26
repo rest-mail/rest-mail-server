@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/timezone"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 type setAccountTimeZoneRequest struct {

@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/importsession"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 )
 

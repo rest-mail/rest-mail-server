@@ -16,7 +16,7 @@ import (
 	"github.com/emersion/go-message"
 	_ "github.com/emersion/go-message/charset"
 	mail "github.com/emersion/go-message/mail"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 type Attachment struct {

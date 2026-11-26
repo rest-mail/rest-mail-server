@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // importSessionAPI is the fake API with import sessions (#1498): it records the

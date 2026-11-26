@@ -20,8 +20,8 @@ import (
 	"github.com/mdp/qrterminal/v4"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/setuplink"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )

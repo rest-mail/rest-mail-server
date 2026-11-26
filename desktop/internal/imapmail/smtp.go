@@ -16,7 +16,7 @@ import (
 	"time"
 
 	mail "github.com/emersion/go-message/mail"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func (store *Store) smtp(ctx context.Context, account Account, password string) (*smtp.Client, func(), error) {

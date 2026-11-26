@@ -22,7 +22,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -31,6 +30,7 @@ import (
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 )
 
