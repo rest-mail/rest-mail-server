@@ -15,7 +15,7 @@ import (
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 	"gorm.io/gorm"
 )
 

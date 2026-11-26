@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // Both of the SMTP gateway's clients carry a connection's ID (#1580).

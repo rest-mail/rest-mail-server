@@ -8,8 +8,8 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 	"golang.org/x/text/encoding/ianaindex"
 
-	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/pkg/mailaddr"
 )
 
 // unreadCharsets is what every list from a parse is told, one value so that two lists of a field compare

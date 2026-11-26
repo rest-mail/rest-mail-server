@@ -17,7 +17,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/rest-mail/rest-mail-server/internal/boundedpool"
-	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
+	"github.com/rest-mail/rest-mail-server/pkg/mailaddr"
 )
 
 // wordDecoder reads a field's RFC 2047 encoded-words as go-message does, at no cost per word beyond the

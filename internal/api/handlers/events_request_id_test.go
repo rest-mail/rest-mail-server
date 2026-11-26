@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // captureLogs sends the default logger's lines, request_id added as the

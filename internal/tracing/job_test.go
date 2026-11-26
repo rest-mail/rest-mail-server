@@ -10,9 +10,9 @@ import (
 
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/tracing/tracingtest"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // A background job is a trace of its own (#1580): its root span starts a new

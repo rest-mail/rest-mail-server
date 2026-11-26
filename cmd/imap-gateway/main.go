@@ -22,9 +22,9 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/version"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 func main() {

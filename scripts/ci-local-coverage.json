@@ -111,7 +111,7 @@
       "local": "PostgreSQL"
     },
     "Run unit tests with race detector": {
-      "sha256": "4a43de014c075c99c5e54a496538d2915431d0bfaa641bd08e74d1f8d2e01210",
+      "sha256": "e39a35a5b8e89b31bc51835c7f1315015f50c7c0be929bb5d1158edbc67148f4",
       "local": "Go tests"
     },
     "Upload example proofs": {

@@ -34,7 +34,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // Name is the instrumentation scope every REST Mail span is made under.

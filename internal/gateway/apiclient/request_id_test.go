@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // Every call a connection's client makes carries the connection's ID, on the

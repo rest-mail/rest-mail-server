@@ -23,9 +23,9 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/timezone"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too

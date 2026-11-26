@@ -15,9 +15,9 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // Server listens for SMTP connections and serves them with go-smtp, one

@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // gatewayTLS is the connection state of a gateway whose client certificate

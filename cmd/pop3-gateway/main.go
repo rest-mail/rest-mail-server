@@ -19,8 +19,8 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 func main() {
