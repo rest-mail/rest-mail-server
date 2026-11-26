@@ -1,0 +1,45 @@
+# Internal packages that cross an app boundary, and every consumer allowed to
+# link them (#2217). TestInternalPackageBoundary fails on a link not listed here.
+# Rewrite with:
+#   go test ./internal/testguard -run TestInternalPackageBoundary -update-boundary
+internal/acme cmd/api,cmd/instance
+internal/api/endpoint cmd/api,cmd/console,cmd/instance
+internal/api/respond cmd/api,cmd/console,cmd/instance
+internal/attachmentstore cmd/api,cmd/sieve-migrate
+internal/audit cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/auth cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/bootstrap cmd/api,cmd/seed
+internal/boundedpool cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/config cmd/api,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/crypto cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/db cmd/api,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/db/models cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/db/repositories cmd/api,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/dkimrotate cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/sieve-migrate,cmd/smtp-gateway
+internal/dmarcreceive cmd/api,cmd/sieve-migrate
+internal/dns cmd/api,cmd/console
+internal/gateway/bancheck cmd/imap-gateway,cmd/pop3-gateway,cmd/smtp-gateway
+internal/gateway/connlimiter cmd/imap-gateway,cmd/pop3-gateway,cmd/smtp-gateway
+internal/gateway/metricsrv cmd/imap-gateway,cmd/pop3-gateway,cmd/smtp-gateway
+internal/gateway/rawmsg cmd/imap-gateway,cmd/pop3-gateway
+internal/gateway/tlsutil cmd/imap-gateway,cmd/pop3-gateway,cmd/smtp-gateway
+internal/grants cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/instance cmd/instance,cmd/seed
+internal/mail cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway,pkg/mailimport
+internal/messageseal cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/metrics cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/sieve-migrate,cmd/smtp-gateway
+internal/mime cmd/api,cmd/console,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/mtls cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/netallow cmd/api,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/nxdomain cmd/api,cmd/sieve-migrate
+internal/outbound cmd/api,cmd/imap-gateway,cmd/instance,cmd/pop3-gateway,cmd/rotate-key,cmd/sieve-migrate,cmd/smtp-gateway
+internal/pipeline cmd/api,cmd/console,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/pipeline/filters cmd/api,cmd/sieve-migrate
+internal/ratelimit cmd/api,cmd/smtp-gateway
+internal/rules cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/sendlimits cmd/api,cmd/sieve-migrate,cmd/smtp-gateway
+internal/testreset cmd/api,cmd/smtp-gateway
+internal/timezone cmd/api,cmd/imap-gateway
+internal/tlsfiles cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/tracing cmd/api,cmd/console,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/version cmd/api,cmd/imap-gateway
