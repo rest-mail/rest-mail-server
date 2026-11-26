@@ -200,6 +200,70 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.change("api.json", lambda value: value.update(scan_sha256=evidence.sha256(self.directory / "api.scan.json")))
         self.refused("policy refused CVE-2025-1234")
 
+    def registry_fixture(self, name):
+        config = "sha256:" + "c" * 64
+        manifest = json.dumps({"config": {"digest": config}}).encode()
+        manifest_digest = "sha256:" + evidence.hashlib.sha256(manifest).hexdigest()
+        index = json.dumps({"manifests": [
+            {"digest": manifest_digest, "platform": {"os": "linux", "architecture": "amd64"}},
+            {"digest": "sha256:" + "d" * 64, "platform": {"os": "unknown", "architecture": "unknown"}}]}).encode()
+        index_digest = "sha256:" + evidence.hashlib.sha256(index).hexdigest()
+        raw = {f"ghcr.io/rest-mail/{name}@{index_digest}": index, f"ghcr.io/rest-mail/{name}@{manifest_digest}": manifest}
+        fetch = lambda command, **kwargs: SimpleNamespace(stdout=raw[command[-1]])
+        return config, index_digest, fetch
+
+    def test_registry_pull_accepts_either_image_store_name_for_the_verified_chain(self):
+        config, index, fetch = self.registry_fixture("api")
+        for store, local in (("classic", config), ("containerd", index)):
+            with self.subTest(store=store), patch.object(evidence.subprocess, "run", side_effect=fetch), \
+                    patch.object(evidence, "run", return_value=SimpleNamespace(stdout=local + "\n")):
+                self.assertEqual(evidence.inspect_registry(self.directory, "ghcr.io/rest-mail/api", "api", index, "linux/amd64"),
+                                 (config, local))
+
+    def test_registry_pull_naming_another_image_is_refused(self):
+        config, index, fetch = self.registry_fixture("api")
+        for local in ("sha256:" + "e" * 64, "sha256:" + "d" * 64):
+            with self.subTest(local=local), patch.object(evidence.subprocess, "run", side_effect=fetch), \
+                    patch.object(evidence, "run", return_value=SimpleNamespace(stdout=local)):
+                with self.assertRaisesRegex(ValueError, "different configuration"):
+                    evidence.inspect_registry(self.directory, "ghcr.io/rest-mail/api", "api", index, "linux/amd64")
+
+    def containerd_builds(self):
+        registry = {name: "sha256:" + f"{index:064x}" for index, name in enumerate(evidence.RELEASE_IMAGES, 100)}
+        evidence.write_json(self.directory / "builds.json", {
+            "commit": COMMIT, "images": IMAGES, "registry_images": registry, "local_images": registry})
+        return registry
+
+    def run_fresh_start(self, running):
+        api = [{"NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "5000"}]}}}]
+        stages = SimpleNamespace(contract_examples=lambda: "exchanges=8")
+        with patch.object(evidence, "image_ids", return_value=running), \
+                patch.object(evidence, "run", return_value=SimpleNamespace(stdout=json.dumps(api))), \
+                patch.object(evidence.cluster_e2e, "Stages", return_value=stages):
+            return evidence.fresh_start(SimpleNamespace(directory=self.directory, endpoint="http://127.0.0.1:5000",
+                                                        container=[f"{name}={name}" for name in running]))
+
+    def test_containerd_store_fresh_start_records_the_built_configurations(self):
+        registry = self.containerd_builds()
+        self.assertEqual(self.run_fresh_start(registry), 0)
+        self.assertEqual(json.loads((self.directory / "fresh-start.json").read_text())["images"], IMAGES)
+        self.assertEqual(evidence.check(self.directory, COMMIT, IMAGES), [])
+
+    def test_containerd_store_fresh_start_refuses_unrecorded_running_images(self):
+        self.containerd_builds()
+        with self.assertRaisesRegex(ValueError, "exactly the seven built image digests"):
+            self.run_fresh_start(IMAGES)
+        self.refused("running image digests")
+
+    def test_local_image_name_must_be_its_configuration_or_registry_digest(self):
+        registry = {name: "sha256:" + f"{index:064x}" for index, name in enumerate(evidence.RELEASE_IMAGES, 100)}
+        for local in ({**registry, "api": "sha256:" + "f" * 64}, {**IMAGES, "api": "sha256:" + "f" * 64},
+                      {name: digest for name, digest in registry.items() if name != "api"}):
+            with self.subTest(local=local):
+                with self.assertRaisesRegex(ValueError, "neither its configuration nor its registry digest"):
+                    evidence.local_images({"images": IMAGES, "registry_images": registry, "local_images": local})
+        self.assertEqual(evidence.local_images({"images": IMAGES}), IMAGES)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -132,6 +132,7 @@ def main(argv=None):
     builds = json.loads((args.directory / "builds.json").read_text())
     if set(builds["images"]) != set(evidence.RELEASE_IMAGES):
         parser.error("all seven release images must have built successfully")
+    local = evidence.local_images(builds)
     evidence.invalidate_fresh_start(args.directory, builds["commit"])
     tls_receipt = args.directory / "tls-reload.json"
     evidence.write_json(tls_receipt, {"commit": builds["commit"], "exit_code": 1})
@@ -196,8 +197,8 @@ def main(argv=None):
                 return ["-v", f"{target}:/certs:ro"]
 
             running = {}
-            running["js-filter"] = start("js-filter", builds["images"]["js-filter"], {"JS_FILTER_TOKEN": secret})
-            running["api"] = start("api", builds["images"]["api"], {
+            running["js-filter"] = start("js-filter", local["js-filter"], {"JS_FILTER_TOKEN": secret})
+            running["api"] = start("api", local["api"], {
                 **common, "API_TLS_TERMINATED_BY_PROXY": "true", "JS_FILTER_URL": "http://js-filter:3100",
                 "INTERNAL_MTLS_SERVER_CERT": "/certs/internal-server.crt", "INTERNAL_MTLS_SERVER_KEY": "/certs/internal-server.key"},
                 ports=[8080, 8443], extra=certs("api", ["internal-server.crt", "internal-server.key"]))
@@ -211,7 +212,7 @@ def main(argv=None):
                     identities += ["internal-smtp-submission.crt", "internal-smtp-submission.key"]
                     environment.update(INTERNAL_MTLS_SUBMISSION_CERT="/certs/internal-smtp-submission.crt",
                                        INTERNAL_MTLS_SUBMISSION_KEY="/certs/internal-smtp-submission.key")
-                running[name] = start(name, builds["images"][name], environment, ports=[port, 25] if name == "smtp-gateway" else [port], extra=certs(name, identities))
+                running[name] = start(name, local[name], environment, ports=[port, 25] if name == "smtp-gateway" else [port], extra=certs(name, identities))
                 context = ssl.create_default_context(cafile=str(directory / "public/internal-ca.crt"))
                 address = endpoint(running[name], port).removeprefix("http://")
                 host, port_number = address.rsplit(":", 1)
@@ -225,7 +226,7 @@ def main(argv=None):
                 else:
                     raise ValueError(f"{name} never completed a verified TLS handshake")
             for name, path in (("webmail", "/webmail/"), ("admin", "/admin/")):
-                running[name] = start(name, builds["images"][name], {}, ports=[8080])
+                running[name] = start(name, local[name], {}, ports=[8080])
                 wait_http(endpoint(running[name], 8080) + path)
             front = start("https-front", FRONT_IMAGE, {}, ports=[443],
                           extra=["-v", f"{directory / 'smtp-gateway'}:/certs:ro", "--entrypoint", "sh"],
@@ -236,10 +237,10 @@ def main(argv=None):
                 result = evidence.fresh_start(SimpleNamespace(directory=args.directory, endpoint=api_endpoint,
                                                               container=[f"{name}={container}" for name, container in running.items()]))
             finally:
-                if evidence.image_ids(running) != builds["images"]:
+                if evidence.image_ids(running) != local:
                     raise ValueError("TLS reload containers must run exactly the seven built image configurations")
                 observations = reload_tls(directory, running, front)
-                if evidence.image_ids(running) != builds["images"]:
+                if evidence.image_ids(running) != local:
                     raise ValueError("running images changed during TLS reload")
                 evidence.write_json(tls_receipt, {"commit": builds["commit"], "images": builds["images"],
                                                 "at": datetime.now(timezone.utc).isoformat(), "exit_code": 0,
