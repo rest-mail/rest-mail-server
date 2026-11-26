@@ -3,6 +3,8 @@ package respond
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/rest-mail/rest-mail-server/pkg/envelope"
 )
 
 // DataResponse wraps a single resource.
@@ -16,12 +18,9 @@ type ListResponse struct {
 	Pagination *Pagination `json:"pagination,omitempty"`
 }
 
-// Pagination contains cursor-based pagination info.
-type Pagination struct {
-	Cursor  string `json:"cursor,omitempty"`
-	HasMore bool   `json:"has_more"`
-	Total   int64  `json:"total,omitempty"`
-}
+// Pagination contains cursor-based pagination info. It is the wire type in
+// pkg/envelope, which clients decode.
+type Pagination = envelope.Pagination
 
 // ErrorResponse is the standard error response format.
 type ErrorResponse struct {

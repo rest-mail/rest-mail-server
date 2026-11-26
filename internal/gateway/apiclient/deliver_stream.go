@@ -10,7 +10,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/pkg/envelope"
 )
 
 // deliverChunk is how much of the request is buffered on its way to the API.
@@ -58,7 +58,7 @@ func (c *Client) DeliverMessageFrom(req *DeliverRequest, content DeliverContent)
 		return nil, fmt.Errorf("POST %s: %w", path, err)
 	}
 	defer resp.Body.Close()
-	var wire endpoint.Data[json.RawMessage]
+	var wire envelope.Data[json.RawMessage]
 	if err := c.decodeResponse(resp, &wire); err != nil {
 		return nil, err
 	}
