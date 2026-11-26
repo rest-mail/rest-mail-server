@@ -3710,6 +3710,76 @@ def on_a_message_of_its_own(transaction):
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
 
 
+# What a forward's sender needs free of its storage cap. A forward stores its
+# sent copy against that cap (handlers/forward_attachments.go) and is refused
+# 422 mailbox_full when the copy does not fit. The probes forward a fixture
+# message of a few kilobytes.
+SENT_COPY_ROOM_BYTES = 1 << 20
+
+
+@hooks.before("forwardMessage")
+def a_forward_sender_with_room(transaction):
+    # A forward's valid probes send from a generated address, as sendMessage's
+    # do, so the sender gets the same hosted, signing domain and mailbox, and
+    # its generated recipients stay inside the topology.
+    #
+    # An earlier generated createAccount body can also hold that address with
+    # a cap of a few hundred bytes. In the scheduled fuzz run 45622224387, seed
+    # 10536675661753430318 created ascii@xn--fsqu00a.xn--3lr804guic with
+    # quota_bytes 174. The later valid forward from it was correctly refused
+    # 422 mailbox_full (#2051). The sender's cap goes back to the default (0),
+    # through the admin API, when it leaves less than SENT_COPY_ROOM_BYTES.
+    #
+    # Only the fuzz process's success-response probes are prepared. The
+    # documented mailbox_full refusal keeps the full mailbox it requires, and
+    # the examples and coverage processes, whose forwards pass today, are not
+    # changed. The fixture admin is left alone, and the request's bytes stay
+    # as generated.
+    if os.environ.get("CONTRACT_FUZZ") != "1" or " > 201 > " not in transaction.get("name", ""):
+        return
+    body = hooks.get_json(transaction)
+    sender = body.get("from") if isinstance(body, dict) else None
+    if not isinstance(sender, str) or sender.count("@") != 1 or address_key(sender) == address_key(ADMIN):
+        return
+    a_signing_mailbox_at(transaction, sender)
+    if origin_of(transaction) + "\n" + address_key(sender) not in hooks.stash.get("sender_mailboxes", {}):
+        return
+    recipients = body.get("to")
+    for address in recipients if isinstance(recipients, list) else []:
+        a_signing_mailbox_at(transaction, address)
+    room_for_the_sent_copy(transaction, sender)
+
+
+def room_for_the_sent_copy(transaction, address):
+    """Give address's mailbox its default storage cap again when its own cap
+    leaves less than SENT_COPY_ROOM_BYTES free. A mailbox with no cap of its
+    own (0) is left alone, and so is a missing one."""
+    origin = origin_of(transaction)
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    mailbox = find_in_list(
+        origin,
+        "/api/v1/admin/mailboxes",
+        headers,
+        lambda row: address_key(row.get("address") or "") == address_key(address),
+    )
+    if not mailbox:
+        return
+    cap = mailbox.get("quota_bytes") or 0
+    used = mailbox.get("quota_used_bytes") or 0
+    if cap <= 0 or cap - used >= SENT_COPY_ROOM_BYTES:
+        return
+    headers["Authorization"] = "Bearer " + mfa_admin_token(origin)
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes/{:d}".format(mailbox["id"]),
+        data=json.dumps({"quota_bytes": 0}).encode(),
+        headers=headers,
+        method="PATCH",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 200:
+            raise RuntimeError(f"could not restore the storage cap of {address}")
+
+
 @hooks.before("getMessage")
 def a_message_for_the_coverage_read(transaction):
     if not in_the_coverage_process() or asked_for_a_clean_start():
