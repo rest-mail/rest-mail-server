@@ -7,8 +7,8 @@ import (
 )
 
 func TestScopedSnapshot(t *testing.T) {
-	h := HeldOf(Entry{All, "queue:read"}, Entry{"domain:a.test", "domains:read"}, Entry{"domain:a.test", "domains:read"}, Entry{"mailbox:a@a.test", "accounts:write"}, Entry{"domain:a.test", Wildcard})
-	want := []Entry{{"domain:a.test", Wildcard}, {"domain:a.test", "domains:read"}, {"mailbox:a@a.test", "accounts:write"}}
+	h := HeldOf(Entry{Scope: All, Capability: "queue:read"}, Entry{Scope: "domain:a.test", Capability: "domains:read"}, Entry{Scope: "domain:a.test", Capability: "domains:read"}, Entry{Scope: "mailbox:a@a.test", Capability: "accounts:write"}, Entry{Scope: "domain:a.test", Capability: Wildcard})
+	want := []Entry{{Scope: "domain:a.test", Capability: Wildcard}, {Scope: "domain:a.test", Capability: "domains:read"}, {Scope: "mailbox:a@a.test", Capability: "accounts:write"}}
 	if got := h.ScopedCapabilities(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("snapshot=%v want%v", got, want)
 	}

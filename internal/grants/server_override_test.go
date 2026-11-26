@@ -25,12 +25,12 @@ func overrideServer(t *testing.T, raw string) {
 // The actor's own grants still bound the result.
 func TestServerOverrideReplacesStoredCeiling(t *testing.T) {
 	overrideServer(t, "mail:read, domains:read, mailbox:session")
-	actor := HeldOf(Entry{"mailbox:x@a.test", "mail:read"}, Entry{"mailbox:x@a.test", "mail:send"}, Entry{"mailbox:x@a.test", "mailbox:session"}, Entry{All, "accounts:write"})
+	actor := HeldOf(Entry{Scope: "mailbox:x@a.test", Capability: "mail:read"}, Entry{Scope: "mailbox:x@a.test", Capability: "mail:send"}, Entry{Scope: "mailbox:x@a.test", Capability: "mailbox:session"}, Entry{Scope: All, Capability: "accounts:write"})
 	got, err := withinServer(nil, actor, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []Entry{{"mailbox:x@a.test", "mail:read"}, {"mailbox:x@a.test", "mailbox:session"}}; !reflect.DeepEqual(got.entries, want) {
+	if want := []Entry{{Scope: "mailbox:x@a.test", Capability: "mail:read"}, {Scope: "mailbox:x@a.test", Capability: "mailbox:session"}}; !reflect.DeepEqual(got.entries, want) {
 		t.Fatalf("held = %v, want %v", got.entries, want)
 	}
 	if got.Allows("domains:read", All) {
@@ -40,7 +40,7 @@ func TestServerOverrideReplacesStoredCeiling(t *testing.T) {
 
 func TestServerOverrideEmptySetHoldsNothing(t *testing.T) {
 	overrideServer(t, "  ")
-	got, err := withinServer(nil, HeldOf(Entry{All, "mail:read"}, Entry{"domain:a.test", Wildcard}), time.Now())
+	got, err := withinServer(nil, HeldOf(Entry{Scope: All, Capability: "mail:read"}, Entry{Scope: "domain:a.test", Capability: Wildcard}), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestServerOverrideEmptySetHoldsNothing(t *testing.T) {
 
 func TestServerOverrideExemptsSuperadmin(t *testing.T) {
 	overrideServer(t, "")
-	superadmin := HeldOf(Entry{All, Wildcard})
+	superadmin := HeldOf(Entry{Scope: All, Capability: Wildcard})
 	got, err := withinServer(nil, superadmin, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestServerOverrideExemptsSuperadmin(t *testing.T) {
 
 func TestServerOverrideCapsScopedWildcard(t *testing.T) {
 	overrideServer(t, "mail:read, mailbox:session")
-	got, err := withinServer(nil, HeldOf(Entry{"domain:a.test", Wildcard}), time.Now())
+	got, err := withinServer(nil, HeldOf(Entry{Scope: "domain:a.test", Capability: Wildcard}), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestParseServerCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []Entry{{All, "mail:read"}, {All, "mail:send"}}; !reflect.DeepEqual(got.entries, want) {
+	if want := []Entry{{Scope: All, Capability: "mail:read"}, {Scope: All, Capability: "mail:send"}}; !reflect.DeepEqual(got.entries, want) {
 		t.Fatalf("entries = %v, want %v", got.entries, want)
 	}
 	for _, raw := range []string{"mail:reed", "*", "mail:read,*", "mail:read,,mail:send", "mail:read,"} {

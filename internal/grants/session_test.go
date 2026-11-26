@@ -11,8 +11,8 @@ import (
 func sessionTestAdmin() Held {
 	own := "mailbox:admin@a.test"
 	return HeldOf(
-		Entry{All, "domains:read"}, Entry{All, "admin:session"},
-		Entry{own, "mail:read"}, Entry{own, "mail:send"}, Entry{own, "mailbox:session"},
+		Entry{Scope: All, Capability: "domains:read"}, Entry{Scope: All, Capability: "admin:session"},
+		Entry{Scope: own, Capability: "mail:read"}, Entry{Scope: own, Capability: "mail:send"}, Entry{Scope: own, Capability: "mailbox:session"},
 	)
 }
 
@@ -57,7 +57,7 @@ func TestAdminSessionRemovedFromServer(t *testing.T) {
 // capability does not give it to an actor that lacks it.
 func TestSessionNeedsTheActorsOwnCapability(t *testing.T) {
 	overrideServer(t, "domains:read, mail:read, admin:session, mailbox:session")
-	actor := HeldOf(Entry{All, "domains:read"}, Entry{"mailbox:x@a.test", "mail:read"})
+	actor := HeldOf(Entry{Scope: All, Capability: "domains:read"}, Entry{Scope: "mailbox:x@a.test", Capability: "mail:read"})
 	got, err := withinServer(nil, actor, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -71,8 +71,8 @@ func TestSessionNeedsTheActorsOwnCapability(t *testing.T) {
 // not open another.
 func TestSessionScopeMustCover(t *testing.T) {
 	got := HeldOf(
-		Entry{"mailbox:x@a.test", "mailbox:session"},
-		Entry{"mailbox:x@a.test", "mail:read"}, Entry{"mailbox:y@a.test", "mail:read"},
+		Entry{Scope: "mailbox:x@a.test", Capability: "mailbox:session"},
+		Entry{Scope: "mailbox:x@a.test", Capability: "mail:read"}, Entry{Scope: "mailbox:y@a.test", Capability: "mail:read"},
 	).withinSessions()
 	if !got.Allows("mail:read", "mailbox:x@a.test") || got.Allows("mail:read", "mailbox:y@a.test") {
 		t.Fatalf("session scope not applied: %v", got.entries)
@@ -82,7 +82,7 @@ func TestSessionScopeMustCover(t *testing.T) {
 // TestSuperadminKeepsSessionsWhateverTheServer: the recovery exception.
 func TestSuperadminKeepsSessionsWhateverTheServer(t *testing.T) {
 	overrideServer(t, "")
-	got, err := withinServer(nil, HeldOf(Entry{All, Wildcard}), time.Now())
+	got, err := withinServer(nil, HeldOf(Entry{Scope: All, Capability: Wildcard}), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -63,9 +63,9 @@ func TestCovers(t *testing.T) {
 
 func TestHeld(t *testing.T) {
 	admin := HeldOf(
-		Entry{All, "domains:read"},
-		Entry{All, "domains:write"},
-		Entry{"domain:a.com", "accounts:write"},
+		Entry{Scope: All, Capability: "domains:read"},
+		Entry{Scope: All, Capability: "domains:write"},
+		Entry{Scope: "domain:a.com", Capability: "accounts:write"},
 	)
 	if !admin.Allows("domains:read", All) || !admin.Allows("domains:read", "domain:b.com") {
 		t.Error("a capability at * should be allowed everywhere")
@@ -84,7 +84,7 @@ func TestHeld(t *testing.T) {
 		t.Errorf("Capabilities() = %v, want %v", got, want)
 	}
 
-	super := HeldOf(Entry{All, "domains:read"}, Entry{All, Wildcard})
+	super := HeldOf(Entry{Scope: All, Capability: "domains:read"}, Entry{Scope: All, Capability: Wildcard})
 	if !super.Allows("anything:at_all", "mailbox:x@a.com") || !super.Allows(Wildcard, All) {
 		t.Error("* at * should allow everything")
 	}
@@ -96,7 +96,7 @@ func TestHeld(t *testing.T) {
 	}
 
 	// * held on one domain is everything there, and nothing anywhere else.
-	domainSuper := HeldOf(Entry{"domain:a.com", Wildcard})
+	domainSuper := HeldOf(Entry{Scope: "domain:a.com", Capability: Wildcard})
 	if !domainSuper.Allows("users:write", "domain:a.com") || domainSuper.Allows("users:write", All) {
 		t.Error("* at a domain should be bounded by the domain")
 	}
@@ -107,9 +107,9 @@ func TestHeld(t *testing.T) {
 
 func TestCanGrant(t *testing.T) {
 	adminCaps := []string{"domains:read", "domains:write", "accounts:read"}
-	superadmin := HeldOf(Entry{All, Wildcard})
-	admin := HeldOf(Entry{All, "domains:read"}, Entry{All, "domains:write"}, Entry{All, "accounts:read"}, Entry{All, "users:write"})
-	domainAdmin := HeldOf(Entry{"domain:a.com", "domains:read"}, Entry{"domain:a.com", "domains:write"}, Entry{"domain:a.com", "accounts:read"})
+	superadmin := HeldOf(Entry{Scope: All, Capability: Wildcard})
+	admin := HeldOf(Entry{Scope: All, Capability: "domains:read"}, Entry{Scope: All, Capability: "domains:write"}, Entry{Scope: All, Capability: "accounts:read"}, Entry{Scope: All, Capability: "users:write"})
+	domainAdmin := HeldOf(Entry{Scope: "domain:a.com", Capability: "domains:read"}, Entry{Scope: "domain:a.com", Capability: "domains:write"}, Entry{Scope: "domain:a.com", Capability: "accounts:read"})
 
 	cases := []struct {
 		name   string

@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/pkg/capability"
 )
 
 type loginRequest struct {
@@ -29,10 +29,10 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	ExpiresIn          int            `json:"expires_in"`
-	User               userInfo       `json:"user"`
-	Capabilities       []string       `json:"capabilities,omitempty"`
-	ScopedCapabilities []grants.Entry `json:"scoped_capabilities,omitempty"`
+	ExpiresIn          int                `json:"expires_in"`
+	User               userInfo           `json:"user"`
+	Capabilities       []string           `json:"capabilities,omitempty"`
+	ScopedCapabilities []capability.Entry `json:"scoped_capabilities,omitempty"`
 	// SetupRequired lists what the account must still do — "password" (POST
 	// /api/v1/auth/password), "two_factor" (POST /api/v1/auth/2fa/enroll, then
 	// /confirm) — before the session can reach anything else, which answers
