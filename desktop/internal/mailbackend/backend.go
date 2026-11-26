@@ -13,7 +13,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/imapmail"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 type Manager struct {

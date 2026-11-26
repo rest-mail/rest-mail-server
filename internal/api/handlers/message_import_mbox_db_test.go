@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // An APPEND of a message saved from an mbox begins with the mbox "From_" line. It is

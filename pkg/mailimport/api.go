@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 type Request func(context.Context, string, string, io.Reader) (*http.Response, error)

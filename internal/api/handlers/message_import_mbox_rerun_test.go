@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/mailimport"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // #1838: an mbox exported again after a flag-only edit on the source, as

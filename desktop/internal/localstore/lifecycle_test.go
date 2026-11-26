@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func TestFolderPagingBodiesAttachmentsCatalogAndReset(t *testing.T) {

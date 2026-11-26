@@ -11,7 +11,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/session"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func TestEventMessageIDsAndSessionBoundaries(t *testing.T) {

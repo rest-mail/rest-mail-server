@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func (store *Store) jsonResponse(status int, value any) *http.Response {

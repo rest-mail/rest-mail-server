@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 func mailImportSource(t *testing.T) (string, []byte, time.Time) {

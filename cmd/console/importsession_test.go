@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // fakeImportSessions is the console's fake API with import sessions (#1498): it opens and

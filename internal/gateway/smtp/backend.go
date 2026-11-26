@@ -5,8 +5,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 
 // Backend is the exact set of REST API operations the SMTP gateway depends on.

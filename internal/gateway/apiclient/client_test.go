@@ -2,7 +2,7 @@ package apiclient
 
 import (
 	"encoding/json"
-	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"io"
 	"net/http"
 	"net/http/httptest"
