@@ -35,6 +35,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server/pkg/envelope"
 )
 
 // Operation is how a route is registered: where it is, what it is called, and what it can
@@ -189,21 +190,16 @@ func InvalidQuery(fields map[string]string) *Error {
 }
 
 // Data is the {"data": ...} envelope respond.Data writes, as a type the document can name.
-type Data[T any] struct {
-	Data T `json:"data"`
-}
+// The type itself is the wire type in pkg/envelope, which clients decode.
+type Data[T any] = envelope.Data[T]
 
 // List is a collection answer: written as respond.List writes it, {"data": [...],
-// "pagination": {...}}, and described as such.
-type List[T any] struct {
-	Data       []T                 `json:"data"`
-	Pagination *respond.Pagination `json:"pagination,omitempty"`
-}
+// "pagination": {...}}, and described as such. The type itself is the wire type in
+// pkg/envelope, which clients decode.
+type List[T any] = envelope.List[T]
 
 // listResponse is how write recognises a List, whatever its element type.
-type listResponse interface{ listEnvelope() }
-
-func (List[T]) listEnvelope() {}
+type listResponse interface{ ListEnvelope() }
 
 // Status carries a success value whose status depends on the handler's result.
 // Each possible status is declared in Operation.Status or SuccessStatuses.

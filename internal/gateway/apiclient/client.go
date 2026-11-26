@@ -17,9 +17,9 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/envelope"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
@@ -182,9 +182,9 @@ func New(baseURL string, opts ...Option) *Client {
 
 // ── Auth ──────────────────────────────────────────────────────────────
 
-type LoginResponse = endpoint.Data[apitypes.LoginResponse]
+type LoginResponse = envelope.Data[apitypes.LoginResponse]
 
-type gatewaySessionEnvelope = endpoint.Data[apitypes.GatewaySessionOpened]
+type gatewaySessionEnvelope = envelope.Data[apitypes.GatewaySessionOpened]
 
 // gatewaySessionPrefix starts a connection session token.
 const gatewaySessionPrefix = "rmgs_"
@@ -285,7 +285,7 @@ func (c *Client) Login(email, password, totpCode string) (*LoginResponse, error)
 
 // ── Mailbox Check ─────────────────────────────────────────────────────
 
-type MailboxCheckResponse = endpoint.Data[apitypes.AddressCheck]
+type MailboxCheckResponse = envelope.Data[apitypes.AddressCheck]
 
 // CheckMailbox verifies a recipient address exists. This is a tokenless
 // machine-to-machine call, so it goes to the internal (mTLS, when configured)
@@ -308,7 +308,7 @@ func (c *Client) CheckMailbox(address string) (*MailboxCheckResponse, error) {
 
 type DeliverRequest = apitypes.DeliverMessageBody
 
-type deliveredMessageEnvelope = endpoint.Data[apitypes.DeliveredMessage]
+type deliveredMessageEnvelope = envelope.Data[apitypes.DeliveredMessage]
 
 // DeliverResponse contains either a delivered message or a processed receipt.
 // Processed is local result metadata, decoded from the registered alternative body.
@@ -327,7 +327,7 @@ func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 	// so slowloris on this internal hop stays capped.
 	ctx, cancel := context.WithTimeout(context.Background(), c.msgDeadline)
 	defer cancel()
-	var wire endpoint.Data[json.RawMessage]
+	var wire envelope.Data[json.RawMessage]
 	if err := c.postInternal(ctx, "/api/v1/messages/deliver", req, &wire); err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 }
 
 // decodeDelivered reads what the API answers a delivery.
-func decodeDelivered(wire endpoint.Data[json.RawMessage]) (*DeliverResponse, error) {
+func decodeDelivered(wire envelope.Data[json.RawMessage]) (*DeliverResponse, error) {
 	var processed apitypes.DeliveryProcessed
 	if err := json.Unmarshal(wire.Data, &processed); err != nil {
 		return nil, fmt.Errorf("decode delivery response: %w", err)
@@ -370,7 +370,7 @@ func (c *Client) SendMessageWithIdempotencyKey(token string, req *SendRequest, k
 
 type Folder = apitypes.FolderSummary
 
-type FolderListResponse = endpoint.List[apitypes.FolderSummary]
+type FolderListResponse = envelope.List[apitypes.FolderSummary]
 
 // ListFolders returns all folders for an account.
 func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse, error) {
@@ -389,7 +389,7 @@ type FolderName struct {
 // ListSubscriptions returns the account's IMAP subscription list (#1675): names,
 // subscribed folders or not, in name order.
 func (c *Client) ListSubscriptions(token string, accountID uint) ([]string, error) {
-	var resp endpoint.List[FolderName]
+	var resp envelope.List[FolderName]
 	if err := c.getAuth(fmt.Sprintf("/api/v1/accounts/%d/subscriptions", accountID), token, &resp); err != nil {
 		return nil, err
 	}
@@ -441,9 +441,9 @@ type MessageSummary = apitypes.Message
 
 type MessageDetail = apitypes.Message
 
-type MessageListResponse = endpoint.List[apitypes.Message]
+type MessageListResponse = envelope.List[apitypes.Message]
 
-type MessageDetailResponse = endpoint.Data[apitypes.Message]
+type MessageDetailResponse = envelope.Data[apitypes.Message]
 
 // ListMessages returns messages in a folder.
 // maxGatewayMessages caps how many messages the IMAP/POP3 gateways load per
@@ -583,7 +583,7 @@ func (c *Client) ListVanishedUIDs(token string, accountID uint, folder string, s
 	after := ""
 	for {
 		path := fmt.Sprintf("%s/vanished?since=%d&limit=1000%s", folderPath(accountID, folder), since, after)
-		var resp endpoint.List[VanishedUID]
+		var resp envelope.List[VanishedUID]
 		if err := c.getAuth(path, token, &resp); err != nil {
 			return nil, err
 		}
@@ -630,7 +630,7 @@ func (c *Client) ImportMessage(token string, accountID uint, session string, req
 // OpenImportSession opens an import session, so the imports sent with its id are
 // audited as one summary when CloseImportSession ends it (#1498).
 func (c *Client) OpenImportSession(token string, accountID uint, body apitypes.OpenImportSessionBody) (string, error) {
-	var resp endpoint.Data[apitypes.ImportSession]
+	var resp envelope.Data[apitypes.ImportSession]
 	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/import-sessions", accountID), token, body, &resp); err != nil {
 		return "", err
 	}
@@ -656,7 +656,7 @@ type TransferRequest = apitypes.TransferMessagesBody
 // folder to another in one API transaction: every message or none. It returns
 // the new message IDs in the order of req.MessageIDs.
 func (c *Client) TransferMessages(token string, accountID uint, req *TransferRequest) ([]uint, error) {
-	var resp endpoint.Data[apitypes.TransferMessagesResult]
+	var resp envelope.Data[apitypes.TransferMessagesResult]
 	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/transfer", accountID), token, req, &resp); err != nil {
 		return nil, err
 	}
@@ -665,7 +665,7 @@ func (c *Client) TransferMessages(token string, accountID uint, req *TransferReq
 
 // ── Quota ─────────────────────────────────────────────────────────────
 
-type QuotaResponse = endpoint.Data[apitypes.Quota]
+type QuotaResponse = envelope.Data[apitypes.Quota]
 
 // GetQuota returns quota usage for an account.
 func (c *Client) GetQuota(token string, accountID uint) (*QuotaResponse, error) {
@@ -678,7 +678,7 @@ func (c *Client) GetQuota(token string, accountID uint) (*QuotaResponse, error) 
 
 // ── Account time zone ─────────────────────────────────────────────────
 
-type AccountTimeZoneResponse = endpoint.Data[apitypes.AccountTimeZone]
+type AccountTimeZoneResponse = envelope.Data[apitypes.AccountTimeZone]
 
 // GetAccountTimeZone returns the account's time zone setting. Its TimeZone is nil
 // when the account has none.
@@ -709,7 +709,7 @@ func (c *Client) Search(token string, accountID uint, query string, folder strin
 
 type DomainItem = apitypes.Domain
 
-type DomainListResponse = endpoint.List[apitypes.Domain]
+type DomainListResponse = envelope.List[apitypes.Domain]
 
 // ListDomains returns all domains (admin only).
 func (c *Client) ListDomains(token string) (*DomainListResponse, error) {
@@ -735,7 +735,7 @@ func (c *Client) DeleteDomain(token string, id uint) error {
 
 type MailboxItem = apitypes.Mailbox
 
-type MailboxListResponse = endpoint.List[apitypes.Mailbox]
+type MailboxListResponse = envelope.List[apitypes.Mailbox]
 
 // ListMailboxes returns all mailboxes (admin only).
 func (c *Client) ListMailboxes(token string) (*MailboxListResponse, error) {
@@ -769,7 +769,7 @@ func (c *Client) ResetPassword(token string, id uint, newPassword string) error 
 
 type PipelineItem = apitypes.Pipeline
 
-type PipelineListResponse = endpoint.List[apitypes.Pipeline]
+type PipelineListResponse = envelope.List[apitypes.Pipeline]
 
 // ListPipelines returns pipelines, optionally filtered by domain_id.
 func (c *Client) ListPipelines(token string, domainID uint) (*PipelineListResponse, error) {
@@ -792,7 +792,7 @@ func (c *Client) TogglePipeline(token string, id uint, active bool) error {
 
 // ── Queue Stats ──────────────────────────────────────────────────────
 
-type QueueStatsResponse = endpoint.Data[apitypes.QueueStatistics]
+type QueueStatsResponse = envelope.Data[apitypes.QueueStatistics]
 
 // QueueStats returns queue statistics (admin only).
 func (c *Client) QueueStats(token string) (*QueueStatsResponse, error) {
@@ -805,7 +805,7 @@ func (c *Client) QueueStats(token string) (*QueueStatsResponse, error) {
 
 // ── Bans ──────────────────────────────────────────────────────────────
 
-type BanListResponse = endpoint.List[apitypes.Ban]
+type BanListResponse = envelope.List[apitypes.Ban]
 
 // ListBans returns active bans (admin only).
 func (c *Client) ListBans(token string) (*BanListResponse, error) {
