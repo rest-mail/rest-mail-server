@@ -1,4 +1,4 @@
-.desktop-local-status { position: fixed; bottom: 0; left: 0; right: 0; z-index: 35; padding: 5px 14px; color: var(--theme-ink, #222); background: var(--theme-list, #eee); border-top: 1px solid var(--theme-border, #ddd); font-size: 11px; }
+.desktop-local-status { position: relative; flex-shrink: 0; z-index: 35; padding: 5px 14px; color: var(--theme-ink, #222); background: var(--theme-list, #eee); border-top: 1px solid var(--theme-border, #ddd); font-size: 11px; }
 .desktop-local-snippets { position: relative; }
 .desktop-local-snippets[open] ol { position: absolute; bottom: 18px; left: 0; width: min(560px, 85vw); max-height: 320px; overflow: auto; margin: 0; padding: 14px 14px 14px 30px; background: var(--theme-reader, white); color: var(--theme-ink, #222); border: 1px solid var(--theme-border, #ddd); border-radius: 8px; box-shadow: 0 -5px 24px #0002; }
 .desktop-local-snippets li button { width: 100%; display: grid; gap: 4px; text-align: left; padding: 8px; }

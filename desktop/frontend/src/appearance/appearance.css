@@ -104,5 +104,5 @@
 .appearance-empty button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; background: var(--theme-selection); color: var(--theme-selection-ink); font-size: 11px; }
 .appearance-notice { min-height: 16px; margin: 10px 0 0; color: var(--muted-foreground); font-size: 10px; }
 .desktop-appearance-open { display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--sheet); color: var(--foreground); border: 1px solid var(--border); padding: 6px 9px; font-size: 11px; --wails-draggable: no-drag; }
-.desktop-signin-appearance { position: fixed; top: 18px; right: 18px; z-index: 20; }
+.desktop-signin-version { position: fixed; bottom: 12px; right: 18px; color: #fff; font-size: 12px; }
 @media (max-width: 1100px) { .appearance-nav { width: 150px; padding-inline: 10px; } .appearance-main { padding-inline: 24px; } .appearance-collection { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 10px; } .appearance-theme-specimen { padding: 10px 8px; } .appearance-theme-specimen > span { font-size: 15px; } .appearance-hero h1 { font-size: 29px; } .appearance-hero { gap: 16px; } .appearance-remix { gap: 22px; } .appearance-overrides { padding-left: 20px; } }

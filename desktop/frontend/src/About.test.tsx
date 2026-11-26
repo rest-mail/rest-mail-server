@@ -2,9 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 vi.mock('@wailsio/runtime', () => ({ Call: { ByName: vi.fn() } }));
 import { Call } from '@wailsio/runtime';
-import { AboutRelease, formatBuilt, loadRelease } from './About';
+import { AboutRelease, SignInVersion, formatBuilt, loadRelease } from './About';
 
 describe('About this build', () => {
+  it('shows only the running build version on sign-in', async () => {
+    vi.mocked(Call.ByName).mockResolvedValue({ version: '0.9.0', commit: 'a'.repeat(40), builtAt: '2026-11-22T08:38:42Z' });
+    const { container } = render(<SignInVersion />);
+    await screen.findByText('Version 0.9.0');
+    expect(container.textContent).toBe('Version 0.9.0');
+  });
+
   it('asks the Go AppInfo service for the running release', async () => {
     vi.mocked(Call.ByName).mockResolvedValue({ version: '0.8.1', commit: 'a'.repeat(40), builtAt: '2026-11-22T08:29:13Z' });
     await expect(loadRelease()).resolves.toMatchObject({ version: '0.8.1' });

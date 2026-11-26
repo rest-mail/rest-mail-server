@@ -1,3 +1,5 @@
+import { SettingsSection, SettingsStatus } from '@/components/ui/settings';
+
 export function ContactReplyTime({ seconds }: { seconds?: number | null }) {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null;
   let duration = 'less than a minute';
@@ -21,21 +23,14 @@ export function ContactReplyTimePreference({ enabled, saving, error, onChange }:
   onChange: (enabled: boolean) => void;
 }) {
   return (
-    <section className="rounded-xl border border-border p-6 space-y-3">
-      <h3 className="font-semibold">Contact reply times</h3>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={enabled ?? false} disabled={enabled === undefined || saving}
+    <SettingsSection title="Contact reply times"
+      description="Estimates use at least three matched replies from this account. Nothing leaves the server; no tracking is added.">
+      <label className="flex items-center gap-2 font-medium">
+        <input className="shrink-0" type="checkbox" checked={enabled ?? false} disabled={enabled === undefined || saving}
           onChange={event => onChange(event.target.checked)} />
         Show usual reply times beside contacts
       </label>
-      <p className="text-sm text-muted-foreground">
-        Off by default. Estimates use only this account's sent mail and matched replies,
-        with at least three replies needed. This is not a signal from the contact.
-        Nothing leaves the server; no tracking is added.
-      </p>
-      {enabled === undefined && !error && <p className="text-sm text-muted-foreground">Loading setting...</p>}
-      {saving && <p role="status" className="text-sm text-muted-foreground">Saving...</p>}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    </section>
+      <SettingsStatus error={error} pending={saving ? 'Saving...' : enabled === undefined ? 'Loading setting...' : undefined} />
+    </SettingsSection>
   );
 }

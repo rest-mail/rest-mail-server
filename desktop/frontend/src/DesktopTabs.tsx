@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import { Columns3, PanelsTopLeft, PanelLeft, PanelBottom, ArrowLeft, Paintbrush } from 'lucide-react';
+import { Columns3, PanelsTopLeft, PanelLeft, PanelBottom, ArrowLeft, Inbox, Paintbrush, Plus } from 'lucide-react';
 import { ComposeView, type ComposeLifecycle } from '@webmail/components/compose/ComposeView';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { useMailStore } from '@webmail/stores/mailStore';
@@ -51,14 +51,14 @@ export function DesktopTabs({ children, events }: { children: ReactNode; events:
   const sizes = { '--desktop-list-width': `${preferences.columnsWidth}px`, '--desktop-list-height': `${preferences.stackedHeight}px` } as CSSProperties;
   return <div ref={container} style={sizes} data-layout={preferences.layout} data-folders={preferences.folders} data-reader={preferences.reader} data-reading={reading} data-file-drop-target={signedIn ? '' : undefined} className={`desktop-tabs ${signedIn ? 'desktop-tabs-ready' : ''}`}>
     {signedIn && <header className="desktop-titlebar">
-      <div className="desktop-brand" aria-label="REST Mail"><img src="/rest-mail-icon.svg" alt="" width="24" height="24" /><span>REST Mail</span></div>
+      <div className="desktop-brand" aria-label="REST Mail"><img src="/rest-mail-icon.svg" alt="" width="32" height="32" /><span>REST Mail</span></div>
       <div className="desktop-tab-strip" role="tablist" aria-label="Mail and drafts">
-      <button role="tab" data-testid="tab-mail" aria-selected={state.active === 'mail'} aria-controls="panel-mail" onClick={() => tabs.select('mail')}>Mail</button>
+      <button role="tab" data-testid="tab-mail" aria-selected={state.active === 'mail'} aria-controls="panel-mail" onClick={() => tabs.select('mail')}><Inbox size={16} aria-hidden="true" />Mail</button>
       {state.tabs.map(tab => <div className="desktop-draft-tab" key={tab.id} data-active={state.active === tab.id}>
         <button role="tab" data-testid={`tab-${tab.id}`} aria-selected={state.active === tab.id} aria-controls={`panel-${tab.id}`} onClick={() => tabs.select(tab.id)}><span>{tab.dirty ? '• ' : ''}{tab.title}</span></button>
         <button data-testid={`tab-close-${tab.id}`} aria-label={`Close ${tab.title}`} title="Close draft (⌘W)" onClick={() => native.requestClose(tab.id)}>×</button>
       </div>)}
-      <button data-testid="tab-new" aria-label="New message" title="New Message (⌘N)" onClick={() => native.openCompose()}>+</button>
+      <button data-testid="tab-new" aria-label="New message" title="New Message (⌘N)" onClick={() => native.openCompose()}><Plus size={16} aria-hidden="true" /></button>
       </div>
       <div className="desktop-layout-controls" role="group" aria-label="Mail layout">
         <div className="desktop-layout-segment" role="group" aria-label="Pane arrangement">

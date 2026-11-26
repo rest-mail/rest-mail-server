@@ -3,20 +3,20 @@ import { useState } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SettingsNavButton, SettingsPage, SettingsSection } from '@/components/ui/settings';
 import { VacationView } from '@/components/settings/VacationView';
 import { DangerZone } from '@/components/settings/SettingsView';
-import { User, HardDrive, Trash2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { User, Palmtree, Trash2 } from 'lucide-react';
 import { ContactReplyTimeSettings } from '@/components/contacts/ContactReplyTimeSettings';
 import { QuietHoursSettings } from './QuietHoursSettings';
 import { AccountTimeZoneSettings } from './AccountTimeZoneSettings';
+import { mailPlatform } from '@/platform';
 
 type Tab = 'details' | 'vacation' | 'danger';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'details',  label: 'Details',     icon: <User className="w-4 h-4" /> },
-  { id: 'vacation', label: 'Vacation',    icon: <HardDrive className="w-4 h-4" /> },
+  { id: 'vacation', label: 'Vacation',    icon: <Palmtree className="w-4 h-4" /> },
   { id: 'danger',   label: 'Danger Zone', icon: <Trash2 className="w-4 h-4" /> },
 ];
 
@@ -45,88 +45,46 @@ export function AccountSettingsView() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-6 pt-5 pb-0 border-b border-border">
-        <p className="text-xs text-muted-foreground mb-0.5">Account settings</p>
-        <h2 className="text-lg font-semibold mb-4 truncate">{displayAddress(account.address)}</h2>
-        <div className="flex gap-0">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => handleTabClick(t.id)}
-              className={cn(
-                "flex items-center gap-1.5 px-4 py-2 text-sm border-b-2 transition-colors -mb-px",
-                tab === t.id
-                  ? "border-primary text-foreground font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-                t.id === 'danger' && tab !== 'danger' && "hover:text-destructive"
-              )}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6">
-        {tab === 'details'  && <DetailsTab account={account} isPrimary={isPrimary} />}
-        {tab === 'vacation' && <VacationView />}
-        {tab === 'danger'   && (
-          <div className="max-w-2xl">
-            <DangerZone
-              isPrimary={isPrimary}
-              accountId={account.id}
-              onDeleted={() => setView('mail')}
-            />
-          </div>
-        )}
-      </div>
-    </div>
+    <SettingsPage title="Account settings" subtitle={displayAddress(account.address)} navigation={
+      TABS.map(item => (
+        <SettingsNavButton key={item.id} active={tab === item.id} onClick={() => handleTabClick(item.id)}>
+          {item.icon}
+          {item.label}
+        </SettingsNavButton>
+      ))
+    }>
+      {tab === 'details' && <DetailsTab account={account} isPrimary={isPrimary} />}
+      {tab === 'vacation' && <VacationView embedded />}
+      {tab === 'danger' && (
+        <DangerZone isPrimary={isPrimary} accountId={account.id} onDeleted={() => setView('mail')} />
+      )}
+    </SettingsPage>
   );
 }
 
 function DetailsTab({ account, isPrimary }: { account: { id: number; address: string }; isPrimary: boolean }) {
+  const platform = mailPlatform();
+  const server = platform.desktop ? platform.serverHost?.() : undefined;
   return (
-    <div className="max-w-2xl space-y-4">
-      <ContactReplyTimeSettings key={account.id} accountId={account.id} />
+    <>
+      <SettingsSection title="Account details" description={isPrimary ? 'This is your primary account.' : undefined}>
+        <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 gap-y-2">
+          <dt className="text-muted-foreground">Email address</dt>
+          <dd className="break-all font-medium">{displayAddress(account.address)}</dd>
+          {server && <>
+            <dt className="text-muted-foreground">Mail server</dt>
+            <dd className="break-all">{server}</dd>
+          </>}
+          <dt className="text-muted-foreground">Account ID</dt>
+          <dd className="tabular-nums">#{account.id}</dd>
+        </dl>
+      </SettingsSection>
       <QuietHoursSettings key={`quiet-${account.id}`} accountId={account.id} />
+      <ContactReplyTimeSettings key={account.id} accountId={account.id} />
       <AccountTimeZoneSettings key={`time-zone-${account.id}`} accountId={account.id} />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <User className="w-4 h-4" /> Account Details
-          </CardTitle>
-          {isPrimary && (
-            <CardDescription>This is your primary account.</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Email address</p>
-            <p className="text-sm font-mono">{displayAddress(account.address)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Account ID</p>
-            <p className="text-sm font-mono text-muted-foreground">#{account.id}</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <HardDrive className="w-4 h-4" /> Storage Quota
-          </CardTitle>
-          <CardDescription>Quota information is available via the API.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Check your quota via{' '}
-            <span className="font-mono text-xs bg-muted px-1 py-0.5 rounded">GET /api/v1/mailboxes/:id</span>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+      <SettingsSection title="Storage quota" description="Quota information is available via the API.">
+        <code className="break-all rounded bg-muted px-2 py-1 text-xs">GET /api/v1/mailboxes/:id</code>
+      </SettingsSection>
+    </>
   );
 }

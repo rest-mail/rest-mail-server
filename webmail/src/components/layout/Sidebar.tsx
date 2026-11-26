@@ -122,9 +122,7 @@ export function Sidebar() {
   const sidebarContent = (
     <>
       {/* Logo area */}
-      {desktop ? <>
-        <div className="desktop-account"><strong>{mailPlatform().serverHost?.() || 'Mail server'}</strong><span>{user?.email}</span></div>
-      </> : <div className="h-12 flex items-center justify-between px-4 shrink-0">
+      {!desktop && <div className="h-12 flex items-center justify-between px-4 shrink-0">
         <h1 className="flex items-center gap-2 font-heading-oswald text-lg font-semibold text-primary tracking-wider">
           <img
             src={mailPlatform().desktop ? '/rest-mail-icon.svg' : `${import.meta.env.BASE_URL}favicon.svg`}
@@ -144,7 +142,7 @@ export function Sidebar() {
       </div>}
 
       {/* Compose button */}
-      <div className="flex justify-center px-3 pb-2 shrink-0">
+      <div className={cn('flex justify-center px-3 pb-2 shrink-0', desktop && 'desktop-sidebar-compose')}>
         <button
           data-testid="compose-open"
           onClick={() => startCompose()}
@@ -171,21 +169,25 @@ export function Sidebar() {
               </div>
             </div>
           )}
-          {accounts.map(account => (
-            <div key={account.id}>
+          {accounts.map(account => {
+            const canCollapse = !desktop || accounts.length > 1;
+            const AccountLabel = canCollapse ? 'button' : 'div';
+            const address = displayAddress(account.address);
+            return <div key={account.id}>
               {/* Account row */}
-              {(!desktop || accounts.length > 1) && <div className={cn('group flex items-center hover:bg-sidebar-accent transition-colors', desktop && 'desktop-account-group')}>
-                <button
-                  aria-expanded={desktop ? isExpanded(account.id) : undefined}
-                  onClick={() => handleAccountClick(account.id)}
+              <div className={cn('group flex items-center hover:bg-sidebar-accent transition-colors', desktop && 'desktop-account-group')}>
+                <AccountLabel
+                  aria-expanded={desktop && canCollapse ? isExpanded(account.id) : undefined}
+                  onClick={canCollapse ? () => handleAccountClick(account.id) : undefined}
                   className={cn('flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0', desktop && 'desktop-account-row')}
                 >
-                  {desktop ? <ChevronRight size={16} className="desktop-account-chevron" aria-hidden="true" /> : <span className="text-muted-foreground text-[10px]">
+                  {!desktop && <span className="text-muted-foreground text-[10px]">
                     {isExpanded(account.id) ? '▾' : '▸'}
                   </span>}
-                  <span className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{displayAddress(account.address)}</span>
+                  <span title={desktop ? address : undefined} className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{address}</span>
                   {!isExpanded(account.id) && <InboxBadge />}
-                </button>
+                  {desktop && canCollapse && <ChevronRight size={14} className="desktop-account-chevron" aria-hidden="true" />}
+                </AccountLabel>
                 <button
                   title="Account settings"
                   onClick={() => {
@@ -197,11 +199,11 @@ export function Sidebar() {
                 >
                   <Settings2 className="w-3.5 h-3.5" />
                 </button>
-              </div>}
+              </div>
 
               {/* Folder list */}
               {isExpanded(account.id) && (
-                <div className="px-1.5 py-1 space-y-px">
+                <div className={cn('px-1.5 py-1 space-y-px', desktop && 'desktop-account-folders')}>
                   {loadingFolders ? (
                     <div className="py-1 px-2.5 space-y-1.5 animate-pulse">
                       {Array.from({ length: 4 }).map((_, i) => (
@@ -307,8 +309,8 @@ export function Sidebar() {
                   )}
                 </div>
               )}
-            </div>
-          ))}
+            </div>;
+          })}
         </div>
       </ScrollArea>
 

@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { readFileSync } from 'node:fs';
 import { Sidebar } from '@webmail/components/layout/Sidebar';
+import { AccountSettingsView } from '@webmail/components/account/AccountSettingsView';
 import { configureMailPlatform } from '@webmail/platform';
 import { useAuthStore } from '@webmail/stores/authStore';
 import { useMailStore } from '@webmail/stores/mailStore';
@@ -74,5 +75,28 @@ describe('desktop-only sidebar polish', () => {
     expect(container.querySelector('[class*="desktop-"]')).toBeNull();
     expect(screen.queryByTestId('sidebar-tools')).toBeNull();
     expect(screen.queryByTestId('session-signout')).toBeNull();
+  });
+
+  it('opens account properties from a single-account sidebar without displaying the server in navigation', () => {
+    const server = 'localhost:18081';
+    configureMailPlatform({ desktop: true, serverHost: () => server });
+    useMailStore.setState({ accounts: useMailStore.getState().accounts.slice(0, 1) });
+    const sidebar = render(<Sidebar />);
+    expect(screen.queryByText(server)).toBeNull();
+    expect(screen.getAllByText('admin@desktop.test')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'admin@desktop.test' })).toBeNull();
+    expect(screen.getByTestId('folder-1-INBOX')).not.toBeNull();
+    fireEvent.click(screen.getByTitle('Account settings'));
+    expect(useUIStore.getState().view).toBe('accountSettings');
+    sidebar.unmount();
+
+    const properties = render(<AccountSettingsView />);
+    const account = screen.getByRole('region', { name: 'Account details' });
+    expect(within(account).getByText(server)).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Details' }).getAttribute('aria-pressed')).toBe('true');
+
+    configureMailPlatform({});
+    properties.rerender(<AccountSettingsView />);
+    expect(screen.queryByText(server)).toBeNull();
   });
 });

@@ -12,14 +12,24 @@ export function formatBuilt(value: string, locale?: string) {
   return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
 }
 
-/** The running build: its semantic version, short commit and build date. */
-export function AboutRelease({ load = loadRelease }: { load?: () => Promise<Release> }) {
+function useRelease(load: () => Promise<Release>) {
   const [release, setRelease] = useState<Release | null>(null);
   useEffect(() => {
     let live = true;
     load().then(value => { if (live) setRelease(value); }).catch(() => { if (live) setRelease(null); });
     return () => { live = false; };
   }, [load]);
+  return release;
+}
+
+export function SignInVersion() {
+  const release = useRelease(loadRelease);
+  return release?.version ? <small className="desktop-signin-version">Version {release.version}</small> : null;
+}
+
+/** The running build: its semantic version, short commit and build date. */
+export function AboutRelease({ load = loadRelease }: { load?: () => Promise<Release> }) {
+  const release = useRelease(load);
   if (!release) return null;
   const commit = release.commit.replace(/-dirty$/, '');
   const dirty = release.commit.endsWith('-dirty');

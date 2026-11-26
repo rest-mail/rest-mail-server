@@ -9,7 +9,6 @@ import { FirstRunSetup } from './FirstRunSetup';
 import { DesktopAccountChoice } from './IMAPAccounts';
 import { Toaster } from 'sonner';
 import { ThunderbirdImport } from './ThunderbirdImport';
-import { Paintbrush } from 'lucide-react';
 import { mailPlatform } from '@webmail/platform';
 import { AppearanceSettings } from './appearance/Appearance';
 import { appearance, appearanceSettings, useAppearanceSettings } from './appearance/engine';
@@ -24,13 +23,28 @@ export default function App({ session, events }: { session: SessionBinding; even
   const server = mailPlatform().serverHost?.() ?? '';
   const steps = useAuthStore(state => state.setupRequired);
   const [settingUp, setSettingUp] = useState(false);
+  const canOpenAppearance = signedIn && !settingUp && steps.length === 0;
   useEffect(() => { if (steps.length) setSettingUp(true); }, [steps]);
   useEffect(() => { appearance.restore(server, email); }, [server, email]);
   useEffect(() => {
+    if (!canOpenAppearance) {
+      appearanceSettings.close();
+      return;
+    }
     const shortcut = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key === ',') { event.preventDefault(); appearanceSettings.open(); } };
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
-  }, []);
+  }, [canOpenAppearance]);
   const mail = settingUp || steps.length ? <FirstRunSetup session={session} onFinished={() => setSettingUp(false)} /> : <><MailApp showToasts={false} loginPage={<SignIn session={session} />} /><DesktopAccountChoice session={session} /></>;
-  return <TooltipProvider>{events ? <DesktopTabs events={events}>{mail}</DesktopTabs> : mail}{(!signedIn || steps.length > 0) && <button className="desktop-appearance-open desktop-signin-appearance" data-testid="appearance-open" onClick={appearanceSettings.open}><Paintbrush size={14} /> Appearance</button>}{showAppearance && <AppearanceSettings />}<LocalMailStatus /><ThunderbirdImport /><Toaster richColors position="bottom-right" /></TooltipProvider>;
+  return (
+    <TooltipProvider>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">{events ? <DesktopTabs events={events}>{mail}</DesktopTabs> : mail}</div>
+        <LocalMailStatus />
+      </div>
+      {canOpenAppearance && showAppearance && <AppearanceSettings />}
+      <ThunderbirdImport />
+      <Toaster richColors position="bottom-right" />
+    </TooltipProvider>
+  );
 }

@@ -3,6 +3,7 @@ import { useAuthStore } from '@webmail/stores/authStore';
 import { identity, type SessionBinding } from './session';
 import { Brace } from './Brace';
 import { IMAPAccountSheet } from './IMAPAccounts';
+import { SignInVersion } from './About';
 
 export function SignIn({ session }: { session: SessionBinding }) {
   const [server, setServer] = useState('');
@@ -52,5 +53,6 @@ export function SignIn({ session }: { session: SessionBinding }) {
       {challenge && <button type="button" className="desktop-signin-back" data-testid="signin-back" onClick={() => { setChallenge(false); setTotp(''); }}>Back to sign in</button>}
     </form>
     </div>
+    <SignInVersion />
   </main>;
 }
