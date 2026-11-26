@@ -221,12 +221,12 @@ class ReleaseEvidenceTests(unittest.TestCase):
                                  (config, local))
 
     def test_registry_pull_naming_another_image_is_refused(self):
-        config, index, fetch = self.registry_fixture("api")
+        _config, index, fetch = self.registry_fixture("api")
         for local in ("sha256:" + "e" * 64, "sha256:" + "d" * 64):
             with self.subTest(local=local), patch.object(evidence.subprocess, "run", side_effect=fetch), \
-                    patch.object(evidence, "run", return_value=SimpleNamespace(stdout=local)):
-                with self.assertRaisesRegex(ValueError, "different configuration"):
-                    evidence.inspect_registry(self.directory, "ghcr.io/rest-mail/api", "api", index, "linux/amd64")
+                    patch.object(evidence, "run", return_value=SimpleNamespace(stdout=local)), \
+                    self.assertRaisesRegex(ValueError, "different configuration"):
+                evidence.inspect_registry(self.directory, "ghcr.io/rest-mail/api", "api", index, "linux/amd64")
 
     def containerd_builds(self):
         registry = {name: "sha256:" + f"{index:064x}" for index, name in enumerate(evidence.RELEASE_IMAGES, 100)}
@@ -259,9 +259,9 @@ class ReleaseEvidenceTests(unittest.TestCase):
         registry = {name: "sha256:" + f"{index:064x}" for index, name in enumerate(evidence.RELEASE_IMAGES, 100)}
         for local in ({**registry, "api": "sha256:" + "f" * 64}, {**IMAGES, "api": "sha256:" + "f" * 64},
                       {name: digest for name, digest in registry.items() if name != "api"}):
-            with self.subTest(local=local):
-                with self.assertRaisesRegex(ValueError, "neither its configuration nor its registry digest"):
-                    evidence.local_images({"images": IMAGES, "registry_images": registry, "local_images": local})
+            with self.subTest(local=local), \
+                    self.assertRaisesRegex(ValueError, "neither its configuration nor its registry digest"):
+                evidence.local_images({"images": IMAGES, "registry_images": registry, "local_images": local})
         self.assertEqual(evidence.local_images({"images": IMAGES}), IMAGES)
 
 
