@@ -5,7 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 type statusTickMsg time.Time

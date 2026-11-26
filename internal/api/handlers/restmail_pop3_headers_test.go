@@ -21,8 +21,8 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	pop3gateway "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 func TestRESTMAILStoredHeadersThroughPOP3RETR(t *testing.T) {

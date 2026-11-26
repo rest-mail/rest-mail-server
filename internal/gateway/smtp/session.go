@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
@@ -28,6 +27,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // defaultMaxMessageSize is the maximum accepted message size, in bytes, when

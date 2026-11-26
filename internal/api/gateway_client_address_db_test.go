@@ -17,9 +17,9 @@ import (
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // The sign-in throttle and the failed-sign-in slowing are per client address,

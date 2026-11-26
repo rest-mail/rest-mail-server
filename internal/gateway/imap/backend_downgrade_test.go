@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // TestFetch_DowngradesUTF8Headers proves FETCH hands a client that has not

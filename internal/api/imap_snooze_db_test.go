@@ -15,8 +15,8 @@ import (
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 func TestIMAPSnoozeKeepsMessagesUIDsAndCounts(t *testing.T) {

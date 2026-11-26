@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // refusingDelivery answers every delivery with err.

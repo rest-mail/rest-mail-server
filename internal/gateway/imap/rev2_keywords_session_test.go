@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // rev2Keywords are the keywords RFC 9051 §2.3.2 says a server SHOULD support:

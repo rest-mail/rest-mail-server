@@ -14,7 +14,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rest-mail/rest-mail-server/internal/console"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // version is stamped by the release build (.goreleaser.yaml); a local build

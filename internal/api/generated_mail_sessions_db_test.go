@@ -19,12 +19,12 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/digest"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // generatedMailSessions is a real API with one mailbox's app password, for real gateway sessions.

@@ -19,12 +19,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	smtpgateway "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	pipelinefilters "github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"gorm.io/gorm"
 )
 

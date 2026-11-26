@@ -16,8 +16,8 @@ import (
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // DeliverMessageFrom reads a streamed delivery back into a request, so a test asserts on the

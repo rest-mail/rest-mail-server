@@ -25,13 +25,13 @@ import (
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // eightBitShape is a message as a real sender writes it.

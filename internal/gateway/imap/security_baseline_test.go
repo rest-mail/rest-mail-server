@@ -22,9 +22,9 @@ import (
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil/reloadtest"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // The RFC 9051 §11 baseline lives in the gateway rather than the IMAP engine:

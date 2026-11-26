@@ -28,13 +28,13 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/mtls"
 	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	yaml "go.yaml.in/yaml/v2"
 )
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 func TestImportedFlagsAPPENDCOPYFETCHAndExpunge(t *testing.T) {

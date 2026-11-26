@@ -17,10 +17,10 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"golang.org/x/net/dns/dnsmessage"
 	"gorm.io/gorm"
 )

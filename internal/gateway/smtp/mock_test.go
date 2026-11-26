@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 )
 

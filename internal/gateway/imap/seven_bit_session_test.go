@@ -16,8 +16,8 @@ import (
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // sevenBitRaw needs converting on the way out: 8-bit headers at the top and in a

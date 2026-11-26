@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // startServer serves a plain listener, as the implicit-TLS one looks to a

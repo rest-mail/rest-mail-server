@@ -9,7 +9,7 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // The gateway mailbox keeps keywords through the API, so the engine offers \*.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // changeElsewhere is another client's flag change, made in the store as the API

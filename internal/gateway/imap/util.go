@@ -6,10 +6,10 @@ import (
 	"math"
 	"strings"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // maxFolderNameLen bounds an IMAP folder (mailbox) name: the API's rule, so an

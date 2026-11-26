@@ -29,12 +29,12 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	smtpgateway "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"gorm.io/gorm"
 )
 

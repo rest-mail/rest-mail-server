@@ -15,7 +15,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/dane"
 	"github.com/rest-mail/rest-mail-server/internal/db"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/bancheck"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/metricsrv"
@@ -28,6 +27,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
@@ -163,7 +163,9 @@ func main() {
 		slog.Error("the SMTP gateway needs internal mTLS (INTERNAL_MTLS_ENABLED=true, with its delivery and submission client certificates): mail clients' sessions with the API are opened on the internal listener")
 		os.Exit(1)
 	}
-	var apiOpts, submissionOpts []apiclient.Option
+	// Each call to the API is traced as a client span (#1580).
+	apiOpts := []apiclient.Option{apiclient.WithDoer(tracing.Do)}
+	submissionOpts := []apiclient.Option{apiclient.WithDoer(tracing.Do)}
 	if cfg.InternalMTLSEnabled {
 		if cfg.APIInternalBaseURL == "" {
 			slog.Error("internal mTLS enabled but API_INTERNAL_BASE_URL is not set (must point at the API's internal mTLS listener, e.g. https://api:8443)")

@@ -38,11 +38,11 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // These tests are the two "done when" of migrating in (#734). Everything an

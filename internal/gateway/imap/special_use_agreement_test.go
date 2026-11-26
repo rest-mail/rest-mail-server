@@ -8,8 +8,8 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // The API's folder listing and IMAP LIST read the one definition of folder roles, so they

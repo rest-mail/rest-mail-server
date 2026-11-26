@@ -16,7 +16,7 @@ import (
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 // STATUS DELETED is "the number of messages that have the \Deleted flag set"

@@ -22,12 +22,12 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/testdb"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"gorm.io/gorm"
 )
 

@@ -8,7 +8,7 @@ import (
 
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
-	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 )
 
 func TestServer_UnsolicitedFetchIncludesUID(t *testing.T) {
