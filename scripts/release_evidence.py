@@ -165,6 +165,23 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, text=True, capture_output=True, **kwargs)
 
 
+def local_images(builds):
+    """The name each built image has in this Docker daemon.
+
+    The evidence binds every image to its configuration digest, and the classic
+    image store uses that digest as the local image ID. The containerd image store
+    (the default from Docker 29) names a pulled image by the registry digest it was
+    pulled as, and has no image under the configuration digest. collect records the
+    local name beside each configuration so that containers start from, and are
+    compared with, the exact image the daemon holds."""
+    images = builds["images"]
+    local = builds.get("local_images", images)
+    registry = builds.get("registry_images", {})
+    if set(local) != set(images) or any(local[name] not in (images[name], registry.get(name)) for name in images):
+        raise ValueError("a local image name is neither its configuration nor its registry digest")
+    return local
+
+
 def image_ids(containers):
     actual = {}
     for name, container in containers.items():
@@ -216,9 +233,12 @@ def inspect_registry(directory, repository, name, digest, platform):
     config = registry_config(directory, name, digest, platform)
     reference = f"{repository}@{digest}"
     run(["docker", "pull", "--platform", platform, reference])
-    if run(["docker", "image", "inspect", "--format", "{{.Id}}", reference]).stdout.strip() != config:
+    local = run(["docker", "image", "inspect", "--format", "{{.Id}}", reference]).stdout.strip()
+    # The classic store names the image by its configuration, the containerd store
+    # by the index digest it was pulled as. Both are checked links of one chain.
+    if local not in (config, digest):
         raise ValueError(f"{name}: Docker pulled a different configuration than the build manifest names")
-    return config
+    return config, local
 
 
 def check_tls_receipt(receipt, commit, images):
@@ -249,7 +269,7 @@ def collect(args):
     directory.mkdir(parents=True, exist_ok=True)
     commit = image_scan.head_commit(ROOT)
     docker = image_scan.Docker(args.tag_prefix, args.label)
-    builds = {"commit": commit, "platform": args.platform, "images": {}}
+    builds = {"commit": commit, "platform": args.platform, "images": {}, "local_images": {}}
     registry = registry_digests(args.registry_digests) if args.registry_digests else None
     if registry is not None:
         builds["registry_images"] = registry
@@ -259,17 +279,18 @@ def collect(args):
         volume = f"{args.tag_prefix.replace('/', '-')}{image.name}-scan"
         try:
             if registry is not None:
-                digest = inspect_registry(directory, f"{args.registry_prefix}/{image.name}", image.name, registry[image.name], args.platform)
+                digest, local = inspect_registry(directory, f"{args.registry_prefix}/{image.name}", image.name, registry[image.name], args.platform)
             else:
                 built = docker.build(ROOT, image, args.platform, commit)
                 (directory / f"{image.name}.build.log").write_text(built.stdout + built.stderr)
                 if built.returncode:
                     raise ValueError(f"build exited {built.returncode}")
-                digest = run(["docker", "image", "inspect", "--format", "{{.Id}}", docker.tag(image, args.platform)]).stdout.strip()
+                digest = local = run(["docker", "image", "inspect", "--format", "{{.Id}}", docker.tag(image, args.platform)]).stdout.strip()
             builds["images"][image.name] = digest
+            builds["local_images"][image.name] = local
             write_json(directory / "builds.json", builds)
             prepared = docker.prepare(volume, b"")
-            if prepared.returncode or docker.save(image, args.platform, volume, reference=digest if registry is not None else None).returncode:
+            if prepared.returncode or docker.save(image, args.platform, volume, reference=local if registry is not None else None).returncode:
                 raise ValueError("could not save the exact image for scanning")
             cache = f"{args.tag_prefix.replace('/', '-')}trivy-cache"
             docker._create_volume(cache)
@@ -312,7 +333,7 @@ def fresh_start(args):
     if len(containers) != len(args.container):
         raise ValueError("duplicate fresh-start container argument")
     before = image_ids(containers)
-    if set(before) != set(RELEASE_IMAGES) or before != builds["images"]:
+    if set(before) != set(RELEASE_IMAGES) or before != local_images(builds):
         raise ValueError("fresh-start containers must run exactly the seven built image digests")
     api = json.loads(run(["docker", "inspect", containers["api"]]).stdout)[0]
     ports = api["NetworkSettings"]["Ports"].get("8080/tcp") or []
@@ -330,7 +351,7 @@ def fresh_start(args):
     if counts[2]:
         raise ValueError("fresh-start baseline skipped required exchanges")
     write_json(args.directory / "fresh-start.json", {
-        "commit": builds["commit"], "images": before, "at": datetime.now(timezone.utc).isoformat(),
+        "commit": builds["commit"], "images": builds["images"], "at": datetime.now(timezone.utc).isoformat(),
         "exit_code": 0, "counts": list(counts), "junit_sha256": sha256(junit), "spec_sha256": sha256(spec),
         "operations": baseline_operations(spec, junit)})
     print(f"release-evidence fresh-start {detail}")
