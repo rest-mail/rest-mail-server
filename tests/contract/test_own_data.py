@@ -730,9 +730,12 @@ class Selection(unittest.TestCase):
         for chunk in hooks.split("\n\n\n"):
             if "sender_mailboxes" in chunk or "test_send_mailboxes" in chunk:
                 readers |= set(re.findall(r'@hooks\.before\("(\w+)"\)', chunk))
-        # a_signing_mailbox_at is called from sendMessage's hook alone.
-        self.assertEqual(readers, set(SENDS))
-        self.assertEqual(hooks.count("a_signing_mailbox_at("), 3)
+        # a_signing_mailbox_at is called from sendMessage's hook and, for the
+        # fuzz process's generated senders, forwardMessage's (#2051). Each
+        # reader of sender_mailboxes is moved, so its reset clears that stash.
+        self.assertEqual(readers, set(SENDS) | {"forwardMessage"})
+        self.assertLessEqual(readers, set(own_data.MOVED))
+        self.assertEqual(hooks.count("a_signing_mailbox_at("), 5)
         self.assertEqual(
             link_followers(description, "sendMessage"),
             FOLLOWS_THE_SENT_MESSAGE | OTHER_SENT_MESSAGE_FOLLOWERS,
