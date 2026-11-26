@@ -1,0 +1,46 @@
+html, body, #root, .desktop-shell { font-family: var(--desktop-font); background: var(--theme-reader, var(--sheet)); color: var(--foreground); }
+body { color: var(--foreground); }
+button, input, textarea, select, .desktop-shell button { border-radius: var(--radius); }
+:is(button, input, textarea, select, summary, a):focus-visible { outline: 2px solid var(--theme-selection, var(--deep)); outline-offset: 3px; box-shadow: none; }
+:is(input, textarea, select) { accent-color: var(--theme-selection, var(--deep)); }
+.desktop-shell :is(h1, h2, h3), .desktop-signin-sheet h1, .desktop-reader-content h2 { font-family: var(--theme-display, var(--desktop-font)); }
+.desktop-signin { background: var(--theme-sidebar, #1a2a4a); background-image: var(--theme-texture, none); }
+.desktop-brace { stroke: var(--theme-brace, #6e87b6); }
+.desktop-signin-sheet { background: var(--theme-sheet, var(--sheet)); color: var(--foreground); border-radius: calc(var(--radius) * 1.3); }
+.desktop-signin-description, .desktop-setup-intro { color: var(--muted-foreground); }
+.desktop-input { background: var(--sheet); color: var(--foreground); border-color: var(--border); border-radius: var(--radius); }
+.desktop-input:focus { border-color: var(--theme-selection, var(--deep)); box-shadow: 0 0 0 2px var(--theme-selection, var(--deep)); }
+.desktop-primary, .desktop-compose [data-testid="compose-send"] { background: var(--signal); color: var(--theme-accent-ink, var(--ink)); border: 1px solid var(--theme-accent-ink, var(--ink)); border-radius: var(--radius); }
+.desktop-signin-error { color: var(--destructive); }
+.desktop-text-button, .desktop-signin-back { color: var(--theme-ink, var(--foreground)); }
+.desktop-setup-sheet code, .desktop-recovery-codes { background: var(--well); border-color: var(--border); border-radius: var(--radius); color: var(--foreground); }
+.desktop-sidebar { background: var(--theme-sidebar, #1a2a4a) !important; background-image: var(--theme-texture, none) !important; color: var(--theme-sidebar-ink, white); }
+.desktop-brand { background: var(--theme-sidebar, #1a2a4a); color: var(--theme-sidebar-ink, white); }
+.desktop-sidebar :is(.text-foreground, .text-primary-foreground), .desktop-account-row { color: var(--theme-sidebar-ink, white); }
+.desktop-sidebar .text-muted-foreground, .desktop-sidebar .text-primary, .desktop-folder-icon { color: var(--theme-sidebar-muted, var(--mist)); }
+.desktop-sidebar { --desktop-sidebar-tint: color-mix(in srgb, var(--theme-sidebar-ink, white) 13%, transparent); }
+.desktop-sidebar :is([data-testid="compose-open"], [data-testid^="folder-"]) { height: var(--desktop-row-height); border-radius: min(4px, var(--radius)); }
+.desktop-sidebar :is([data-testid="compose-open"], [data-testid^="folder-"][aria-current]) { background: var(--desktop-sidebar-tint); color: var(--theme-sidebar-ink, white); font-weight: var(--desktop-semibold); }
+.desktop-sidebar [data-testid^="folder-"][aria-current] { box-shadow: inset 2px 0 color-mix(in srgb, currentColor 65%, transparent); }
+.desktop-sidebar :is([data-testid="compose-open"], [data-testid^="folder-"][aria-current]) :is(svg, span) { color: inherit; }
+.desktop-sidebar :is([data-inbox="true"], [data-testid^="folder-"][aria-current]) > span:last-child:not(:first-of-type) { background: var(--desktop-sidebar-tint); color: var(--theme-sidebar-ink, white); border-radius: min(4px, var(--radius)); }
+.desktop-sidebar :is(.desktop-sidebar-action, .desktop-signout, .desktop-sidebar-tools summary):hover { color: var(--theme-sidebar-ink, white); }
+.desktop-sidebar :is(button, summary):focus-visible { outline-color: var(--theme-sidebar-ink, white); }
+.desktop-sidebar :is(.desktop-sidebar-action, .desktop-signout, .desktop-sidebar-tools summary, .desktop-account-group, .desktop-account-settings, .desktop-account-row), .desktop-shell [data-settings-surface] :is(button, input:not([type="checkbox"]), textarea) { border-radius: min(4px, var(--radius)); }
+.desktop-list-pane, .desktop-message { background: var(--theme-list, var(--well)); }
+.desktop-message, .desktop-message-row { min-height: calc(var(--desktop-row-height) * 2.1); }
+.desktop-message-row { padding-top: calc(var(--desktop-row-height) / 3) !important; padding-bottom: calc(var(--desktop-row-height) / 3) !important; }
+.desktop-message[data-unread="true"]::before { background: var(--theme-unread, var(--deep)); }
+.desktop-message[data-selected="true"] { background: var(--theme-selection, var(--deep)); }
+.desktop-message[data-selected="true"] :is(span, p, svg) { color: var(--theme-selection-ink, white) !important; }
+.desktop-message[data-selected="true"]::before { background: var(--theme-selection-ink, white); }
+.desktop-reader-pane, .desktop-reader-toolbar { background: var(--theme-reader, var(--sheet)); }
+.desktop-reader-content .prose, .desktop-reader-content pre.whitespace-pre-wrap, .desktop-compose [data-testid="compose-body"] { font-family: var(--theme-reading, var(--desktop-font)); }
+.desktop-reader-content iframe { background: #ffffff; color-scheme: light; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px rgb(0 0 0 / 8%); }
+.desktop-reader-content :is([data-testid="reader-load-images"], [data-testid^="attachment-"]), .desktop-reader-content div:has(> [data-testid="reader-load-images"]) { border-radius: var(--radius); }
+.desktop-shell:has(.desktop-compose) [data-testid="compose-open"] span { color: var(--theme-sidebar-ink, white); }
+.desktop-tabs[data-layout="stacked"] .desktop-message, .desktop-tabs[data-layout="stacked"] .desktop-message-row { min-height: var(--desktop-row-height); }
+.desktop-tabs[data-layout="stacked"] .desktop-message-row { padding-top: calc((var(--desktop-row-height) - 20px) / 2) !important; padding-bottom: calc((var(--desktop-row-height) - 20px) / 2) !important; }
+.desktop-shell [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"] { background: var(--sheet); color: var(--foreground); border-color: var(--border); border-radius: var(--radius); }
+[data-sonner-toast] { font-family: var(--desktop-font); --normal-bg: var(--sheet); --normal-text: var(--foreground); --normal-border: var(--border); --success-bg: var(--sheet); --success-text: var(--theme-success); --success-border: var(--theme-success); --error-bg: var(--sheet); --error-text: var(--theme-danger); --error-border: var(--theme-danger); --info-bg: var(--sheet); --info-text: var(--foreground); --info-border: var(--border); --warning-bg: var(--sheet); --warning-text: var(--theme-danger); --warning-border: var(--theme-danger); }
+@media (prefers-reduced-motion: no-preference) { .desktop-sidebar, .desktop-list-pane, .desktop-reader-pane, .desktop-signin-sheet { transition: background-color 140ms ease, color 140ms ease; } }

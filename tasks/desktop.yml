@@ -1,0 +1,138 @@
+version: "3"
+
+# The REST Mail desktop client (desktop/, Wails 3, #2211).
+#
+#   chore desktop:dev       run the app with live reload
+#   chore desktop:build     build RESTMail.app for this Mac
+#   chore desktop:release   build, install into ~/Applications, print the release info
+#   chore desktop:info      print the installed build's release info
+#   chore desktop:notarize  notarize and staple the last build (Developer ID builds only)
+#   chore desktop:ship      release, notarize and publish to GitHub
+#
+# A release's version is semantic, from the conventional commit titles under desktop/
+# and webmail/ since the last desktop-v* tag (scripts/release.py next-version): a feat
+# raises the minor version, anything else the patch. macOS's build number
+# (CFBundleVersion) is the repository's commit count, which only ever grows. The
+# commit and build time are compiled into the binary and shown in the app.
+#
+# chores.yml exports OUTPUT (where raw command output goes). Wails' Taskfiles read
+# a variable of the same name as the build's output path, so it is unset here.
+
+silent: true
+
+# webmail's dependencies need Node ^20.19, ^22.13 or >=24 (eslint-visitor-keys); Node 23
+# is refused. Prefer Homebrew's node@22 when it is installed, whatever node is first on PATH.
+env:
+  PATH:
+    sh: 'd=/opt/homebrew/opt/node@22/bin; if [ -x "$d/node" ]; then echo "$d:$PATH"; else echo "$PATH"; fi'
+
+vars:
+  WAILS3:
+    sh: command -v wails3 || echo "$HOME/go/bin/wails3"
+  DESKTOP_DIR: '{{.ROOT_DIR}}/desktop'
+  APP_NAME: RESTMail
+  INSTALL_DIR: '{{.DESKTOP_INSTALL_DIR | default (print .HOME "/Applications")}}'
+  APP_VERSION:
+    sh: python3 desktop/scripts/release.py next-version
+  APP_BUILD:
+    sh: git rev-list --count HEAD
+  APP_COMMIT:
+    sh: 'git rev-parse HEAD'
+  APP_DIRTY:
+    sh: 'test -z "$(git status --porcelain --untracked-files=all -- desktop webmail)" && echo "" || echo "-dirty"'
+
+tasks:
+  devstack:up:
+    desc: Start an isolated loopback API and mTLS SMTP worker on the existing desktop dev database
+    dotenv: []
+    cmds:
+      - python3 -B "{{.DESKTOP_DIR}}/scripts/devstack.py" up {{.CLI_ARGS}}
+
+  devstack:down:
+    desc: Stop only the recorded devstack containers, preserving the database and original API
+    dotenv: []
+    cmds:
+      - python3 -B "{{.DESKTOP_DIR}}/scripts/devstack.py" down {{.CLI_ARGS}}
+
+  tool:
+    desc: Install the pinned Wails 3 CLI when it is missing
+    status:
+      - test -x "{{.WAILS3}}"
+    cmds:
+      - go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+  dev:
+    desc: Run the desktop app with live reload
+    deps: [tool]
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - 'env -u OUTPUT -u VERBOSE "{{.WAILS3}}" dev'
+
+  build:
+    desc: Build RESTMail.app for this Mac (desktop/bin)
+    deps: [tool]
+    dir: '{{.DESKTOP_DIR}}'
+    vars:
+      APP_BUILT:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+    cmds:
+      - 'env -u OUTPUT -u VERBOSE "{{.WAILS3}}" task darwin:package APP_VERSION={{.APP_VERSION}}{{.APP_DIRTY}} APP_COMMIT={{.APP_COMMIT}}{{.APP_DIRTY}} APP_BUILT={{.APP_BUILT}}'
+      - /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{.APP_VERSION}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
+      - /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{.APP_BUILD}}" "bin/{{.APP_NAME}}.app/Contents/Info.plist"
+      - python3 scripts/release.py stamp --version "{{.APP_VERSION}}{{.APP_DIRTY}}" --commit "{{.APP_COMMIT}}{{.APP_DIRTY}}" --built "{{.APP_BUILT}}" --output bin/release.json
+      - cp bin/release.json "bin/{{.APP_NAME}}.app/Contents/Resources/release.json"
+      - sh scripts/sign.sh "bin/{{.APP_NAME}}.app"
+
+  release:
+    desc: Build, install into ~/Applications and print the release info
+    cmds:
+      - task: release:notes
+      - task: build
+      - mkdir -p "{{.INSTALL_DIR}}"
+      # Stop only the copy being replaced. Quitting "REST Mail" by name would also stop
+      # development builds and other checkouts' copies, which share its name and bundle id.
+      - sh "{{.DESKTOP_DIR}}/scripts/stop-installed.sh" "{{.INSTALL_DIR}}/{{.APP_NAME}}.app/Contents/MacOS/{{.APP_NAME}}"
+      - rm -rf "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
+      - cp -R "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app" "{{.INSTALL_DIR}}/"
+      - task: info
+
+  release:notes:
+    desc: Print desktop and webmail commits since the installed release
+    cmds:
+      - python3 "{{.DESKTOP_DIR}}/scripts/release.py" installed-notes --install-dir "{{.INSTALL_DIR}}"
+
+  publish:
+    desc: Publish the last clean local build to GitHub without rebuilding or pushing
+    cmds:
+      - python3 "{{.DESKTOP_DIR}}/scripts/release.py" publish --build-dir "{{.DESKTOP_DIR}}/bin"
+
+  notarize:
+    desc: Notarize and staple the last build, then reinstall it (only published builds need this)
+    cmds:
+      - sh "{{.DESKTOP_DIR}}/scripts/sign.sh" --notarize "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app"
+      - rm -rf "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"
+      - cp -R "{{.DESKTOP_DIR}}/bin/{{.APP_NAME}}.app" "{{.INSTALL_DIR}}/"
+
+  ship:
+    desc: Build, install, notarize where Apple allows it, and publish a desktop release
+    cmds:
+      - task: release
+      - task: notarize
+      - task: publish
+
+  latest:
+    desc: Download and install the newest published desktop release for this Mac
+    cmds:
+      - python3 "{{.DESKTOP_DIR}}/scripts/release.py" latest --install-dir "{{.INSTALL_DIR}}"
+
+  info:
+    desc: Print the installed build's release info
+    cmds:
+      - |
+        f="{{.INSTALL_DIR}}/{{.APP_NAME}}.app/Contents/Resources/release.json"
+        if [ -f "$f" ]; then echo "Installed: {{.INSTALL_DIR}}/{{.APP_NAME}}.app"; cat "$f"; echo; else echo "REST Mail is not installed in {{.INSTALL_DIR}}"; fi
+
+  open:
+    desc: Launch the installed app
+    cmds:
+      - open "{{.INSTALL_DIR}}/{{.APP_NAME}}.app"

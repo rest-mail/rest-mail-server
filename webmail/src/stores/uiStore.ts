@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { THEME_IDS, DARK_THEME_IDS, type ThemeId } from '@/theme/packs';
+import { mailPlatform } from '@/platform';
 
 export type Theme = ThemeId;
 type View =
@@ -8,12 +9,13 @@ type View =
   | 'pipelineTester' | 'pipelineConfig'
   | 'settings' | 'accountSettings';
 
-interface ComposeState {
+export interface ComposeState {
   to: string;
   cc: string;
   bcc: string;
   subject: string;
   inReplyTo?: string;
+  forwardMessageId?: number;
   quoteHtml?: string;
   draftId?: number;
   bodyHtml?: string;
@@ -71,10 +73,13 @@ export const useUIStore = create<UIState>((set) => ({
 
   setSelectedAccountId: (id) => set({ selectedAccountId: id }),
 
-  startCompose: (state) => set({
-    view: 'compose',
-    composeState: state || { to: '', cc: '', bcc: '', subject: '' },
-  }),
+  startCompose: (state) => {
+    if (mailPlatform().openCompose) {
+      mailPlatform().openCompose!(state);
+      return;
+    }
+    set({ view: 'compose', composeState: state || { to: '', cc: '', bcc: '', subject: '' } });
+  },
 
   closeCompose: () => set({ view: 'mail', composeState: null }),
 

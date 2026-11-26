@@ -9,11 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { SettingsActions, SettingsSection } from '@/components/ui/settings';
 import { VacationView } from '@/components/settings/VacationView';
 import { TwoFactorView } from '@/components/settings/TwoFactorView';
 import { AppPasswordsView } from '@/components/settings/AppPasswordsView';
 import { WebPushToggle } from '@/components/settings/WebPushToggle';
-import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2, ShieldCheck, Palette, Check } from 'lucide-react';
+import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, ShieldCheck, Palette, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Tab = 'general' | 'accounts' | 'security' | 'notifications';
@@ -351,33 +352,25 @@ export function DangerZone({ isPrimary, accountId, onDeleted }: {
   }
 
   return (
-    <Card className="border-destructive/50">
-      <CardHeader>
-        <CardTitle className="text-base text-destructive flex items-center gap-2">
-          <Trash2 className="w-4 h-4" /> Danger Zone
-        </CardTitle>
-        <CardDescription>Removing an account only removes it from this webmail session. It does not delete the mailbox.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isPrimary ? (
-          <p className="text-sm text-muted-foreground">
-            You cannot remove your primary account. Log out instead.
-          </p>
-        ) : confirming ? (
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-muted-foreground flex-1">Are you sure? This cannot be undone.</p>
-            <Button variant="destructive" size="sm" disabled={busy} onClick={handleRemove}>
-              {busy ? 'Removing\u2026' : 'Yes, remove'}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Cancel</Button>
-          </div>
-        ) : (
-          <Button variant="outline" size="sm" className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => setConfirming(true)}>
-            Remove this account from webmail
+    <SettingsSection title="Remove account" description="This only removes the account from this session. It does not delete the mailbox.">
+      {isPrimary ? (
+        <p className="text-sm text-muted-foreground">
+          You cannot remove your primary account. Log out instead.
+        </p>
+      ) : confirming ? (
+        <SettingsActions>
+          <p className="basis-full text-sm text-muted-foreground">Are you sure? This cannot be undone.</p>
+          <Button variant="destructive" size="sm" disabled={busy} onClick={handleRemove}>
+            {busy ? 'Removing\u2026' : 'Yes, remove'}
           </Button>
-        )}
-      </CardContent>
-    </Card>
+          <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Cancel</Button>
+        </SettingsActions>
+      ) : (
+        <Button variant="outline" size="sm" className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => setConfirming(true)}>
+          Remove this account from webmail
+        </Button>
+      )}
+    </SettingsSection>
   );
 }
 

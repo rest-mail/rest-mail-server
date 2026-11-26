@@ -31,6 +31,7 @@ export function RichTextEditor({ content, onChange, placeholder }: Props) {
       Placeholder.configure({ placeholder: placeholder || '' }),
     ],
     content,
+    editorProps: { attributes: { 'data-testid': 'compose-body', role: 'textbox', 'aria-label': 'Message body' } },
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },

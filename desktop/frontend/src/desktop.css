@@ -1,0 +1,6 @@
+@import "../../../webmail/src/index.css";
+@import "./theme.css";
+@import "./appearance/fonts.css";
+@import "./appearance/surfaces.css";
+@source ".";
+html, body, #root { height: 100%; margin: 0; }

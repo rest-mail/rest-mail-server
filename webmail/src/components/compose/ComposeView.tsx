@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { RichTextEditor } from './RichTextEditor';
 import { AutocompleteInput } from './AutocompleteInput';
 import * as api from '@/api/client';
+import { mailPlatform, type NativeAttachment } from '@/platform';
 import { scheduleTime, scheduledSendRequest, sendTimeLabel, toLocalInput } from '@/lib/scheduledSend';
 import { X, Code, Type, Trash2, Save, Send, CalendarPlus, CalendarX, Clock } from 'lucide-react';
 
@@ -17,11 +18,26 @@ function parseRecipients(raw: string): string[] {
   return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
 }
 
-export function ComposeView() {
-  const { composeState, closeCompose, setView } = useUIStore();
+export interface ComposeLifecycle {
+  heldAttachments?: { id: string; filename: string; size: number }[];
+  onRemoveAttachment?: (id: string) => void;
+  onPickAttachments?: () => void;
+  initialState?: import('@/stores/uiStore').ComposeState;
+  initialFrom?: string;
+  onClose?: () => void;
+  onSent?: () => void;
+  onDiscarded?: () => void;
+  onStateChange?: (state: { dirty: boolean; canSave: boolean; busy: boolean; subject: string }) => void;
+  onSaveHandler?: (save: () => Promise<boolean>) => void;
+}
+
+export function ComposeView({ heldAttachments, onRemoveAttachment, onPickAttachments, initialState, initialFrom, onClose, onSent, onDiscarded, onStateChange, onSaveHandler }: ComposeLifecycle = {}) {
+  const { composeState: paneState, closeCompose: closePane, setView } = useUIStore();
+  const composeState = initialState ?? paneState;
+  const closeCompose = onClose ?? closePane;
   const { accounts } = useMailStore();
 
-  const [from, setFrom] = useState(accounts[0]?.address || '');
+  const [from, setFrom] = useState(initialFrom ?? accounts[0]?.address ?? '');
   const [to, setTo] = useState<string[]>(parseRecipients(composeState?.to || ''));
   const [cc, setCc] = useState<string[]>(parseRecipients(composeState?.cc || ''));
   const [bcc, setBcc] = useState<string[]>(parseRecipients(composeState?.bcc || ''));
@@ -30,6 +46,9 @@ export function ComposeView() {
   const [isHtml, setIsHtml] = useState(true);
   const [plainText, setPlainText] = useState(composeState?.bodyText || '');
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<NativeAttachment[]>([]);
+  const attachmentsBlocked = attachments.length > 0 || !!heldAttachments?.length;
+  const draftBccBlocked = !!mailPlatform().desktop && bcc.length > 0;
   const [draftId, setDraftId] = useState<number | null>(composeState?.draftId || null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -46,10 +65,22 @@ export function ComposeView() {
   // Auto-save timer
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaveRef = useRef<string>('');
+  const nativeSavedRef = useRef<string | null>(null);
 
   const getFormSnapshot = useCallback(() => {
-    return JSON.stringify({ from, to, cc, bcc, subject, htmlContent, plainText });
-  }, [from, to, cc, bcc, subject, htmlContent, plainText]);
+    return JSON.stringify({ from, to, cc, bcc, subject, htmlContent, plainText, isHtml });
+  }, [from, to, cc, bcc, subject, htmlContent, plainText, isHtml]);
+
+  useEffect(() => {
+    if (nativeSavedRef.current === null && composeState?.draftId) nativeSavedRef.current = getFormSnapshot();
+    const hasContent = to.length > 0 || cc.length > 0 || bcc.length > 0 || !!subject || !!stripHtml(htmlContent).trim() || !!plainText || attachmentsBlocked;
+    onStateChange?.({
+      dirty: attachmentsBlocked || (nativeSavedRef.current === null ? hasContent : getFormSnapshot() !== nativeSavedRef.current),
+      canSave: !attachmentsBlocked && !composeState?.forwardMessageId && !draftBccBlocked,
+      busy: sending || savingDraft,
+      subject,
+    });
+  }, [getFormSnapshot, attachments, attachmentsBlocked, composeState?.draftId, composeState?.forwardMessageId, draftBccBlocked, sending, savingDraft, onStateChange]);
 
   // Auto-save every 30 seconds if content changed
   useEffect(() => {
@@ -63,7 +94,7 @@ export function ComposeView() {
       if (autoSaveRef.current) clearInterval(autoSaveRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, cc, bcc, subject, htmlContent, plainText, draftId]);
+  }, [from, to, cc, bcc, subject, htmlContent, plainText, draftId, isHtml, attachmentsBlocked, composeState?.forwardMessageId]);
 
   const getDraftData = () => ({
     from,
@@ -72,9 +103,14 @@ export function ComposeView() {
     subject: subject || undefined,
     body_text: isHtml ? stripHtml(htmlContent) : plainText,
     body_html: isHtml ? htmlContent : undefined,
+    ...(mailPlatform().desktop && composeState?.inReplyTo ? { in_reply_to: composeState.inReplyTo } : {}),
   });
 
   const handleSaveDraft = async (silent = false) => {
+    if (attachmentsBlocked || composeState?.forwardMessageId || draftBccBlocked) {
+      if (!silent) toast.error("Attachments can't be sent or saved yet (#2212). Remove the selected files first.");
+      return false;
+    }
     setSavingDraft(true);
     try {
       if (draftId) {
@@ -84,13 +120,18 @@ export function ComposeView() {
         setDraftId(resp.data.id);
       }
       lastSaveRef.current = getFormSnapshot();
+      nativeSavedRef.current = getFormSnapshot();
       if (!silent) toast.success('Draft saved');
+      return true;
     } catch (err) {
       if (!silent) toast.error(err instanceof Error ? err.message : 'Failed to save draft');
+      return false;
     } finally {
       setSavingDraft(false);
     }
   };
+
+  useEffect(() => { onSaveHandler?.(() => handleSaveDraft(false)); });
 
   const messageData = (): Parameters<typeof api.sendMessage>[0] => {
     const sendData: Parameters<typeof api.sendMessage>[0] = {
@@ -121,6 +162,7 @@ export function ComposeView() {
   // wall time; the request carries it as UTC, and the server judges it (at
   // least a minute ahead, within a year), so its refusal is shown as it is.
   const handleSchedule = async () => {
+    if (attachmentsBlocked || composeState?.forwardMessageId) return;
     if (to.length === 0) return;
     setScheduleError('');
     let when;
@@ -146,7 +188,7 @@ export function ComposeView() {
         description: when.adjusted ? `That time does not exist on that day where you are, so it goes at ${at}.` : undefined,
         action: { label: 'View scheduled', onClick: () => setView('scheduled') },
       });
-      closeCompose();
+      if (onSent) onSent(); else closeCompose();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to schedule message';
       setScheduleError(message);
@@ -168,18 +210,23 @@ export function ComposeView() {
   };
 
   const handleSend = async () => {
+    if (attachmentsBlocked) return;
     if (to.length === 0) return;
     setSending(true);
     try {
-      if (draftId) {
+      if (composeState?.forwardMessageId) {
+        await api.forwardMessage(composeState.forwardMessageId, { from, to, body_text: isHtml ? stripHtml(htmlContent) : plainText });
+      } else if (draftId && !draftBccBlocked) {
         // Update draft with latest content then send it
         await api.updateDraft(draftId, getDraftData());
         await api.sendDraft(draftId);
       } else {
         await api.sendMessage(messageData());
+        if (draftId && draftBccBlocked) await api.deleteMessage(draftId).catch(() => toast.warning('Message sent, but the old draft could not be removed.'));
       }
       toast.success('Message sent');
-      closeCompose();
+      if (onSent) onSent();
+      else closeCompose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
@@ -195,11 +242,12 @@ export function ComposeView() {
         // ignore — draft may already be gone
       }
     }
-    closeCompose();
+    if (onDiscarded) onDiscarded();
+    else closeCompose();
   };
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className={mailPlatform().desktop ? 'desktop-compose h-full flex flex-col bg-background' : 'h-full flex flex-col bg-background'}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2">
         <h2 className="font-semibold">{draftId ? 'Edit Draft' : 'Compose'}</h2>
@@ -214,6 +262,7 @@ export function ComposeView() {
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">From</Label>
           <select
+            data-testid="compose-from"
             value={from}
             onChange={e => setFrom(e.target.value)}
             className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -225,24 +274,36 @@ export function ComposeView() {
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">To</Label>
-          <AutocompleteInput value={to} onChange={setTo} placeholder="recipient@example.com" />
+          <AutocompleteInput testId="compose-to" value={to} onChange={setTo} placeholder="recipient@example.com" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Cc</Label>
-          <AutocompleteInput value={cc} onChange={setCc} placeholder="" />
+          <AutocompleteInput testId="compose-cc" value={cc} onChange={setCc} placeholder="" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Bcc</Label>
-          <AutocompleteInput value={bcc} onChange={setBcc} placeholder="" />
+          <AutocompleteInput testId="compose-bcc" value={bcc} onChange={setBcc} placeholder="" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Subject</Label>
-          <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" />
+          <Input data-testid="compose-subject" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" />
         </div>
       </div>
       <Separator />
 
       {/* Editor toggle + calendar */}
+      {(mailPlatform().pickAttachments || heldAttachments) && <div className="px-4 py-2 text-sm space-y-2">
+        {!!heldAttachments?.length && <div className="desktop-attachment-chips">{heldAttachments.map(attachment => <div className="desktop-attachment-chip" key={attachment.id} data-testid={`compose-held-${attachment.id}`}>
+          <span>{attachment.filename}</span><small>{attachment.size < 1024 ? `${attachment.size} B` : attachment.size < 1048576 ? `${(attachment.size / 1024).toFixed(1)} KB` : `${(attachment.size / 1048576).toFixed(1)} MB`}</small>
+          <button aria-label={`Remove ${attachment.filename}`} data-testid={`compose-remove-held-${attachment.id}`} onClick={() => onRemoveAttachment?.(attachment.id)}>×</button>
+        </div>)}</div>}
+        {attachments.map((attachment, index) => <div key={`${attachment.filename}-${index}`} className="flex gap-3 items-center">
+          <span>{attachment.filename}</span><button data-testid={`compose-remove-attachment-${index}`} onClick={() => setAttachments(previous => previous.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
+        </div>)}
+        {attachmentsBlocked && <p role="alert">Attachments can't be sent yet — the server update is on its way. Remove them to send or save this draft. <a href="https://github.com/rest-mail/rest-mail-server/issues/2212" target="_blank" rel="noreferrer">Track #2212</a>.</p>}
+        {!heldAttachments && !mailPlatform().canSendAttachments && <p className="text-muted-foreground text-xs">Attachments can't be sent yet. <a href="https://github.com/rest-mail/rest-mail-server/issues/2212" target="_blank" rel="noreferrer">Track #2212</a>.</p>}
+        {composeState?.forwardMessageId && <p>Original attachments will be preserved when forwarding.</p>}
+      </div>}
       <div className="px-4 py-1 flex items-center gap-2">
         <Button
           variant={isHtml ? 'default' : 'ghost'}
@@ -325,6 +386,7 @@ export function ComposeView() {
           />
         ) : (
           <textarea
+            data-testid="compose-body-plain"
             value={plainText}
             onChange={e => setPlainText(e.target.value)}
             className="w-full h-full resize-none p-4 text-sm font-mono bg-background text-foreground outline-none"
@@ -362,20 +424,26 @@ export function ComposeView() {
 
       <Separator />
       {/* Footer */}
+      {draftBccBlocked && <p className="px-4 text-xs text-muted-foreground">Bcc recipients are included when sending. The server cannot store them in a draft.</p>}
       <div className="flex items-center justify-end gap-2 px-4 py-2">
+        {(mailPlatform().pickAttachments || onPickAttachments) && <Button data-testid="compose-attach" variant="outline" size="sm" disabled={!onPickAttachments && !mailPlatform().canSendAttachments} title="Sending attachments isn't available yet (#2212)" onClick={async () => {
+          if (onPickAttachments) { onPickAttachments(); return; }
+          try { const picked = await mailPlatform().pickAttachments!(); setAttachments(previous => [...previous, ...picked]); }
+          catch (error) { toast.error(error instanceof Error ? error.message : 'Could not select files'); }
+        }}>Attach</Button>}
         <Button variant="outline" size="sm" onClick={handleDiscard}>
           <Trash2 className="w-4 h-4 mr-1" />
           Discard
         </Button>
-        <Button variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft}>
+        <Button data-testid="compose-save" variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft || attachmentsBlocked || draftBccBlocked || !!composeState?.forwardMessageId}>
           <Save className="w-4 h-4 mr-1" />
-          {savingDraft ? 'Saving...' : 'Save Draft'}
+          {savingDraft ? 'Saving...' : mailPlatform().desktop ? 'Save draft' : 'Save Draft'}
         </Button>
-        <Button variant={showSchedule ? 'default' : 'outline'} size="sm" onClick={openSchedule} aria-expanded={showSchedule}>
+        <Button variant={showSchedule ? 'default' : 'outline'} size="sm" onClick={openSchedule} disabled={attachmentsBlocked || !!composeState?.forwardMessageId} aria-expanded={showSchedule}>
           <Clock className="w-4 h-4 mr-1" />
           Send later
         </Button>
-        <Button size="sm" onClick={handleSend} disabled={sending}>
+        <Button data-testid="compose-send" size="sm" onClick={handleSend} disabled={sending || attachmentsBlocked || (composeState?.forwardMessageId !== undefined && (cc.length > 0 || bcc.length > 0))}>
           <Send className="w-4 h-4 mr-1" />
           {sending ? 'Sending...' : 'Send'}
         </Button>

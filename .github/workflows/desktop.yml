@@ -1,0 +1,175 @@
+name: Desktop
+
+on:
+  push:
+    branches: [main]
+    paths: &desktop-paths
+      - desktop/**
+      - webmail/**
+      - tasks/desktop.yml
+      - .github/workflows/desktop.yml
+      - go.mod
+      - go.sum
+  pull_request:
+    paths: *desktop-paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('desktop-{0}', github.ref) || format('desktop-run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  preflight-gate:
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  preflight:
+    needs: preflight-gate
+    name: 'Preflight: branch is up to date'
+    runs-on: ${{ needs.preflight-gate.outputs.runner }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the pull request head, not GitHub's merge commit
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Require the current base tip in the pull request head
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Preflight: $EVENT_NAME needs no pull request ancestry check."
+            exit 0
+          fi
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          base_sha=$(git rev-parse "refs/remotes/origin/${BASE_REF}")
+          if git merge-base --is-ancestor "$base_sha" "$HEAD_SHA"; then
+            echo "Preflight: head $HEAD_SHA contains $BASE_REF ($base_sha)."
+            exit 0
+          fi
+          message="Preflight: this branch (head $HEAD_SHA) is not up to date with $BASE_REF ($base_sha). You cannot push a branch that is not up to date with origin/$BASE_REF ($base_sha). Rebase it onto origin/$BASE_REF first, then push again. Nothing else in this pipeline runs until you do. Run: git fetch origin $BASE_REF && git rebase origin/$BASE_REF"
+          echo "::error::$message" >&2
+          echo "$message" >&2
+          exit 1
+
+  macos:
+    needs: preflight
+    name: Desktop (macOS arm64)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      BUILD_PLATFORM: darwin-arm64
+      BUILD_TARGET: darwin:package
+      BUILD_ARCH: arm64
+    steps: &desktop-build-steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - uses: ./.github/actions/setup-python
+      - name: Install Linux webview dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Install frontend dependencies and Wails
+        run: |
+          npm install --global pnpm@10.30.3
+          pnpm --dir webmail install --frozen-lockfile
+          npm --prefix desktop/frontend ci
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+      - name: Identify build
+        run: |
+          APP_VERSION="$(python3 desktop/scripts/release.py next-version)"
+          APP_COMMIT="$(git rev-parse HEAD)"
+          APP_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf 'APP_VERSION=%s\nAPP_COMMIT=%s\nAPP_BUILT=%s\n' "$APP_VERSION" "$APP_COMMIT" "$APP_BUILT" >> "$GITHUB_ENV"
+          printf '### REST Mail desktop %s\n\nCommit: %s\n\nBuilt: %s\n' "$APP_VERSION" "$APP_COMMIT" "$APP_BUILT" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build through the platform Taskfile
+        working-directory: desktop
+        run: |
+          wails3 task "$BUILD_TARGET" "ARCH=$BUILD_ARCH" "APP_VERSION=$APP_VERSION" "APP_COMMIT=$APP_COMMIT" "APP_BUILT=$APP_BUILT"
+      - name: Write release metadata
+        run: |
+          python3 desktop/scripts/release.py stamp --version "$APP_VERSION" --commit "$APP_COMMIT" --built "$APP_BUILT" --output desktop/bin/release.json
+          mkdir -p release-assets
+      - name: Sign and zip macOS app
+        if: runner.os == 'macOS'
+        run: |
+          bundle=desktop/bin/RESTMail.app
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$bundle/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(git rev-list --count HEAD)" "$bundle/Contents/Info.plist"
+          cp desktop/bin/release.json "$bundle/Contents/Resources/release.json"
+          codesign --force --deep --sign - "$bundle"
+          codesign --verify --deep --strict "$bundle"
+          ditto -c -k --keepParent "$bundle" "release-assets/RESTMail-$APP_VERSION-darwin-arm64.zip"
+      - name: Zip Windows executable
+        if: runner.os == 'Windows'
+        run: |
+          python3 - <<'PY'
+          import os
+          import zipfile
+          with zipfile.ZipFile(f"release-assets/RESTMail-{os.environ['APP_VERSION']}-windows-amd64.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+              archive.write("desktop/bin/RESTMail.exe", "RESTMail.exe")
+              archive.write("desktop/bin/release.json", "release.json")
+          PY
+      - name: Archive Linux executable
+        if: runner.os == 'Linux'
+        run: tar -czf "release-assets/RESTMail-$APP_VERSION-linux-amd64.tar.gz" -C desktop/bin RESTMail release.json
+      - continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-${{ env.BUILD_PLATFORM }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  windows:
+    needs: preflight
+    name: Desktop (Windows amd64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      BUILD_PLATFORM: windows-amd64
+      BUILD_TARGET: windows:build
+      BUILD_ARCH: amd64
+    steps: *desktop-build-steps
+
+  linux-gate:
+    needs: preflight
+    runs-on: antimatter-vps-gate
+    timeout-minutes: 1
+    outputs: { runner: "${{ steps.pick.outputs.runner }}" }
+    steps: [{ id: pick, run: runner-gate pick linux-x64 }]
+
+  linux:
+    name: Desktop (Linux amd64)
+    needs: [preflight, linux-gate]
+    runs-on: ${{ needs.linux-gate.outputs.runner }}
+    timeout-minutes: 30
+    env:
+      BUILD_PLATFORM: linux-amd64
+      BUILD_TARGET: linux:build
+      BUILD_ARCH: amd64
+    steps: *desktop-build-steps

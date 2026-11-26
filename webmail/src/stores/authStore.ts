@@ -3,6 +3,7 @@ import type { User } from '../types';
 import * as api from '../api/client';
 import { ApiError, type SecondFactor } from '../api/client';
 import type { SetupSession, SetupStep } from '../components/auth/AccountAccess';
+import { mailPlatform } from '../platform';
 
 interface AuthState {
   user: User | null;
@@ -40,6 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   login: async (email, password, second) => {
+    if (mailPlatform().desktop) throw new Error('Desktop sign-in must use the native Session service');
     set({ isLoading: true, error: null });
     try {
       // The token is set by the API as an httpOnly cookie; JS only receives the
@@ -75,6 +77,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   // to JS; we only learn the user identity to render the UI.
   checkSession: async () => {
     try {
+      if (mailPlatform().restoreSession) {
+        const user = await mailPlatform().restoreSession!();
+        set({ user, isAuthenticated: !!user, sessionChecked: true, setupRequired: user?.setup_required ?? [] });
+        return;
+      }
       const data = await api.refreshSession();
       if (data?.user) {
         set({ user: data.user, isAuthenticated: true, sessionChecked: true, setupRequired: data.setup_required || [] });
@@ -87,7 +94,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    api.logout();
+    if (mailPlatform().signOut) void mailPlatform().signOut!();
+    else api.logout();
     set({ user: null, isAuthenticated: false, setupRequired: [] });
   },
 }));

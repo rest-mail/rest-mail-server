@@ -1,4 +1,5 @@
 import { displayAddress } from '@/lib/addressDisplay';
+import { mailPlatform } from '@/platform';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useMailStore } from '@/stores/mailStore';
@@ -13,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal, Settings2 } from 'lucide-react';
+import { Menu, X, MoreHorizontal, Settings2, Inbox, Send, FileText, Archive, Trash2, Folder, ShieldAlert, LogOut, ChevronRight, Plus, MailPlus, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
@@ -28,8 +29,9 @@ function Indicator({ active }: { active: boolean }) {
 }
 
 export function Sidebar() {
+  const desktop = mailPlatform().desktop;
   const { user } = useAuthStore();
-  const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, selectFolder } = useMailStore();
+  const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, loadMessages, selectFolder } = useMailStore();
   const { sidebarCollapsed, toggleAccountCollapsed, setView, setSelectedAccountId, startCompose } = useUIStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -46,8 +48,9 @@ export function Sidebar() {
   useEffect(() => {
     if (activeAccountId) {
       loadFolders();
+      if (desktop) void loadMessages();
     }
-  }, [activeAccountId, loadFolders]);
+  }, [activeAccountId, loadFolders, loadMessages, desktop]);
 
   const handleFolderClick = (folder: string) => {
     if (renamingFolder) return;
@@ -113,16 +116,16 @@ export function Sidebar() {
   };
 
   const isExpanded = (accountId: number) => {
-    return activeAccountId === accountId && !sidebarCollapsed[accountId];
+    return activeAccountId === accountId && ((desktop && accounts.length === 1) || !sidebarCollapsed[accountId]);
   };
 
   const sidebarContent = (
     <>
       {/* Logo area */}
-      <div className="h-12 flex items-center justify-between px-4 shrink-0">
+      {!desktop && <div className="h-12 flex items-center justify-between px-4 shrink-0">
         <h1 className="flex items-center gap-2 font-heading-oswald text-lg font-semibold text-primary tracking-wider">
           <img
-            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            src={mailPlatform().desktop ? '/rest-mail-icon.svg' : `${import.meta.env.BASE_URL}favicon.svg`}
             alt=""
             className="w-6 h-6"
           />
@@ -136,16 +139,17 @@ export function Sidebar() {
         >
           <X className="w-4 h-4" />
         </Button>
-      </div>
+      </div>}
 
       {/* Compose button */}
-      <div className="flex justify-center px-3 pb-2 shrink-0">
+      <div className={cn('flex justify-center px-3 pb-2 shrink-0', desktop && 'desktop-sidebar-compose')}>
         <button
+          data-testid="compose-open"
           onClick={() => startCompose()}
           className="w-[200px] h-8 rounded-2xl bg-primary flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
-          <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>
-          <span className="font-mono text-xs font-semibold text-primary-foreground">compose</span>
+          {desktop ? <SquarePen size={16} aria-hidden="true" /> : <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>}
+          <span className="font-mono text-xs font-semibold text-primary-foreground">{desktop ? 'New message' : 'compose'}</span>
         </button>
       </div>
 
@@ -165,20 +169,25 @@ export function Sidebar() {
               </div>
             </div>
           )}
-          {accounts.map(account => (
-            <div key={account.id}>
+          {accounts.map(account => {
+            const canCollapse = !desktop || accounts.length > 1;
+            const AccountLabel = canCollapse ? 'button' : 'div';
+            const address = displayAddress(account.address);
+            return <div key={account.id}>
               {/* Account row */}
-              <div className="group flex items-center hover:bg-sidebar-accent transition-colors">
-                <button
-                  onClick={() => handleAccountClick(account.id)}
-                  className="flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0"
+              <div className={cn('group flex items-center hover:bg-sidebar-accent transition-colors', desktop && 'desktop-account-group')}>
+                <AccountLabel
+                  aria-expanded={desktop && canCollapse ? isExpanded(account.id) : undefined}
+                  onClick={canCollapse ? () => handleAccountClick(account.id) : undefined}
+                  className={cn('flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0', desktop && 'desktop-account-row')}
                 >
-                  <span className="text-muted-foreground text-[10px]">
+                  {!desktop && <span className="text-muted-foreground text-[10px]">
                     {isExpanded(account.id) ? '▾' : '▸'}
-                  </span>
-                  <span className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{displayAddress(account.address)}</span>
+                  </span>}
+                  <span title={desktop ? address : undefined} className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{address}</span>
                   {!isExpanded(account.id) && <InboxBadge />}
-                </button>
+                  {desktop && canCollapse && <ChevronRight size={14} className="desktop-account-chevron" aria-hidden="true" />}
+                </AccountLabel>
                 <button
                   title="Account settings"
                   onClick={() => {
@@ -186,7 +195,7 @@ export function Sidebar() {
                     setView('accountSettings');
                     setMobileOpen(false);
                   }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 mr-1 rounded text-muted-foreground hover:text-foreground"
+                  className={cn('opacity-0 group-hover:opacity-100 transition-opacity p-1.5 mr-1 rounded text-muted-foreground hover:text-foreground', desktop && 'desktop-account-settings')}
                 >
                   <Settings2 className="w-3.5 h-3.5" />
                 </button>
@@ -194,7 +203,7 @@ export function Sidebar() {
 
               {/* Folder list */}
               {isExpanded(account.id) && (
-                <div className="px-1.5 py-1 space-y-px">
+                <div className={cn('px-1.5 py-1 space-y-px', desktop && 'desktop-account-folders')}>
                   {loadingFolders ? (
                     <div className="py-1 px-2.5 space-y-1.5 animate-pulse">
                       {Array.from({ length: 4 }).map((_, i) => (
@@ -221,6 +230,9 @@ export function Sidebar() {
                               />
                             ) : (
                               <button
+                                data-testid={`folder-${account.id}-${f.name}`}
+                                aria-current={desktop && isActive ? 'page' : undefined}
+                                data-inbox={desktop && f.name === 'INBOX' ? 'true' : undefined}
                                 onClick={() => handleFolderClick(f.name)}
                                 className={cn(
                                   "flex-1 text-left px-2.5 h-8 flex items-center gap-2 rounded-2xl transition-all duration-150 font-mono text-[13px]",
@@ -229,8 +241,8 @@ export function Sidebar() {
                                     : "text-muted-foreground hover:bg-secondary/50"
                                 )}
                               >
-                                <Indicator active={isActive} />
-                                <span className="flex-1 truncate lowercase">{f.name}</span>
+                                {desktop ? (() => { const Icon = ({ INBOX: Inbox, Sent: Send, Drafts: FileText, Archive, Trash: Trash2, Junk: ShieldAlert } as Record<string, typeof Folder>)[f.name] || Folder; return <Icon className="desktop-folder-icon" />; })() : <Indicator active={isActive} />}
+                                <span className={cn('flex-1 truncate', !desktop && 'lowercase')}>{desktop && f.name === 'INBOX' ? 'Inbox' : f.name}</span>
                                 {f.unread > 0 && (
                                   <span className="h-4 min-w-[22px] px-1.5 rounded-2xl bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center badge-glow">
                                     {f.unread}
@@ -287,17 +299,18 @@ export function Sidebar() {
                       ) : (
                         <button
                           onClick={() => setCreatingFolder(true)}
-                          className="w-full text-left px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          className={cn('w-full text-left px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors', desktop && 'desktop-sidebar-action')}
                         >
-                          [+ new_folder]
+                          {desktop && <Plus size={16} aria-hidden="true" />}
+                          {desktop ? 'New folder' : '[+ new_folder]'}
                         </button>
                       )}
                     </>
                   )}
                 </div>
               )}
-            </div>
-          ))}
+            </div>;
+          })}
         </div>
       </ScrollArea>
 
@@ -305,7 +318,10 @@ export function Sidebar() {
       <div className="h-px bg-border shrink-0" />
 
       {/* Bottom nav — settings shortcuts */}
+      <details open={desktop ? undefined : true} className={desktop ? 'desktop-sidebar-tools' : 'contents'}>
+      {desktop && <summary data-testid="sidebar-tools"><ChevronRight size={16} aria-hidden="true" />More tools</summary>}
       <div className="px-1.5 py-1.5 space-y-px shrink-0">
+        {desktop && mailPlatform().importThunderbird && <button data-testid="import-thunderbird" onClick={() => { mailPlatform().importThunderbird?.(); setMobileOpen(false); }} className="w-full text-left px-2.5 h-[30px] flex items-center gap-2 rounded-2xl font-mono text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"><Indicator active={false} />Import from Thunderbird…</button>}
         {([
           { view: 'scheduled' as const, label: 'scheduled' },
           { view: 'vacation' as const, label: 'vacation' },
@@ -320,10 +336,11 @@ export function Sidebar() {
             className="w-full text-left px-2.5 h-[30px] flex items-center gap-2 rounded-2xl font-mono text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"
           >
             <Indicator active={false} />
-            {item.label}
+            {desktop ? item.label.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase()) : item.label}
           </button>
         ))}
       </div>
+      </details>
 
       {/* Divider */}
       <div className="h-px bg-border shrink-0" />
@@ -332,11 +349,13 @@ export function Sidebar() {
       <div className="px-3 py-2 shrink-0">
         <button
           onClick={() => { setView('addAccount'); setMobileOpen(false); }}
-          className="w-full h-[30px] flex items-center justify-center rounded-2xl font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className={cn('w-full h-[30px] flex items-center justify-center rounded-2xl font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors', desktop && 'desktop-sidebar-action desktop-add-account')}
         >
-          [+ add_account]
+          {desktop && <MailPlus size={16} aria-hidden="true" />}
+          {desktop ? 'Add account' : '[+ add_account]'}
         </button>
       </div>
+      {desktop && <button data-testid="session-signout" className="desktop-signout" onClick={() => void useAuthStore.getState().logout()}><LogOut size={16} />Sign out</button>}
     </>
   );
 
@@ -363,6 +382,7 @@ export function Sidebar() {
       {/* Sidebar panel */}
       <div
         className={cn(
+          desktop && 'desktop-sidebar',
           "h-full flex flex-col border-r bg-sidebar w-60 min-w-60",
           "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-lg max-md:transition-transform max-md:duration-200",
           mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"

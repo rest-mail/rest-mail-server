@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=REST Mail
+Comment=REST Mail desktop client
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/RESTMail %u
+Terminal=false
+Type=Application
+Icon=RESTMail
+Categories=Utility;
+StartupWMClass=RESTMail
