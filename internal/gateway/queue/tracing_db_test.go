@@ -6,9 +6,9 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/tracing/tracingtest"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // One delivery attempt is one trace of its own (#1580): a queue.deliver root

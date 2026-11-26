@@ -8,7 +8,7 @@ import (
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 
-	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
+	"github.com/rest-mail/rest-mail-server/pkg/mailaddr"
 )
 
 // field writes the downgraded value to out, or nothing and false when it doesn't read as a list. Only

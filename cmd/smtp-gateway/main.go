@@ -25,10 +25,10 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // loadCACert adds the PEM CA bundle at path to the gateway's outbound HTTP

@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing/tracingtest"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 const parentTrace = "4bf92f3577b34da6a3ce929d0e0e4736"

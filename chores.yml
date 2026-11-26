@@ -452,6 +452,7 @@ tasks:
     sources:
       - cmd/api/**/*.go
       - internal/**/*.go
+      - pkg/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -469,6 +470,7 @@ tasks:
       - cmd/smtp-gateway/**/*.go
       - internal/gateway/smtp/**/*.go
       - internal/gateway/apiclient/**/*.go
+      - pkg/**/*.go
       - internal/gateway/queue/**/*.go
       - internal/db/**/*.go
       - go.mod
@@ -484,6 +486,7 @@ tasks:
       - cmd/imap-gateway/**/*.go
       - internal/gateway/imap/**/*.go
       - internal/gateway/apiclient/**/*.go
+      - pkg/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -497,6 +500,7 @@ tasks:
       - cmd/pop3-gateway/**/*.go
       - internal/gateway/pop3/**/*.go
       - internal/gateway/apiclient/**/*.go
+      - pkg/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -568,6 +572,7 @@ tasks:
     sources:
       - cmd/migrate/**/*.go
       - internal/**/*.go
+      - pkg/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -580,6 +585,7 @@ tasks:
     sources:
       - cmd/seed/**/*.go
       - internal/**/*.go
+      - pkg/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -615,21 +621,21 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 ./internal/... ./pkg/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:unit:
     desc: Run unit tests (alias for test)
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 ./internal/... ./pkg/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:verbose:
     desc: Run unit tests with verbose output
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 -v ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 -v ./internal/... ./pkg/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   deps:vertrag:
     desc: Pin the latest Vertrag release for the contract run (version and checksum together)
@@ -660,7 +666,7 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+      - python3 -B scripts/scratch_run.py go test -timeout=2h -race -count=1 -coverprofile=coverage.out ./internal/... ./pkg/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report written to coverage.html"
 

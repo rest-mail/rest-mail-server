@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // RequestID gives every request the ID its log lines carry (#1580), in place of

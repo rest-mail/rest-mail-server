@@ -19,8 +19,8 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/tracing/tracingtest"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // passFilter is a pipeline filter that lets every message through.

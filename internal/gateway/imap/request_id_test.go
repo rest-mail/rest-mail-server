@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // A session's log line and its call to the API carry the same ID (#1580).

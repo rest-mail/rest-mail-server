@@ -33,12 +33,12 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/importsession"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
-	"github.com/rest-mail/rest-mail-server/internal/requestid"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
 	"github.com/rest-mail/rest-mail-server/internal/sendidempotency"
 	"github.com/rest-mail/rest-mail-server/internal/trace"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/internal/vacation"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 )
 
 // loadCACert adds the PEM CA bundle at path to the API's outbound HTTP client

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
-	"github.com/rest-mail/rest-mail-server/internal/mailaddr"
+	"github.com/rest-mail/rest-mail-server/pkg/mailaddr"
 )
 
 // AddressList is what a header says of who a message is for. One from a parse holds only its field
