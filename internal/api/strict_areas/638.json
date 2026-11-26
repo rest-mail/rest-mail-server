@@ -1,8 +1,10 @@
 {
   "638": [
     "cancelScheduledMessage",
+    "deleteDraftAttachment",
     "forwardMessage",
     "listCalendarEvents",
+    "listDraftAttachments",
     "listHeldMessages",
     "listScheduledMessages",
     "releaseHeldMessage",
@@ -10,6 +12,7 @@
     "saveDraft",
     "sendDraft",
     "sendMessage",
-    "updateDraft"
+    "updateDraft",
+    "uploadDraftAttachment"
   ]
 }

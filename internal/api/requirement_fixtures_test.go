@@ -150,6 +150,8 @@ func requirementExampleSetup(t *testing.T, operation, name, requirement string, 
 	}
 	if requirement == "fault=database" {
 		switch {
+		case operation == "uploadDraftAttachment" || operation == "listDraftAttachments" || operation == "deleteDraftAttachment":
+			return draftAttachmentRequirementSetup(t, name, body)
 		case operation == "openGatewaySession" && name == "storage_unavailable":
 			// The password is verified; the account read after it fails.
 			routers, _, _ := newGapPairRouter(t, operation)

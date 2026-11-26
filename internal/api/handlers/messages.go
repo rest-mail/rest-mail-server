@@ -1953,6 +1953,30 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 
 	var updated models.Message
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if mailboxID != draft.MailboxID {
+			var current models.Message
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND is_draft = ? AND mailbox_id = ?", draft.ID, true, draft.MailboxID).First(&current).Error; err != nil {
+				return draftLookupRefusal(err)
+			}
+			if current.HasAttachments {
+				var attachmentBytes int64
+				if err := tx.Model(&models.Attachment{}).Where("message_id = ?", draft.ID).Select("COALESCE(SUM(size_bytes), 0)").Scan(&attachmentBytes).Error; err != nil {
+					return err
+				}
+				if err := releaseDraftAttachmentQuota(tx, draft.MailboxID, attachmentBytes); err != nil {
+					return err
+				}
+				if err := repositories.ReserveStorage(tx, mailboxID, attachmentBytes); err != nil {
+					if errors.Is(err, repositories.ErrStorageQuota) {
+						return endpoint.Invalid(map[string]string{"from": "The draft account has insufficient quota"})
+					}
+					return err
+				}
+				if err := chargeDraftAttachmentUsage(tx, mailboxID, attachmentBytes); err != nil {
+					return err
+				}
+			}
+		}
 		if len(updates) > 0 {
 			result := tx.Model(&models.Message{}).
 				Where("id = ? AND is_draft = ? AND mailbox_id = ?", draft.ID, true, draft.MailboxID).Updates(updates)
@@ -2023,6 +2047,21 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 		listUnsubscribe = in.Body.ListUnsubscribe
 		onBehalf = in.Body.OnBehalf
 	}
+	var parts []pipeline.Attachment
+	if draft.HasAttachments {
+		var err error
+		parts, err = h.readForwardParts(r, &draft)
+		if err != nil {
+			return zero, err
+		}
+		var size int64
+		for _, part := range parts {
+			size += part.Size
+		}
+		if err := releaseDraftAttachmentQuota(h.db, draft.MailboxID, size); err != nil {
+			return zero, err
+		}
+	}
 	sent, err := h.sendComposedMessage(r, sendMessageRequest{
 		OnBehalf:        onBehalf,
 		From:            draft.Sender,
@@ -2033,9 +2072,14 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 		BodyHTML:        draft.BodyHTML,
 		InReplyTo:       draft.InReplyTo,
 		ListUnsubscribe: listUnsubscribe,
-	}, nil, draft.References)
+	}, parts, draft.References)
 	if err != nil {
-		return zero, err
+		return zero, draftSendRefusal(err)
+	}
+	if draft.HasAttachments {
+		if err := h.db.WithContext(r.Context()).Where("message_id = ?", draft.ID).Delete(&models.Attachment{}).Error; err != nil {
+			return zero, err
+		}
 	}
 	// Removal, Sent and queue rows share the enclosing
 	// transaction. A failed removal must roll them all back before any worker

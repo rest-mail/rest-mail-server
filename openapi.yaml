@@ -8477,6 +8477,2190 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Drafts
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/messages/draft/{id}/attachments:
+    get:
+      summary: List a draft's attachments
+      description: Lists uploads in ID order. Requires mail:write on this draft; missing
+        or inaccessible drafts are 404.
+      operationId: listDraftAttachments
+      tags:
+      - Drafts
+      - Attachments
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          dependency_failed:
+            value: 1
+            x-requires:
+              fault: database
+          forbidden:
+            value: 1
+            x-requires:
+              state: existing_draft
+          invalid_id:
+            value: 0
+            x-requires:
+              state: existing_draft
+          missing:
+            value: 2147483647
+            x-requires:
+              state: existing_draft
+          rate_limited:
+            value: 1
+            x-requires:
+              state: existing_draft
+          request_too_large:
+            value: 1
+            x-requires:
+              state: existing_draft
+          session_unavailable:
+            value: 1
+            x-requires:
+              fault: database
+          success:
+            value: 1
+            x-requires:
+              state: existing_draft
+          unauthenticated:
+            value: 1
+            x-requires:
+              state: existing_draft
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                success:
+                  value:
+                    data:
+                    - checksum: 602a5e69c3021bdbd3d25156a02d2cbb467605b8203248eea6af3fb42168d663
+                      content_type: application/pdf
+                      created_at: '2030-01-02T03:04:05Z'
+                      filename: contract.pdf
+                      id: 1
+                      message_id: 1
+                      size_bytes: 10
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      additionalProperties: false
+                      properties:
+                        checksum:
+                          type: string
+                        content_type:
+                          type: string
+                        created_at:
+                          format: date-time
+                          type: string
+                        filename:
+                          type: string
+                        id:
+                          type: integer
+                        message_id:
+                          type: integer
+                        size_bytes:
+                          format: int64
+                          type: integer
+                      required:
+                      - id
+                      - message_id
+                      - filename
+                      - content_type
+                      - size_bytes
+                      - checksum
+                      - created_at
+                      type: object
+                    type: array
+                  pagination:
+                    oneOf:
+                    - additionalProperties: false
+                      properties:
+                        cursor:
+                          type: string
+                        has_more:
+                          type: boolean
+                        total:
+                          format: int64
+                          type: integer
+                      required:
+                      - has_more
+                      type: object
+                    - type: 'null'
+                required:
+                - data
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Draft not found
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: false
+                        properties:
+                          fields:
+                            additionalProperties:
+                              type: string
+                            type: object
+                        required:
+                        - fields
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    - details
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                dependency_failed:
+                  value:
+                    error:
+                      code: internal_error
+                      message: Failed to read draft
+                  x-requires:
+                    fault: database
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: database
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
+    post:
+      summary: Upload an attachment to a draft
+      description: 'Upload raw octets with X-Attachment-Filename and X-Attachment-Content-Type.
+        Streams through a bounded temporary file into the configured filesystem or S3-compatible
+        attachment store. The general JSON API body cap does not apply; SMTP_MAX_MESSAGE_SIZE
+        bounds this upload and the draft''s combined body and attachment bytes (413
+        message_too_large); final encoded MIME is checked again on send. MIME_MAX_PARTS
+        also bounds attachments plus body parts, including empty uploads (413 message_too_large).
+        Account and owner storage quotas apply (422 mailbox_full). The draft must be
+        writable; a missing, non-draft, deleted or inaccessible message is 404. JSON
+        attachments fields remain unsupported: upload here, then sendDraft uses stored
+        uploads. Empty files are supported.'
+      operationId: uploadDraftAttachment
+      tags:
+      - Drafts
+      - Attachments
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          dependency_failed:
+            value: 1
+            x-requires:
+              fault: database
+          forbidden:
+            value: 1
+            x-requires:
+              state: existing_draft
+          invalid_id:
+            value: 0
+            x-requires:
+              state: existing_draft
+          mailbox_full:
+            value: 1
+            x-requires:
+              state: existing_draft
+          message_too_large:
+            value: 1
+            x-requires:
+              state: existing_draft
+          missing:
+            value: 2147483647
+            x-requires:
+              state: existing_draft
+          rate_limited:
+            value: 1
+            x-requires:
+              state: existing_draft
+          request_too_large:
+            value: 1
+            x-requires:
+              state: existing_draft
+          session_unavailable:
+            value: 1
+            x-requires:
+              fault: database
+          success:
+            value: 1
+            x-requires:
+              state: existing_draft
+          unauthenticated:
+            value: 1
+            x-requires:
+              state: existing_draft
+          unsupported_media:
+            description: The refusal test sends these bytes with Content-Type application/json,
+              which is not a supported upload media type.
+            value: 1
+            x-requires:
+              body: unsupported_media
+      - name: X-Attachment-Filename
+        in: header
+        description: UTF-8 display filename, not a filesystem path. CR, LF and NUL are
+          refused.
+        required: true
+        schema:
+          maxLength: 255
+          minLength: 1
+          type: string
+        examples:
+          dependency_failed:
+            value: contract.pdf
+            x-requires:
+              fault: database
+          forbidden:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          invalid_id:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          mailbox_full:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          message_too_large:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          missing:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          rate_limited:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          request_too_large:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          session_unavailable:
+            value: contract.pdf
+            x-requires:
+              fault: database
+          success:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          unauthenticated:
+            value: contract.pdf
+            x-requires:
+              state: existing_draft
+          unsupported_media:
+            description: The refusal test sends these bytes with Content-Type application/json,
+              which is not a supported upload media type.
+            value: contract.pdf
+            x-requires:
+              body: unsupported_media
+      - name: X-Attachment-Content-Type
+        in: header
+        description: The attachment's MIME media type, for example application/pdf.
+        required: true
+        schema:
+          maxLength: 255
+          minLength: 1
+          type: string
+        examples:
+          dependency_failed:
+            value: application/pdf
+            x-requires:
+              fault: database
+          forbidden:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          invalid_id:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          mailbox_full:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          message_too_large:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          missing:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          rate_limited:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          request_too_large:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          session_unavailable:
+            value: application/pdf
+            x-requires:
+              fault: database
+          success:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          unauthenticated:
+            value: application/pdf
+            x-requires:
+              state: existing_draft
+          unsupported_media:
+            description: The refusal test sends these bytes with Content-Type application/json,
+              which is not a supported upload media type.
+            value: application/pdf
+            x-requires:
+              body: unsupported_media
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            examples:
+              dependency_failed:
+                value: attachment
+                x-requires:
+                  fault: database
+              forbidden:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              invalid_id:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              mailbox_full:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              message_too_large:
+                value: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                x-requires:
+                  state: existing_draft
+              missing:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              rate_limited:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              request_too_large:
+                value: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                x-requires:
+                  state: existing_draft
+              session_unavailable:
+                value: attachment
+                x-requires:
+                  fault: database
+              success:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              unauthenticated:
+                value: attachment
+                x-requires:
+                  state: existing_draft
+              unsupported_media:
+                description: The refusal test sends these bytes with Content-Type application/json,
+                  which is not a supported upload media type.
+                value: attachment
+                x-requires:
+                  body: unsupported_media
+            schema:
+              type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              examples:
+                success:
+                  value:
+                    data:
+                      checksum: 602a5e69c3021bdbd3d25156a02d2cbb467605b8203248eea6af3fb42168d663
+                      content_type: application/pdf
+                      created_at: '2030-01-02T03:04:05Z'
+                      filename: contract.pdf
+                      id: 1
+                      message_id: 1
+                      size_bytes: 10
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    additionalProperties: false
+                    properties:
+                      checksum:
+                        type: string
+                      content_type:
+                        type: string
+                      created_at:
+                        format: date-time
+                        type: string
+                      filename:
+                        type: string
+                      id:
+                        type: integer
+                      message_id:
+                        type: integer
+                      size_bytes:
+                        format: int64
+                        type: integer
+                    required:
+                    - id
+                    - message_id
+                    - filename
+                    - content_type
+                    - size_bytes
+                    - checksum
+                    - created_at
+                    type: object
+                required:
+                - data
+                type: object
+          links:
+            deleteDraftAttachment:
+              operationId: deleteDraftAttachment
+              parameters:
+                attachmentId: $response.body#/data/id
+                id: $request.path.id
+            listDraftAttachments:
+              operationId: listDraftAttachments
+              parameters:
+                id: $request.path.id
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              examples:
+                unsupported_media:
+                  description: The refusal test sends these bytes with Content-Type
+                    application/json, which is not a supported upload media type.
+                  value:
+                    error:
+                      code: bad_request
+                      message: 'Unsupported media type: application/json; the body is
+                        application/octet-stream'
+                  x-requires:
+                    body: unsupported_media
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Draft not found
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              examples:
+                message_too_large:
+                  value:
+                    error:
+                      code: message_too_large
+                      message: The draft exceeds the message size limit
+                  x-requires:
+                    state: existing_draft
+                request_too_large:
+                  value:
+                    error:
+                      code: message_too_large
+                      message: The draft exceeds the message size limit
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Binding validation or draft-account quota refusal
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+                  x-requires:
+                    state: existing_draft
+                mailbox_full:
+                  value:
+                    error:
+                      code: mailbox_full
+                      message: The draft account has insufficient quota
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        oneOf:
+                        - additionalProperties: false
+                          properties:
+                            fields:
+                              additionalProperties:
+                                type: string
+                              type: object
+                          required:
+                          - fields
+                          type: object
+                        - type: 'null'
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                dependency_failed:
+                  value:
+                    error:
+                      code: internal_error
+                      message: Failed to read draft
+                  x-requires:
+                    fault: database
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: database
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
+  /api/v1/messages/draft/{id}/attachments/{attachmentId}:
+    delete:
+      summary: Remove an attachment from a draft
+      description: Removes only an upload belonging to this writable draft and releases
+        its quota. Missing, foreign or already-sent drafts and attachments are 404.
+        Unreferenced stored objects are reclaimed by the existing attachment cleaner
+        after its grace period.
+      operationId: deleteDraftAttachment
+      tags:
+      - Drafts
+      - Attachments
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          dependency_failed:
+            value: 1
+            x-requires:
+              fault: database
+          forbidden:
+            value: 1
+            x-requires:
+              state: existing_draft
+          invalid_id:
+            value: 0
+            x-requires:
+              state: existing_draft
+          missing:
+            value: 2147483647
+            x-requires:
+              state: existing_draft
+          rate_limited:
+            value: 1
+            x-requires:
+              state: existing_draft
+          request_too_large:
+            value: 1
+            x-requires:
+              state: existing_draft
+          session_unavailable:
+            value: 1
+            x-requires:
+              fault: database
+          success:
+            value: 1
+            x-requires:
+              state: existing_draft
+          unauthenticated:
+            value: 1
+            x-requires:
+              state: existing_draft
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          dependency_failed:
+            value: 1
+            x-requires:
+              fault: database
+          forbidden:
+            value: 1
+            x-requires:
+              state: existing_draft
+          invalid_id:
+            value: 1
+            x-requires:
+              state: existing_draft
+          missing:
+            value: 1
+            x-requires:
+              state: existing_draft
+          rate_limited:
+            value: 1
+            x-requires:
+              state: existing_draft
+          request_too_large:
+            value: 1
+            x-requires:
+              state: existing_draft
+          session_unavailable:
+            value: 1
+            x-requires:
+              fault: database
+          success:
+            value: 1
+            x-requires:
+              state: existing_draft
+          unauthenticated:
+            value: 1
+            x-requires:
+              state: existing_draft
+      responses:
+        '204':
+          description: No Content
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Draft not found
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: false
+                        properties:
+                          fields:
+                            additionalProperties:
+                              type: string
+                            type: object
+                        required:
+                        - fields
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    - details
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '429':
+          description: 'rate_limited: refused API keys, throttled at login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    state: existing_draft
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                dependency_failed:
+                  value:
+                    error:
+                      code: internal_error
+                      message: Failed to read draft
+                  x-requires:
+                    fault: database
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: database
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    additionalProperties: false
+                    properties:
+                      code:
+                        type: string
+                      details:
+                        additionalProperties: {}
+                        type: object
+                      message:
+                        type: string
+                    required:
+                    - code
+                    - message
+                    type: object
+                required:
+                - error
+                type: object
+          headers:
+            Content-Security-Policy:
+              description: default-src 'none'; frame-ancestors 'none'; base-uri 'none';
+                form-action 'none'
+              required: true
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              required: true
+              schema:
+                type: string
+            Strict-Transport-Security:
+              description: max-age=63072000; includeSubDomains
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: nosniff
+              required: true
+              schema:
+                type: string
+            X-Frame-Options:
+              description: DENY
+              required: true
+              schema:
+                type: string
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - GatewaySessionAuth:
+        - mail:write
   /api/v1/messages/draft:
     post:
       operationId: saveDraft

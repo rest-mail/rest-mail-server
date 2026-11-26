@@ -105,9 +105,11 @@
   ],
   "638": [
     "cancelScheduledMessage",
+    "deleteDraftAttachment",
     "forwardMessage",
     "getUnsubscribeOptions",
     "listCalendarEvents",
+    "listDraftAttachments",
     "listHeldMessages",
     "listScheduledMessages",
     "respondToCalendar",
@@ -117,7 +119,8 @@
     "sendMessage",
     "unsubscribeMailto",
     "unsubscribeOneClick",
-    "updateDraft"
+    "updateDraft",
+    "uploadDraftAttachment"
   ],
   "639": [
     "blockSender",
