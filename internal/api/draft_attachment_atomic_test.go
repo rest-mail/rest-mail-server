@@ -57,6 +57,11 @@ func TestDraftAttachmentRefusedSendRetainsUploadsAndQuota(t *testing.T) {
 			if rr.Code != want || strings.Contains(rr.Body.String(), "private") {
 				t.Fatalf("refused send = %d %s, want %d", rr.Code, rr.Body, want)
 			}
+			// sendDraft's 422 keeps the validation shape it had before uploads (#2290):
+			// the quota refusal names from in details.
+			if mode == "quota" && (!strings.Contains(rr.Body.String(), `"validation_failed"`) || !strings.Contains(rr.Body.String(), `"from"`)) {
+				t.Fatalf("quota refusal = %s, want validation_failed naming from", rr.Body)
+			}
 			for _, target := range []struct {
 				model any
 				query string

@@ -257,3 +257,20 @@ func TestDraftAttachmentMetadataValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestDraftAttachmentDeclaredOversizeRefusedBeforeBinding is the API's body cap
+// for the upload route, which the general cap exempts: a declared length over
+// SMTP_MAX_MESSAGE_SIZE is 413 before the required headers are bound, as the
+// E2E body-cap check sends it (TestLimits/BodyCaps, headers and no body).
+func TestDraftAttachmentDeclaredOversizeRefusedBeforeBinding(t *testing.T) {
+	f := newDraftUploadFixture(t, 8192)
+	req := httptest.NewRequest(http.MethodPost, f.path(), strings.NewReader("{}"))
+	req.Header.Set("Authorization", f.session)
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = 1 << 30
+	rr := httptest.NewRecorder()
+	f.router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge || !strings.Contains(rr.Body.String(), "message_too_large") {
+		t.Fatalf("declared oversize upload = %d %s, want 413 message_too_large", rr.Code, rr.Body)
+	}
+}

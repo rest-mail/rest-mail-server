@@ -2074,7 +2074,7 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 		ListUnsubscribe: listUnsubscribe,
 	}, parts, draft.References)
 	if err != nil {
-		return zero, err
+		return zero, draftSendRefusal(err)
 	}
 	if draft.HasAttachments {
 		if err := h.db.WithContext(r.Context()).Where("message_id = ?", draft.ID).Delete(&models.Attachment{}).Error; err != nil {

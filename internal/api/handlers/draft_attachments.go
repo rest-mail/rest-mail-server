@@ -12,6 +12,7 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
@@ -51,7 +52,7 @@ func (h *MessageHandler) registerDraftAttachments(rs endpoint.Routes) {
 		Description:      "Upload raw octets with X-Attachment-Filename and X-Attachment-Content-Type. Streams through a bounded temporary file into the configured filesystem or S3-compatible attachment store. The general JSON API body cap does not apply; SMTP_MAX_MESSAGE_SIZE bounds this upload and the draft's combined body and attachment bytes (413 message_too_large); final encoded MIME is checked again on send. MIME_MAX_PARTS also bounds attachments plus body parts, including empty uploads (413 message_too_large). Account and owner storage quotas apply (422 mailbox_full). The draft must be writable; a missing, non-draft, deleted or inaccessible message is 404. JSON attachments fields remain unsupported: upload here, then sendDraft uses stored uploads. Empty files are supported.",
 		DescribedRequest: draftAttachmentBody{}, Responses: []oapifly.EndpointResponse{{Status: http.StatusUnprocessableEntity,
 			Description: "Binding validation or draft-account quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}},
-		Errors: []int{400, 401, 403, 404, 413, 422}, Security: security}, h.uploadDraftAttachment)
+		Errors: []int{400, 401, 403, 404, 413, 422}, Security: security, Middleware: []endpoint.Middleware{h.draftAttachmentCap()}}, h.uploadDraftAttachment)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/draft/{id}/attachments",
 		OperationID: "listDraftAttachments", Summary: "List a draft's attachments", Tags: []string{"Drafts", "Attachments"},
 		Description: "Lists uploads in ID order. Requires mail:write on this draft; missing or inaccessible drafts are 404.",
@@ -60,6 +61,24 @@ func (h *MessageHandler) registerDraftAttachments(rs endpoint.Routes) {
 		OperationID: "deleteDraftAttachment", Summary: "Remove an attachment from a draft", Tags: []string{"Drafts", "Attachments"}, Status: http.StatusNoContent,
 		Description: "Removes only an upload belonging to this writable draft and releases its quota. Missing, foreign or already-sent drafts and attachments are 404. Unreferenced stored objects are reclaimed by the existing attachment cleaner after its grace period.",
 		Errors:      []int{401, 403, 404}, Security: security}, h.deleteDraftAttachment)
+}
+
+// draftAttachmentCap refuses a declared upload over SMTP_MAX_MESSAGE_SIZE before
+// binding reads its headers or a byte of its body. The route is outside the API's
+// general body cap (DraftAttachmentUploadRoute), so this is its cap on the
+// declared length: an upload no draft could hold is 413 whatever else is wrong
+// with it. The handler then holds the actual bytes to what the draft has left.
+// The 413 is already among the operation's Errors, so this describes nothing new.
+func (h *MessageHandler) draftAttachmentCap() endpoint.Middleware {
+	return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if h.maxForwardBytes > 0 && r.ContentLength > h.maxForwardBytes {
+				respond.Error(w, http.StatusRequestEntityTooLarge, "message_too_large", "The draft exceeds the message size limit")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}}
 }
 
 func (h *MessageHandler) writableDraft(r *http.Request, id uint32, lock bool) (*models.Message, error) {
