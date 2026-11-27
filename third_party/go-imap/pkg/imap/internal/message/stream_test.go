@@ -2,6 +2,7 @@ package message
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,60 @@ func TestScanAgreesAtEveryCut(t *testing.T) {
 				t.Errorf("%q in %d-octet pieces: end %d, header %+v, body %+v; want %d, %+v, %+v",
 					raw, step, s.HeaderEnd(), s.header, s.body, end, header, body)
 			}
+		}
+	}
+}
+
+// The transcript comparison allows either path. Assert which conversions can
+// stream, then compare the streamed ranges with the whole conversion.
+func TestWireSpansPreserveTheSections(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw    string
+		legacy, utf8 bool
+	}{
+		{"plain", "Subject: x\r\n\r\nbody\r\n", true, true},
+		{"UTF-8 header", "Subject: café\r\n\r\nbody\r\n", true, true},
+		{"bare LF", "Subject: café\n\nbody\n", true, true},
+		{"declared charset", "Subject: caf\xe9\x00\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\ncaf\xe9\x00\r\n", true, true},
+		{"default UTF-8", "\r\ncafé\x00", false, true},
+		{"invalid default UTF-8", "\r\ncaf\xe9", false, false},
+		{"text NUL", "\r\ntext\x00", true, true},
+		{"header NUL", "Subject: x\x00\r\nContent-Type: application/octet-stream\r\n\r\nbody", true, true},
+		{"wide character NUL", "Content-Type: text/plain; charset=utf-16le\r\n\r\na\x00", false, false},
+		{"encoded boundary", "Content-Type: multipart/mixed; boundary*=utf-8''%C3%A9\r\nSubject: café\r\n\r\nbody", false, false},
+		{"encapsulated text", "Content-Type: message/rfc822\r\n\r\nSubject: café\r\n\r\nbody", false, false},
+	} {
+		for _, utf8 := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/utf8=%v", tc.name, utf8), func(t *testing.T) {
+				raw := strings.NewReader(tc.raw)
+				scan := NewScan()
+				if _, err := io.Copy(scan, raw); err != nil {
+					t.Fatal(err)
+				}
+				src, ok, err := scan.WireSpans(raw, utf8)
+				streamable := tc.legacy
+				if utf8 {
+					streamable = tc.utf8
+				}
+				if ok != streamable || err != nil {
+					t.Fatalf("streamable %v, error %v, want %v", ok, err, streamable)
+				}
+				if !ok {
+					return
+				}
+				want := WireForm(tc.raw, utf8)
+				end, _ := headerEnd(want)
+				if src.Size != int64(len(want)) || src.HeaderEnd != int64(end) {
+					t.Fatalf("size %d and header end %d, want %d and %d", src.Size, src.HeaderEnd, len(want), end)
+				}
+				for _, span := range [][2]int{{0, len(want)}, {0, end}, {end, len(want)}, {max(0, end-1), min(len(want), end+1)}} {
+					start, end := span[0], span[1]
+					got, err := io.ReadAll(src.Section(int64(start), int64(end-start)))
+					if err != nil || string(got) != want[start:end] {
+						t.Errorf("section [%d:%d] = %q, %v, want %q", start, end, got, err, want[start:end])
+					}
+				}
+			})
 		}
 	}
 }
