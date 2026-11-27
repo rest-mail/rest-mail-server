@@ -672,23 +672,43 @@ func contentTypeField(header string) (string, int) {
 // headerWithBoundary rewrites the Content-Type of a header block with a new boundary.
 // The result is 7-bit, because something that has to change its boundary has to change
 // it wherever it is read, so wireHeader leaves it alone.
+//
+// The field is written as it's read, into the one block that's answered: a measurement of
+// a message whose boundary moves does this, and a field held whole costs many times its
+// size (#2107). parameterField is what it writes.
 func headerWithBoundary(header, boundary string) string {
-	field, at := contentTypeField(header)
-	if at < 0 {
+	start, end := contentTypeSpan(header)
+	if start < 0 {
 		return header
 	}
-	text, eol := strings.CutSuffix(field, "\r\n")
+	text, eol := strings.CutSuffix(header[start:end], "\r\n")
 	name, value, _ := strings.Cut(text, ":")
-	rewritten, ok := parameterField(name, unfoldHeader(value), boundary)
-	if !ok {
+	value = trimWSP(unfoldHeader(value))
+	closers := commentClosers(value)
+	if !hasReadableType(value, []fieldPiece{firstFieldPiece(value, closers)}) {
 		return header
 	}
+	var b strings.Builder
+	b.Grow(len(header) + len(boundary) + len(value)/4)
+	b.WriteString(header[:start])
+	writeFieldPieces(&b, name, value, closers, boundary)
 	if eol {
-		rewritten += "\r\n"
+		b.WriteString("\r\n")
 	}
-	fields := headerBlockFields(header)
-	fields[at] = rewritten
-	return strings.Join(fields, "")
+	b.WriteString(header[end:])
+	return b.String()
+}
+
+// contentTypeSpan is where contentTypeField's field stands in header, or -1, -1.
+func contentTypeSpan(header string) (int, int) {
+	for start := 0; start < len(header); {
+		end := nextHeaderField(header, start)
+		if name, _, ok := strings.Cut(header[start:end], ":"); ok && strings.EqualFold(name, "Content-Type") {
+			return start, end
+		}
+		start = end
+	}
+	return -1, -1
 }
 
 // wireLeaf converts a leaf whose body holds an 8-bit octet or a NUL. A body

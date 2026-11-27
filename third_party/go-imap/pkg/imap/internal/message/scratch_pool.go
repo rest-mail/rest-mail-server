@@ -44,6 +44,7 @@ func ReleaseReadCaches() {
 	keptPieceLists.Clear()
 	nameSets.Clear()
 	partScratches.Clear()
+	walkScratches.Clear()
 	base64Chunks.Clear()
 	wordBuffers.Clear()
 	entityReaders.Clear()

@@ -354,6 +354,7 @@ func keptFamily(families []string, name string) (string, bool) {
 // anything else. What it answers is in scratch.
 func readableKept(scratch *FieldScratch, value string, families []string, noBreaks bool) (string, bool) {
 	closers := commentClosers(value)
+	var names nameSpeller // both walks spell every name, and a repeated one costs once
 	// A long field has one buffer, of what's kept of it, which is usually far less than the field.
 	size := 0
 	first := true
@@ -365,7 +366,7 @@ func readableKept(scratch *FieldScratch, value string, families []string, noBrea
 			size += len(piece.key)
 			breaks = breaks || pieceHasBreak(piece)
 		case piece.key != "":
-			name := parameterName(piece.key)
+			name := names.spell(piece.key)
 			if _, kept := keptFamily(families, name); kept {
 				size += len(name) + len(piece.value) + len("; =\"\"")
 				breaks = breaks || pieceHasBreak(piece)
@@ -386,7 +387,7 @@ func readableKept(scratch *FieldScratch, value string, families []string, noBrea
 		if piece.key == "" {
 			return
 		}
-		name := parameterName(piece.key)
+		name := names.spell(piece.key)
 		if _, kept := keptFamily(families, name); kept {
 			writeReadableParameter(scratch, name, piece)
 		}
