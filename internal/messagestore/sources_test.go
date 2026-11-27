@@ -209,7 +209,7 @@ type lostCommitReply struct {
 	committed bool
 }
 
-func (c lostCommitReply) Commit() error {
+func (c *lostCommitReply) Commit() error {
 	finish := c.Tx.Rollback
 	if c.committed {
 		finish = c.Tx.Commit
@@ -249,7 +249,7 @@ func TestSourcePublishAtomicity(t *testing.T) {
 					if !scenario.ambiguous {
 						return errRollback
 					}
-					tx.Statement.ConnPool = lostCommitReply{Tx: tx.Statement.ConnPool.(gorm.Tx), committed: scenario.committed}
+					tx.Statement.ConnPool = &lostCommitReply{Tx: tx.Statement.ConnPool.(gorm.Tx), committed: scenario.committed}
 					return nil
 				})
 				if !errors.Is(err, wantErr) {
