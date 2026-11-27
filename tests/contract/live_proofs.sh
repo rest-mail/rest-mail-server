@@ -4,12 +4,14 @@
 #
 #   tests/contract/live_proofs.sh API_KEY_FIXTURE_JSON
 #
-# Four runners against a running topology, each with a directory of its own
+# Runners against a running topology, each with a directory of its own
 # under .cache/contract/live-proofs (CONTRACT_LIVE_PROOFS to put it elsewhere):
 # named anonymous examples, named over-cap examples, and the bounded matrix of
-# real principals, plus exact human-assurance checks for grants and links.
+# real principals, exact human-assurance checks for grants and links, and
+# reference-client IMAP and POP3 checks.
 # scripts/example_proofs.py --live reads the named-example proof files and
-# decides what counts; the assurance runner is an additional strict check.
+# decides what counts; the assurance and reference-client runners have their
+# own reports.
 #
 # This exits nonzero when a runner proved less than it selected, or could not
 # run. Every runner still runs, so one failure takes no other runner's proofs
@@ -59,4 +61,11 @@ run_live over-cap python3 -B tests/contract/live_requirements.py over-cap "$endp
 run_live principals python3 -B tests/contract/live_principals.py "$endpoint" "$out/principals" \
   --vertrag "$vertrag" --principals "$principals" --fixture "$fixture"
 run_live assurance python3 -B tests/contract/assurance_live.py "$endpoint" "$out/assurance/report.json"
+run_live reference-mail python3 -B tests/contract/reference_mail_live.py "$endpoint" "$out/reference-mail/report.json" \
+  --commit "$(git rev-parse HEAD)" --topology "${TOPOLOGY_RUN:-${CONTRACT_FIXTURE_PROJECT:-restmail.test}}" \
+  --imap-host "${CONTRACT_IMAP_HOST:-${RESTMAIL_IMAP_IP:-10.99.0.15}}" \
+  --imap-port "${CONTRACT_IMAP_PORT:-${RESTMAIL_IMAP_TLS_PORT:-993}}" \
+  --pop3-host "${CONTRACT_POP3_HOST:-${RESTMAIL_POP3_IP:-10.99.0.16}}" \
+  --pop3-port "${CONTRACT_POP3_PORT:-${RESTMAIL_POP3_TLS_PORT:-995}}" \
+  --insecure
 exit "$status"
