@@ -387,6 +387,31 @@ convert each 8-bit field it takes, in every header block, before
 no writer set, nothing changes. `TestSetFieldWriterConvertsEveryHeaderBlock`
 proves the hook; the server's tests prove the two conversions agree.
 
+## FETCH copies a body from the store's reader (#2107)
+
+Upstream's `Mailbox.Fetch` returns the message as one `[]byte`, which the
+server copied into a string, and the host held its own copy, so FETCH BODY[] of
+a 10 MiB message held it two or three times. A `Mailbox` that also implements
+the optional `StreamFetcher` hands over an `io.ReaderAt` and a size instead
+(`FetchedMessage`). When every body item of a FETCH is the whole message, its
+header or its text (BODY[], BODY[HEADER], BODY[TEXT], RFC822, RFC822.HEADER,
+RFC822.TEXT, BINARY[], BINARY.SIZE[], with PEEK and partials), the server scans
+the message once in 32 KiB pieces (`message.Scan`: the header block's end as
+`headerEnd` finds it, 8-bit octets, NUL) and copies each literal from its run of
+the message through the connection's buffer. `message.ParseSpanItem` names
+each item and applies its partial as `BodySection` and `BinarySection` do.
+What stays whole: BODY and RFC822 items of a message with an 8-bit octet or a
+NUL, which `WireForm` converts (read back from the reader once, not fetched
+again); and any FETCH that also asks for ENVELOPE, BODYSTRUCTURE, BODY, a
+numeric section, a MIME header or a header field list, which calls `Fetch`.
+The message is closed however the response ends. A read that fails after a
+literal's length was sent closes the connection, since the client would take
+the next response for the rest of it. `TestStreamedFetchSendsTheSameOctets`
+compares every octet of 1248 FETCH transcripts against the `Fetch` path;
+`TestStreamedFetchOfABigMessageHoldsLittleOfIt`,
+`TestStreamedFetchClosesTheMessageHoweverItEnds`, `TestScanAgreesAtEveryCut`
+and `TestSpanItemIsTheSection` prove the rest.
+
 ## The Backend can learn the client's address
 
 `Backend.Authenticate` takes a user and password, and nothing says where they

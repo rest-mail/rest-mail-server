@@ -131,6 +131,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and sends the body as stored, as POP3 does. A top-level multipart's 8-bit boundary
   takes the spelling FETCH gives it, in Content-Type and on its delimiter lines, and
   nothing else changes. FETCH doesn't use it.
+- FETCH can send a message without holding it (#2107). A Mailbox that
+  implements the new optional `imap.StreamFetcher` interface opens the message
+  as an `imap.FetchedMessage`, octets readable at any offset, and the server
+  closes it however the response ends: sent, refused, cut off by a failed read
+  or a client that left, or a panic. A FETCH whose body items are all BODY[],
+  BODY[HEADER], BODY[TEXT], RFC822, RFC822.HEADER, RFC822.TEXT, BINARY[] or
+  BINARY.SIZE[], peek and partial forms included, scans the message once in
+  32 KiB pieces and copies each literal from it. BINARY[] is always copied; the
+  BODY and RFC822 items only when the message has no 8-bit octet and no NUL,
+  because FETCH converts any other, which is read back whole once instead of
+  fetched again. ENVELOPE, BODYSTRUCTURE, numeric sections and header field
+  lists still call `Fetch`. Every octet sent is the same as before. A read
+  that fails after a literal's length went out closes the connection.
 
 ### Fixed
 

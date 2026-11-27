@@ -48,7 +48,9 @@
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
 // just [Mailbox] is unaffected and the list never over-promises. A Mailbox that
 // implements [SearchZoneMailbox] names the zone whose calendar days SEARCH BEFORE,
-// ON and SINCE compare; no capability goes with it.
+// ON and SINCE compare; no capability goes with it. One that implements
+// [StreamFetcher] lets FETCH copy a body from a reader instead of holding the
+// message.
 //
 // [RFC 3501]: https://www.rfc-editor.org/rfc/rfc3501
 // [RFC 4315]: https://www.rfc-editor.org/rfc/rfc4315
