@@ -47,8 +47,10 @@ func requestBoundsCases() []requestBoundsCase {
 func largeEmail(bytesOfText int) *pipeline.EmailJSON {
 	return &pipeline.EmailJSON{
 		Envelope: pipeline.Envelope{MailFrom: "a@example.test", RcptTo: []string{"b@example.test"}, Direction: "inbound"},
-		Headers:  pipeline.Headers{Subject: "big"},
-		Body:     pipeline.Body{ContentType: "text/plain", Content: strings.Repeat("x", bytesOfText)},
+		// A fixed Date: without one, rmime.Serialize stamps time.Now(), so the copy the test
+		// serializes and the one a scanner sends differ whenever a second boundary passes.
+		Headers: pipeline.Headers{Subject: "big", Date: "Fri, 27 Nov 2026 12:00:00 +0000"},
+		Body:    pipeline.Body{ContentType: "text/plain", Content: strings.Repeat("x", bytesOfText)},
 	}
 }
 
