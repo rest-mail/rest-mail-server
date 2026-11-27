@@ -1,0 +1,3 @@
+# vCard lines end in CRLF (RFC 6350 section 3.2): keep the fixture byte for byte,
+# and do not count each CR as trailing whitespace.
+*.vcf -text whitespace=cr-at-eol

@@ -352,6 +352,34 @@ export async function setContactReplyTimeSetting(accountId: number, enabled: boo
   return request(`${BASE}/accounts/${accountId}/contact-reply-time`, { method: 'PUT', body: JSON.stringify({ enabled }) });
 }
 
+type ContactsList = components['schemas']['List-Contact'];
+type ContactsImported = components['schemas']['ContactsImported'];
+type ExportSession = components['schemas']['ExportSession'];
+
+export async function listContacts(accountId: number, offset: number, limit: number): Promise<ContactsList> {
+  return request(`${BASE}/accounts/${accountId}/contacts?limit=${limit}&offset=${offset}`);
+}
+
+/** Imports an address-book file. Contacts the account already has are skipped and left as they are. */
+export async function importContactsVCard(accountId: number, file: Blob): Promise<{ data: ContactsImported }> {
+  return request(`${BASE}/accounts/${accountId}/contacts/import`, {
+    method: 'POST', headers: { 'Content-Type': 'text/vcard' }, body: file,
+  });
+}
+
+/** Opens the audited export the server records before anything is written. */
+export async function openContactsExport(accountId: number): Promise<{ data: ExportSession }> {
+  return request(`${BASE}/accounts/${accountId}/exports`, {
+    method: 'POST', body: JSON.stringify({ data: 'contacts', format: 'vcard' }),
+  });
+}
+
+export async function closeExport(accountId: number, session: string, result: 'completed' | 'aborted', rows: number, bytes: number): Promise<unknown> {
+  return request(`${BASE}/accounts/${accountId}/exports/${encodeURIComponent(session)}/close`, {
+    method: 'POST', body: JSON.stringify({ result, rows, bytes }),
+  });
+}
+
 export async function suggestContacts(accountId: number, query: string): Promise<{ data: ContactSuggestion[] }> {
   return request(`${BASE}/accounts/${accountId}/contacts/suggest?q=${encodeURIComponent(query)}`);
 }
