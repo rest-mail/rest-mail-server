@@ -73,7 +73,10 @@ func sampleDetail(id uint) apiclient.MessageDetail {
 func TestRawMessage_ServesStoredVerbatim(t *testing.T) {
 	m := newRawTestMailbox(t, storedRawWithAttachment)
 
-	got := m.rawMessage(sampleDetail(42))
+	got, err := m.rawMessage(sampleDetail(42))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if got != storedRawWithAttachment {
 		t.Fatalf("stored raw not served verbatim:\n got %q\nwant %q", got, storedRawWithAttachment)
@@ -104,7 +107,10 @@ func TestRawMessage_FallsBackWhenNoStoredRaw(t *testing.T) {
 	m := newRawTestMailbox(t, "") // 404 -> no stored raw
 
 	detail := sampleDetail(99)
-	got := m.rawMessage(detail)
+	got, err := m.rawMessage(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	want := buildRawMessage(detail)
 	if got != want {

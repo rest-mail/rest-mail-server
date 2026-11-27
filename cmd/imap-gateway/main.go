@@ -181,6 +181,9 @@ func main() {
 	// not be stranded by a fixed 30 s timeout. Bounded by the configured max size.
 	msgDeadline := cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize)
 	apiOpts = append(apiOpts, apiclient.WithMessageDeadline(msgDeadline))
+	// #2107 AC02: a stored source read back is refused past the largest delivery
+	// body the API accepts, whatever the API declares or sends.
+	apiOpts = append(apiOpts, apiclient.WithMaxRawMessageBytes(cfg.InternalDeliveryBodyLimit()))
 	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL, "message_deadline", msgDeadline.String())
 

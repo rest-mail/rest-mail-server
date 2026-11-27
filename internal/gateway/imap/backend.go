@@ -437,7 +437,10 @@ func (m *mailbox) Fetch(uid uint32) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw := m.rawMessage(detail.Data)
+	raw, err := m.rawMessage(detail.Data)
+	if err != nil {
+		return nil, err
+	}
 	if m.utf8 {
 		return []byte(raw), nil
 	}
@@ -446,12 +449,18 @@ func (m *mailbox) Fetch(uid uint32) ([]byte, error) {
 	return []byte(rawmsg.Downgrade(raw)), nil
 }
 
-// rawMessage returns the stored raw bytes when present, else the rebuild.
-func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
-	if raw, err := m.api.GetRawMessage(m.token, detail.ID); err == nil && raw != "" {
-		return raw
+// rawMessage returns the stored raw bytes when present, else the rebuild. A
+// stored source over the client's read ceiling is an error, as a failed fetch
+// is: rebuilding it would hand the client a different message (#2107 AC02).
+func (m *mailbox) rawMessage(detail apiclient.MessageDetail) (string, error) {
+	raw, err := m.api.GetRawMessage(m.token, detail.ID)
+	if errors.Is(err, apiclient.ErrRawMessageTooLarge) {
+		return "", err
 	}
-	return buildRawMessage(detail)
+	if err == nil && raw != "" {
+		return raw, nil
+	}
+	return buildRawMessage(detail), nil
 }
 
 // Store applies a persistent flag change (STORE, or the auto-\Seen of a
@@ -695,8 +704,12 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	received := src.ReceivedAt
 
 	flags := importFlags(goimap.FlagUpdate{Answered: &answered, Seen: &seen, Flagged: &flagged, Draft: &draft, Deleted: &src.IMAPDeleted, Keywords: src.Keywords})
+	raw, err := m.rawMessage(src)
+	if err != nil {
+		return 0, err
+	}
 	resp, err := m.importMessage(src.MailboxID, &apiclient.ImportRequest{
-		RawMessage:   []byte(m.rawMessage(src)),
+		RawMessage:   []byte(raw),
 		Folder:       dest,
 		Flags:        flags,
 		InternalDate: received,

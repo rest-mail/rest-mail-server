@@ -32,7 +32,7 @@ func TestS3AttachmentAuthorizationAndDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	att := models.Attachment{MessageID: msg.ID, Filename: "sender.html", StorageType: "s3", StorageRef: ref, Checksum: sum}
+	att := models.Attachment{MessageID: msg.ID, Filename: "sender.html", SizeBytes: int64(len("private attachment")), StorageType: "s3", StorageRef: ref, Checksum: sum}
 	if err := tx.Create(&att).Error; err != nil {
 		t.Fatal(err)
 	}

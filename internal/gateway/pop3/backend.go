@@ -188,7 +188,10 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw := m.rawMessage(detail.Data)
+	raw, err := m.rawMessage(detail.Data)
+	if err != nil {
+		return nil, err
+	}
 	if !m.utf8 {
 		// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
 		// 6856 §3, RFC 6857).
@@ -197,12 +200,19 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 	return rawmsg.SpaceNUL(raw), nil
 }
 
-// rawMessage returns the stored raw bytes when present, else the rebuild.
-func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
-	if raw, err := m.api.GetRawMessage(m.token, detail.ID); err == nil && raw != "" {
-		return raw
+// rawMessage returns the stored raw bytes when present, else the rebuild. A
+// stored source over the client's read ceiling is an error, as a failed
+// retrieval is: rebuilding it would hand the client a different message (#2107
+// AC02).
+func (m *mailbox) rawMessage(detail apiclient.MessageDetail) (string, error) {
+	raw, err := m.api.GetRawMessage(m.token, detail.ID)
+	if errors.Is(err, apiclient.ErrRawMessageTooLarge) {
+		return "", err
 	}
-	return buildRawMessage(detail)
+	if err == nil && raw != "" {
+		return raw, nil
+	}
+	return buildRawMessage(detail), nil
 }
 
 // MarkSeen flags a message read after a successful RETR.

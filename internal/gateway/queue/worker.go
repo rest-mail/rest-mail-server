@@ -258,6 +258,11 @@ type Worker struct {
 	sendDeadline func(sizeBytes int64) time.Duration
 	reclaim      time.Duration
 
+	// maxSourceOctets is the longest queued source a claim loads (#2107 AC02): a
+	// row whose source is longer bounces without its source ever being read.
+	// SetMaxSourceOctets wires the config-derived value; it is always positive.
+	maxSourceOctets int64
+
 	// smtpTimeouts bounds each step of an SMTP conversation (#714); a zero field
 	// is its default. heartbeatEvery is how often the worker holding a row
 	// refreshes it, zero meaning defaultHeartbeat; heartbeatDB is the handle it
@@ -321,6 +326,7 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 		reclaim:        staleDeliveringTimeout,
 
 		maxPerDestination: defaultMaxPerDestination,
+		maxSourceOctets:   defaultMaxSourceOctets(),
 	}
 	initSMTPAttemptSeries()
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
@@ -499,6 +505,30 @@ func (w *Worker) SetDeliveryDeadline(deadlineFn func(sizeBytes int64) time.Durat
 	if reclaim > 0 {
 		w.reclaim = reclaim
 	}
+}
+
+// SetMaxSourceOctets sets the longest queued source a claim loads (#2107 AC02).
+// The gateway passes config.InternalDeliveryBodyLimit: no source the API queues
+// is longer than the delivery body it accepts. A non-positive value is ignored,
+// so the read is never unbounded.
+func (w *Worker) SetMaxSourceOctets(n int64) {
+	if n > 0 {
+		w.maxSourceOctets = n
+	}
+}
+
+// defaultMaxSourceOctets is the read ceiling a worker has until
+// SetMaxSourceOctets: config.InternalDeliveryBodyLimit at the default
+// SMTP_MAX_MESSAGE_SIZE.
+func defaultMaxSourceOctets() int64 {
+	return (&config.Config{SMTPMaxMessageSize: config.DefaultSMTPMaxMessageSize}).InternalDeliveryBodyLimit()
+}
+
+// errSourceTooLarge is the permanent failure of a queued row whose source is
+// longer than the worker reads: RFC 3463 X.3.4, message too big for system.
+func errSourceTooLarge(octets, ceiling int64) error {
+	return &SMTPError{Code: 552, Enhanced: "5.3.4", Message: fmt.Sprintf(
+		"message too big for system: the queued source is %d octets, more than the %d the queue reads", octets, ceiling)}
 }
 
 // Start begins processing the outbound queue.
@@ -688,8 +718,8 @@ func (w *Worker) processOne(workerID int) bool {
 			restmailRoots: w.restmailRoots, smtpRoots: w.smtpRoots,
 			txtResolver: w.txtResolver, tlsReportClient: w.tlsReportClient,
 			bounceMax: w.bounceMax, bounceWindow: w.bounceWindow, suppressionTTL: w.suppressionTTL,
-			maxPerDestination: w.maxPerDestination,
-			sendDeadline:      w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
+			maxPerDestination: w.maxPerDestination, maxSourceOctets: w.maxSourceOctets,
+			sendDeadline: w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
 			smtpTimeouts: w.smtpTimeouts, heartbeatEvery: w.heartbeatEvery, smtpAddr: w.smtpAddr,
 			restmailDiscoveryURL: w.restmailDiscoveryURL,
 			// The heartbeat stays on the pool: conn is pinned to this delivery and
@@ -735,8 +765,23 @@ func (w *Worker) processNext(workerID int) bool {
 		"attempt", item.Attempts, // the claim above counted it already
 	)
 
-	w.process(ctx, item, now)
+	if item.sourceOctets > w.maxSourceOctets {
+		// The claim left the source unread: the row bounces as a permanent
+		// failure would, with a notice to its sender.
+		metrics.QueueProcessed.Inc()
+		metrics.QueueErrors.Inc()
+		w.recordFailure(ctx, item.OutboundQueue, errSourceTooLarge(item.sourceOctets, w.maxSourceOctets), time.Now())
+		return true
+	}
+	w.process(ctx, item.OutboundQueue, now)
 	return true
+}
+
+// claimedItem is a claimed row and the length of its source in octets. A row whose
+// source is longer than the worker reads comes without it.
+type claimedItem struct {
+	models.OutboundQueue
+	sourceOctets int64
 }
 
 // destinationsAtLimitSQL lists the recipient domains with as many messages in
@@ -769,7 +814,11 @@ const claimableSQL = `status IN ('pending', 'deferred', 'delivering')
 // destinations this claim has already passed over. Delivered and bounced rows
 // stay in the table, and their next_attempt is the oldest there is, so
 // idx_outbound_queue_due (internal/db/db.go) covers only the rows it can return.
-const claimSQL = `SELECT * FROM outbound_queue
+// It returns the row's id and its source's length, not the source: octet_length
+// reads a stored value's length from its header without detoasting it, so a claim
+// learns how long a source is before deciding to load it (#2107 AC02).
+const claimSQL = `SELECT id, coalesce(octet_length(raw_message), 0) + coalesce(octet_length(raw_octets), 0) AS source_octets
+	 FROM outbound_queue
 	 WHERE ` + claimableSQL + `
 	 AND lower(domain) NOT IN (` + destinationsAtLimitSQL + `)
 	 AND lower(domain) NOT IN (SELECT jsonb_array_elements_text(?::jsonb))
@@ -786,8 +835,11 @@ const claimSQL = `SELECT * FROM outbound_queue
 // destination is the row's recipient domain, the unit the queue already groups by
 // and all a claim knows: the MX is looked up later, during delivery. Each row is
 // one connection at a time, so rows in flight are connections in flight.
-func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
-	var item models.OutboundQueue
+//
+// The row's source is loaded only when it is no longer than w.maxSourceOctets
+// (#2107 AC02); a longer one is claimed without it, for processNext to bounce.
+func (w *Worker) claim(now time.Time) (claimedItem, error) {
+	var item claimedItem
 	// Rows that have gone longer than w.reclaim without a heartbeat were orphaned
 	// by a worker that crashed mid-send: the worker holding a row refreshes
 	// last_attempt for as long as its attempt runs (startHeartbeat), however long
@@ -804,14 +856,18 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 			if err != nil {
 				return err
 			}
-			item = models.OutboundQueue{}
-			result := tx.Raw(claimSQL, now, staleDelivering, now, staleDelivering, limit, string(skip)).Scan(&item)
+			var due struct {
+				ID           uint
+				SourceOctets int64
+			}
+			result := tx.Raw(claimSQL, now, staleDelivering, now, staleDelivering, limit, string(skip)).Scan(&due)
 			if result.Error != nil {
 				return result.Error
 			}
 			if result.RowsAffected == 0 {
 				return gorm.ErrRecordNotFound
 			}
+			item = claimedItem{OutboundQueue: models.OutboundQueue{ID: due.ID}, sourceOctets: due.SourceOctets}
 			if w.maxPerDestination <= 0 {
 				break
 			}
@@ -825,10 +881,18 @@ func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
 			// Every pass adds a destination the query then leaves out, so this ends.
 			passedOver = append(passedOver, destination)
 		}
+		// The claim holds the row's lock, so it is the row claimSQL found.
+		load := tx
+		if item.sourceOctets > w.maxSourceOctets {
+			load = tx.Omit("raw_message", "raw_octets")
+		}
+		if err := load.Take(&item.OutboundQueue, item.ID).Error; err != nil {
+			return err
+		}
 		item.JoinSource()
 
 		// Mark as delivering
-		return tx.Model(&item).Updates(map[string]interface{}{
+		return tx.Model(&item.OutboundQueue).Updates(map[string]interface{}{
 			"status":       "delivering",
 			"last_attempt": now,
 			"attempts":     item.Attempts + 1,

@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"mime"
@@ -163,10 +164,67 @@ func (h *AttachmentHandler) getAttachment(r *http.Request, in attachmentPath) (e
 		_ = file.Close()
 		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to stat attachment")
 	}
+	content, err := boundAttachment(r, &att, file, stat.Size())
+	if err != nil {
+		return endpoint.Served{}, err
+	}
 	served.Modified = stat.ModTime()
-	served.Content = file
+	served.Content = content
 	return served, nil
 }
+
+// errAttachmentStorageLarger refuses an attachment whose storage holds more than
+// its row records: the object is not the one that was stored.
+var errAttachmentStorageLarger = endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Attachment storage holds more than was recorded")
+
+// boundAttachment is content, which storage says is stored octets long, bounded to
+// the attachment's recorded size (#2107 AC02): storage that says it holds more is
+// refused, and the download never reads past what storage said, even when the
+// stream goes on (a file written to since, an object replaced between its HEAD and
+// its GET). content is closed when it is refused.
+func boundAttachment(r *http.Request, att *models.Attachment, content io.ReadSeekCloser, stored int64) (io.ReadSeekCloser, error) {
+	if stored > att.SizeBytes {
+		_ = content.Close()
+		slog.ErrorContext(r.Context(), "attachment storage holds more than its row records", "attachment_id", att.ID,
+			"storage_type", att.StorageType, "stored_bytes", stored, "recorded_bytes", att.SizeBytes)
+		return nil, errAttachmentStorageLarger
+	}
+	return &boundedContent{content: content, size: stored}, nil
+}
+
+// boundedContent serves the first size octets of content and nothing past them:
+// its end is at size whatever content's is.
+type boundedContent struct {
+	content  io.ReadSeekCloser
+	size     int64
+	position int64
+}
+
+func (b *boundedContent) Read(p []byte) (int, error) {
+	remaining := b.size - b.position
+	if remaining <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > remaining {
+		p = p[:remaining]
+	}
+	n, err := b.content.Read(p)
+	b.position += int64(n)
+	return n, err
+}
+
+func (b *boundedContent) Seek(offset int64, whence int) (int64, error) {
+	if whence == io.SeekEnd {
+		offset, whence = b.size+offset, io.SeekStart
+	}
+	position, err := b.content.Seek(offset, whence)
+	if err == nil {
+		b.position = position
+	}
+	return position, err
+}
+
+func (b *boundedContent) Close() error { return b.content.Close() }
 
 // s3Attachment is served with the object's bytes streaming from the store, and its ETag.
 func (h *AttachmentHandler) s3Attachment(r *http.Request, att *models.Attachment, served endpoint.Served) (endpoint.Served, error) {
@@ -181,11 +239,15 @@ func (h *AttachmentHandler) s3Attachment(r *http.Request, att *models.Attachment
 		slog.ErrorContext(r.Context(), "opening attachment object failed", "attachment_id", att.ID, "error", err)
 		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to open attachment object")
 	}
+	content, err := boundAttachment(r, att, file, file.Size)
+	if err != nil {
+		return endpoint.Served{}, err
+	}
 	if file.ETag != "" {
 		served.Header.Set("ETag", file.ETag)
 	}
 	served.Modified = file.Modified
-	served.Content = file
+	served.Content = content
 	return served, nil
 }
 
