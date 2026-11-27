@@ -5,7 +5,7 @@
 internal/acme cmd/api,cmd/instance
 internal/api/endpoint cmd/api,cmd/console,cmd/instance
 internal/api/respond cmd/api,cmd/console,cmd/instance
-internal/attachmentstore cmd/api,cmd/sieve-migrate
+internal/attachmentstore cmd/api,cmd/sieve-migrate,cmd/smtp-gateway
 internal/audit cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
 internal/auth cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
 internal/bootstrap cmd/api,cmd/seed
@@ -27,6 +27,7 @@ internal/grants cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/seed,cmd/sieve-mig
 internal/instance cmd/instance,cmd/seed
 internal/mail cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway,pkg/mailimport
 internal/messageseal cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/messagestore cmd/api,cmd/smtp-gateway
 internal/metrics cmd/api,cmd/imap-gateway,cmd/pop3-gateway,cmd/sieve-migrate,cmd/smtp-gateway
 internal/mime cmd/api,cmd/console,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
 internal/mtls cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway

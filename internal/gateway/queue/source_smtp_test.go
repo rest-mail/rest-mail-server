@@ -53,7 +53,7 @@ func TestSourceDATAFailureClosesBeforeTerminator(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 			start := time.Now()
 			err = sendOverSMTPLink(&smtpLink{conn: conn, client: client}, config.OutboundSMTPTimeouts{}.WithDefaults(),
 				"peer.test", "sender@example.test", "recipient@example.test", smtpContent{source: source}, false)
