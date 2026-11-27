@@ -31,32 +31,45 @@ type Results struct {
 	} `json:"pagination"`
 }
 
-func terms(query string) ([]string, error) {
+// term is one whitespace-separated piece of a query. A term that opens
+// with a quote is a literal phrase, so a colon inside it is text, not an
+// operator: `"Re: hello"` searches for the words, while `subject:"Re: hello"`
+// keeps its operator because the quote opens after the colon.
+type term struct {
+	text    string
+	literal bool
+}
+
+func terms(query string) ([]term, error) {
 	if len(query) > 4096 {
 		return nil, errors.New("search query too long")
 	}
-	var result []string
-	var term strings.Builder
-	quoted := false
+	var result []term
+	var current strings.Builder
+	quoted, literal := false, false
 	for _, character := range query {
 		if character == '"' {
+			if current.Len() == 0 && !quoted {
+				literal = true
+			}
 			quoted = !quoted
 			continue
 		}
 		if unicode.IsSpace(character) && !quoted {
-			if term.Len() > 0 {
-				result = append(result, term.String())
-				term.Reset()
+			if current.Len() > 0 {
+				result = append(result, term{current.String(), literal})
+				current.Reset()
 			}
+			literal = false
 		} else {
-			term.WriteRune(character)
+			current.WriteRune(character)
 		}
 	}
 	if quoted {
 		return nil, errors.New("unclosed search quote")
 	}
-	if term.Len() > 0 {
-		result = append(result, term.String())
+	if current.Len() > 0 {
+		result = append(result, term{current.String(), literal})
 	}
 	if len(result) > 64 {
 		return nil, errors.New("too many search terms")
@@ -73,8 +86,8 @@ func searchSQL(query, folder string) (string, []any, string, error) {
 	arguments := []any{}
 	fts := []string{}
 	for _, part := range parts {
-		operator, _, found := strings.Cut(part, ":")
-		if found && strings.EqualFold(operator, "in") {
+		operator, _, found := strings.Cut(part.text, ":")
+		if found && !part.literal && strings.EqualFold(operator, "in") {
 			folder = ""
 		}
 	}
@@ -83,10 +96,10 @@ func searchSQL(query, folder string) (string, []any, string, error) {
 		arguments = append(arguments, folder)
 	}
 	for _, part := range parts {
-		operator, value, found := strings.Cut(part, ":")
+		operator, value, found := strings.Cut(part.text, ":")
 		operator = strings.ToLower(operator)
-		if !found {
-			fts = append(fts, quote(part))
+		if !found || part.literal {
+			fts = append(fts, quote(part.text))
 			continue
 		}
 		if value == "" {
