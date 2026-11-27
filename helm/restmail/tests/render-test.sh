@@ -885,3 +885,21 @@ for component in api smtp-gateway imap-gateway pop3-gateway; do
 done
 assert_contains "OTLP egress with an endpoint" "$tmp/tracing.yaml" 'name: restmail-otlp-egress'
 pass "tracing is off by default and passed to every Go service when set"
+
+echo "== the chart starts no competing ACME issuer (#2104 AC01) =="
+# A cluster install takes its certificate from a TLS Secret that an external
+# manager (cert-manager, external-secrets, a manual upload) owns and renews; see
+# docs/external-certificates.md. The API's own ACME issuer only starts when
+# ACME_ENABLED is true (cmd/api/main.go), so no render of the chart, with any of
+# its shipped values files, may pass that variable or any other ACME_ setting to
+# a workload: a second issuer would renew the same names on its own schedule.
+for values in values.yaml values-dev.yaml values-ci.yaml values-ci-peer.yaml; do
+  helm template restmail "$CHART_DIR" -f "$CHART_DIR/$values" "${PROD_ARGS[@]}" > "$tmp/acme-$values"
+  acme=$(yq -N e '((.. | select(tag == "!!map") | keys | .[]), (.. | select(tag == "!!str"))) | select(test("^ACME_"))' "$tmp/acme-$values")
+  [ -z "$acme" ] || fail "$values renders an ACME setting, which starts a second issuer: $acme"
+  # Control: the same query does find the variables the chart does set, so an
+  # empty answer above is not a query that can match nothing.
+  found=$(yq -N e '((.. | select(tag == "!!map") | keys | .[]), (.. | select(tag == "!!str"))) | select(test("^DB_SSLMODE$"))' "$tmp/acme-$values")
+  [ -n "$found" ] || fail "$values: the ACME query matched no env name at all, so it proves nothing"
+done
+pass "no shipped values file starts the API's ACME issuer"
