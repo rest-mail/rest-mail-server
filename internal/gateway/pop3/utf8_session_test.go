@@ -125,7 +125,7 @@ func TestUTF8ThroughTheSession(t *testing.T) {
 	plain.do("USER jorg@example.test")
 	plain.do("PASS pw")
 	got := plain.multi("RETR 1")
-	if !strings.Contains(got, "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=") || strings.Contains(got, "Grüße") {
+	if !strings.Contains(got, "Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=") || strings.Contains(got, "Grüße") {
 		t.Fatalf("RETR without UTF8 did not downgrade: %q", got)
 	}
 

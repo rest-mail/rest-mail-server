@@ -3,7 +3,6 @@ package mail
 import (
 	"io"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/rest-mail/go-imap/pkg/imap/wireform"
 )
@@ -319,57 +318,16 @@ func writeAddressField(w wordSink, name, folded string) bool {
 	return true
 }
 
-// writeEncodedText renders text as encoded-words when it is not plain ASCII.
-// Octets that are not UTF-8 go out as UNKNOWN-8BIT, so they survive and no
-// charset is guessed.
+// writeEncodedText renders text as encoded-words when it is not plain ASCII, the way the
+// engine spells them, so a top-level field and the same one in an encapsulated message
+// agree byte for byte (#2107). Octets that are not UTF-8 go out as UNKNOWN-8BIT, so they
+// survive and no charset is guessed.
 func writeEncodedText(w wordSink, s string) {
-	switch {
-	case !containsNonASCII(s):
+	if !containsNonASCII(s) {
 		_, _ = w.WriteString(s)
-	case !utf8.ValidString(s):
-		wireform.WriteEncodedWords(w, s)
-	default:
-		writeQWords(w, s)
+		return
 	}
-}
-
-// writeQWords is mime.QEncoding.Encode("utf-8", s) for an s that needs encoding,
-// holding nothing that grows with s (TestWriteQWordsMatchesTheLibrary).
-func writeQWords(w wordSink, s string) {
-	const (
-		open       = "=?utf-8?q?"
-		closing    = "?="
-		maxContent = 75 - len(open) - len(closing)
-		digits     = "0123456789ABCDEF"
-	)
-	_, _ = w.WriteString(open)
-	length := 0
-	for i := 0; i < len(s); {
-		size, encoded := 1, 1
-		if c := s[i]; c < ' ' || c > '~' || c == '=' || c == '?' || c == '_' {
-			_, size = utf8.DecodeRuneInString(s[i:])
-			encoded = 3 * size
-		}
-		if length+encoded > maxContent {
-			_, _ = w.WriteString(closing + " " + open)
-			length = 0
-		}
-		for k := i; k < i+size; k++ {
-			switch c := s[k]; {
-			case c == ' ':
-				_, _ = w.WriteString("_")
-			case c >= '!' && c <= '~' && c != '=' && c != '?' && c != '_':
-				_, _ = w.WriteString(s[k : k+1])
-			default:
-				_, _ = w.WriteString("=")
-				_, _ = w.WriteString(digits[c>>4 : c>>4+1])
-				_, _ = w.WriteString(digits[c&0x0f : c&0x0f+1])
-			}
-		}
-		length += encoded
-		i += size
-	}
-	_, _ = w.WriteString(closing)
+	wireform.WriteEncodedWords(w, s)
 }
 
 // splitHeader returns the header block (without its final line break), the

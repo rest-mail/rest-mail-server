@@ -84,7 +84,7 @@ func TestRetrSplitsOnEightBitBoundary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			raw := "Subject: Grüße\r\nContent-Type: multipart/mixed; " + tc.stored + "\r\n\r\n" +
 				fmt.Sprintf(boundaryParts, tc.delimiter)
-			want := "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n " + tc.field + "\r\n\r\n" +
+			want := "Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n " + tc.field + "\r\n\r\n" +
 				fmt.Sprintf(boundaryParts, tc.spelled)
 			got, listed, sent := retrieved(t, raw)
 			if got != want {
@@ -156,7 +156,7 @@ func TestRetrLeavesOtherBodiesAlone(t *testing.T) {
 	for _, tc := range []struct{ name, stored, want string }{
 		{"7-bit boundary beside an 8-bit header",
 			"Subject: Grüße\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" + fmt.Sprintf(boundaryParts, "B"),
-			"Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" + fmt.Sprintf(boundaryParts, "B")},
+			"Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" + fmt.Sprintf(boundaryParts, "B")},
 		{"a boundary parameter on a leaf",
 			"Content-Type: text/plain; boundary=\"Jö\"\r\n\r\n--Jö\r\n",
 			"Content-Type: text/plain;\r\n boundary*=UTF-8''J%C3%B6\r\n\r\n--Jö\r\n"},

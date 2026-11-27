@@ -167,7 +167,7 @@ func TestFetchHeadersThroughTheGateway(t *testing.T) {
 	c.do("a1", "LOGIN jorg@example.test pw")
 	c.do("a2", "SELECT INBOX")
 	_, header := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]"))
-	if !strings.Contains(header, "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\n") {
+	if !strings.Contains(header, "Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n") {
 		t.Fatalf("Subject: %q", header)
 	}
 	if !strings.Contains(header, "=?UNKNOWN-8BIT?Q?caf=E9?=") {
@@ -415,7 +415,7 @@ func TestSevenBitParameterThroughTheGateway(t *testing.T) {
 		{"a star that isn't RFC 2231", "name*x=y; other=keep", `("NAME*X" "y" "OTHER" "keep")`},
 	} {
 		for head, downgraded := range map[string]string{
-			"": "", "Subject: J\xc3\xb6\r\n": "Subject: =?utf-8?q?J=C3=B6?=\r\n",
+			"": "", "Subject: J\xc3\xb6\r\n": "Subject: =?UTF-8?Q?J=C3=B6?=\r\n",
 		} {
 			t.Run(tc.name+" after "+head, func(t *testing.T) {
 				field := "Content-Type: application/pdf; " + tc.stored + "\r\n\r\n"
