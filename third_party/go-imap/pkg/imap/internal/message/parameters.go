@@ -405,17 +405,37 @@ func firstFieldPiece(value string, closers *commentPairs) fieldPiece {
 	return first
 }
 
+// walkScratch is where a walk keeps a piece's comments. A piece can hold very many, and a field is
+// walked several times by each measurement of a message, so the lists are used again (#2107).
+type walkScratch struct {
+	comments [][2]int
+	texts    []string
+}
+
+var walkScratches = newScratchPool(func() any { return new(walkScratch) }, func(value any) bool {
+	scratch := value.(*walkScratch)
+	return cap(scratch.comments) <= 1<<16 && cap(scratch.texts) <= 1<<16
+})
+
 // walkFieldPieces is eachFieldPiece until each answers false.
 func walkFieldPieces(value string, closers *commentPairs, each func(fieldPiece) bool) {
 	closers.at = 0
 	quotes := true // false once a '"' has found nothing to close it
 	start, eq, broken := 0, -1, -1
-	var comments [][2]int
-	var texts []string
+	scratch := walkScratches.Get().(*walkScratch)
+	comments, texts := scratch.comments[:0], scratch.texts[:0]
+	held := 0 // how many texts have been held, which go before the lists are used again
+	defer func() {
+		// The texts are value's, which a list kept for the next walk mustn't hold on to.
+		clear(texts[:held])
+		scratch.comments, scratch.texts = comments[:0], texts[:0]
+		walkScratches.Put(scratch)
+	}()
 	first, more := true, true
 	flush := func(end int) {
 		var piece fieldPiece
 		piece, texts = newFieldPiece(value, start, end, eq, broken, comments, first, texts[:0])
+		held = max(held, len(texts))
 		more = each(piece)
 		first = false
 		// A piece holds only the text of its comments, so where they are can be used again.
@@ -623,6 +643,25 @@ func parameterName(key string) string {
 	return percentEncode(base) + "*" + suffix
 }
 
+// nameSpeller is parameterName that remembers the last name it had to spell. A field that
+// repeats an 8-bit name would otherwise have it percent-encoded again for every piece by
+// every reading of the field (#2107). Its zero value is ready, and one reading has one.
+type nameSpeller struct {
+	key, name string
+}
+
+func (s *nameSpeller) spell(key string) string {
+	if s.name != "" && key == s.key {
+		return s.name
+	}
+	name := parameterName(key)
+	if name != key {
+		// Only a name that cost something to spell is worth remembering.
+		s.key, s.name = key, name
+	}
+	return name
+}
+
 // validExtendedSuffix reports whether suffix is what follows the first '*' of an RFC
 // 2231 name: nothing, a segment number, or one and its own '*'. mime.ParseMediaType
 // would drop a parameter with anything else after one.
@@ -645,22 +684,31 @@ var lineBreaksAsSpaces = strings.NewReplacer("\r", " ", "\n", " ")
 // accepts: no comments, every name a token (see parameterName), every value a token or
 // a quoted-string, and each name once. See readField for how it reads, and for a
 // repeated name the first stands, which is also what ParameterField keeps as one.
+//
+// It reads one piece at a time: a list of every piece of a long field costs many times
+// the field (#2107). A name is ASCII once spelled, so nameSet's case is strings.ToLower's.
 func readableField(value string) string {
-	pieces := readField(value)
 	var b strings.Builder
-	b.WriteString(pieces[0].key)
-	seen := map[string]bool{}
-	for _, piece := range pieces[1:] {
+	seen := takeNameSet(0)
+	defer seen.release()
+	seen.source = value
+	var names nameSpeller
+	first := true
+	eachFieldPiece(value, commentClosers(value), func(piece fieldPiece) {
+		if first {
+			first = false
+			b.WriteString(piece.key)
+			return
+		}
 		if piece.key == "" {
-			continue
+			return
 		}
-		name := parameterName(piece.key)
-		if seen[strings.ToLower(name)] {
-			continue
+		name := names.spell(piece.key)
+		if seen.add(name) {
+			return
 		}
-		seen[strings.ToLower(name)] = true
 		writeReadableParameter(&b, name, piece)
-	}
+	})
 	return b.String()
 }
 
@@ -751,27 +799,48 @@ func writeParameterField(w wireSink, name, value string, closers *commentPairs) 
 	if err != nil || has8bit(mt) {
 		return false
 	}
+	writeFieldPieces(w, name, value, closers, "")
+	return true
+}
+
+// writeFieldPieces writes the field whose type has been read, one parameter at a time. With boundary
+// set, the boundary parameter, whichever way it was spelled, is boundary, in the place of the first of
+// them, with the comments of them all after it, which is parameterField's rewrite (headerWithBoundary).
+func writeFieldPieces(w wireSink, name, value string, closers *commentPairs, boundary string) {
+	var names nameSpeller
+	isBoundary := func(key string) bool { return boundary != "" && isBoundaryName(key) }
 	// Only a name holding a '*' is extended.
 	var extended *nameSet
-	if strings.IndexByte(value, '*') >= 0 {
-		// Few names are extended however many parameters there are, so this grows if it has to.
-		extended = takeNameSet(0)
-		defer extended.release()
-		first := true
+	// The comments of every boundary piece after the first, which are value's text.
+	var boundaryComments []string
+	if hasStar := strings.IndexByte(value, '*') >= 0; hasStar || boundary != "" {
+		if hasStar {
+			// Few names are extended however many parameters there are, so this grows if it has to.
+			extended = takeNameSet(0)
+			defer extended.release()
+		}
+		first, boundaries := true, 0
 		eachFieldPiece(value, closers, func(piece fieldPiece) {
-			if !first {
-				if base, _, ok := strings.Cut(parameterName(piece.key), "*"); ok {
-					extended.add(base)
+			if first {
+				first = false
+				return
+			}
+			key := names.spell(piece.key)
+			if base, _, ok := strings.Cut(key, "*"); ok && extended != nil {
+				extended.add(base)
+			}
+			if piece.key != "" && isBoundary(key) {
+				if boundaries++; boundaries > 1 {
+					boundaryComments = append(boundaryComments, piece.comments...)
 				}
 			}
-			first = false
 		})
 	}
 	isExtended := func(base string) bool { return extended != nil && extended.has(base) }
 	seen := takeNameSet(strings.Count(value, ";"))
 	defer seen.release()
 	seen.source = value
-	first := true
+	first, boundaryWritten := true, false
 	eachFieldPiece(value, closers, func(piece fieldPiece) {
 		if first {
 			first = false
@@ -785,9 +854,23 @@ func writeParameterField(w wireSink, name, value string, closers *commentPairs) 
 			}
 			return
 		}
-		key := parameterName(piece.key)
-		switch piece.key {
-		case "":
+		key := names.spell(piece.key)
+		var later []string // the comments of later boundary pieces, after this one's own
+		switch {
+		case piece.key == "":
+		case isBoundary(key):
+			if boundaryWritten {
+				// Its comments went beside the first.
+				return
+			}
+			boundaryWritten = true
+			base, _, _ := strings.Cut(key, "*")
+			_, _ = w.WriteString(";\r\n ")
+			_, _ = w.WriteString(base)
+			_, _ = w.WriteString(`="`)
+			_, _ = w.WriteString(boundary)
+			_, _ = w.WriteString(`"`)
+			later = boundaryComments
 		default:
 			if seen.add(key) {
 				_, _ = w.WriteString(" (")
@@ -802,12 +885,13 @@ func writeParameterField(w wireSink, name, value string, closers *commentPairs) 
 			}
 			writeParameterValue(w, key, piece.value, isExtended)
 		}
-		for _, comment := range piece.comments {
-			_, _ = w.WriteString(" ")
-			_, _ = w.WriteString(sevenBitComments(comment))
+		for _, list := range [2][]string{piece.comments, later} {
+			for _, comment := range list {
+				_, _ = w.WriteString(" ")
+				_, _ = w.WriteString(sevenBitComments(comment))
+			}
 		}
 	})
-	return true
 }
 
 // writeSpacedWords is strings.Join(encodedWords(text), " ") into w.
@@ -825,8 +909,9 @@ func writeSpacedWords(w wireSink, text string) {
 }
 
 // parameterField rewrites a field with the boundary parameter, whichever way it was
-// spelled, replaced by boundary. A message that has to move a boundary has its conversion
-// built, so this holds the whole field as it works.
+// spelled, replaced by boundary. It holds the whole field as it works, which is why nothing
+// sends with it: it is what WriteParameterField and headerWithBoundary, which hold one
+// parameter at a time, are tested against.
 func parameterField(name, value, boundary string) (string, bool) {
 	value = trimWSP(value)
 	pieces := readField(value)
@@ -979,7 +1064,15 @@ func writeParameterValue(w io.StringWriter, key, value string, extended func(bas
 // percentEncode spells value as an RFC 2231 extended value: every octet that may not
 // stand there is %XX.
 func percentEncode(value string) string {
+	size := len(value)
+	for i := 0; i < len(value); i++ {
+		if !isAttributeChar(value[i]) {
+			size += len("XX")
+		}
+	}
+	// Built at its size, which a builder growing as it goes allocates several times over.
 	var b strings.Builder
+	b.Grow(size)
 	writePercentEncoded(&b, value)
 	return b.String()
 }
