@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `wireform.SetFieldWriter` lets a host convert each 8-bit header field it
+  takes, in every header block `Convert`, `Size` and FETCH convert, before the
+  engine's own conversion. A host that downgrades the top-level header block
+  itself (RFC 6857) sets it, so an encapsulated message's header and a part's
+  read the same as that block. Content-Type and Content-Disposition stay the
+  engine's. Without one, nothing changes.
 - `Server.Serve` starts the server on listeners the caller has already opened.
 - Real `\Recent` state (RFC 3501 §2.3.2): a Mailbox that implements the new
   optional `imap.RecentMailbox` interface keeps a per-folder mark, the highest

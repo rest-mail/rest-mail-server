@@ -249,16 +249,10 @@ func writeFolded(w wordSink, span string, bare bool) {
 
 // downgradeField converts one field; value is still folded.
 func downgradeField(w wordSink, name, folded string) {
-	key := strings.ToLower(strings.TrimSpace(name))
-	if addressFields[key] {
-		var scan addressScan
-		if scan.readsAsList(folded, strings.LastIndexByte(folded, ']')) {
-			_, _ = w.WriteString(name)
-			_, _ = w.WriteString(":")
-			scan.write(w, len(name)+1, folded)
-			return
-		}
+	if writeAddressField(w, name, folded) {
+		return
 	}
+	key := strings.ToLower(strings.TrimSpace(name))
 	isParameters := key == "content-type" || key == "content-disposition"
 	if isParameters {
 		if ok, read := wireform.WriteFoldedParameterField(w, name, folded); read && ok {
@@ -281,10 +275,48 @@ func downgradeField(w wordSink, name, folded string) {
 			return
 		}
 	}
+	writeRenamed(w, name, value)
+}
+
+// writeRenamed writes a field that can't keep its name 7-bit as Downgraded-<name>, its value
+// encoded-words (RFC 6857 section 3.1). value is unfolded and trimmed.
+func writeRenamed(w wordSink, name, value string) {
 	_, _ = w.WriteString("Downgraded-")
 	_, _ = w.WriteString(strings.TrimSpace(name))
 	_, _ = w.WriteString(": ")
 	writeEncodedText(w, value)
+}
+
+// The engine converts every header block below the top level, an encapsulated message's
+// included, so its address fields take the conversion the top level's do (#1891).
+func init() {
+	wireform.SetFieldWriter(func(w interface {
+		io.Writer
+		io.StringWriter
+	}, name, value string) bool {
+		return writeAddressField(w, name, value)
+	})
+}
+
+// writeAddressField writes an address field 7-bit and says true, or writes nothing and says
+// false when name is no address field. One that reads as a list changes only what holds an
+// 8-bit octet, see addressScan.write; any other is renamed. folded is the value after the colon.
+func writeAddressField(w wordSink, name, folded string) bool {
+	if !addressFields[strings.ToLower(strings.TrimSpace(name))] {
+		return false
+	}
+	var scan addressScan
+	if scan.readsAsList(folded, strings.LastIndexByte(folded, ']')) {
+		_, _ = w.WriteString(name)
+		_, _ = w.WriteString(":")
+		scan.write(w, len(name)+1, folded)
+		return true
+	}
+	scratch := wireform.TakeFieldScratch(0)
+	defer scratch.Release()
+	// White space only: a no-break space at either end is text.
+	writeRenamed(w, name, strings.Trim(scratch.Unfolded(folded), " \t"))
+	return true
 }
 
 // writeEncodedText renders text as encoded-words when it is not plain ASCII.

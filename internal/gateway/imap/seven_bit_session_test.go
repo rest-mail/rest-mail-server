@@ -251,6 +251,42 @@ func TestAddressTextThroughTheGateway(t *testing.T) {
 	}
 }
 
+// A forwarded message's address fields reach a session without UTF-8 as the message's own
+// do: the gateway downgrades the top-level header and the engine converts the encapsulated
+// one, and the two agree on group names, comments, quoted strings, folding and a name that
+// isn't UTF-8 (#1891). RFC822.SIZE counts the octets BODY[] sends.
+func TestForwardedAddressTextAgreesThroughTheGateway(t *testing.T) {
+	const fields = "From: Jörg <j@example.com> (Büro)\r\n" +
+		"To: Grüppe: a@example.com,\r\n \"Jörg \\\"J\\\"\" <j@example.com>;\r\n" +
+		"Cc: Ann <a@example.com> (kept), J\xf6rg <k@example.com> (x (Bü) y)\r\n" +
+		"Reply-To: üser@example.com (Büro)\r\n"
+	const want = "From: =?UTF-8?Q?J=C3=B6rg?= <j@example.com> (=?UTF-8?Q?B=C3=BCro?=)\r\n" +
+		"To: =?UTF-8?Q?Gr=C3=BCppe?= : a@example.com,\r\n =?UTF-8?Q?J=C3=B6rg_=22J=22?= <j@example.com>;\r\n" +
+		"Cc: Ann <a@example.com> (kept), =?UNKNOWN-8BIT?Q?J=F6rg?= <k@example.com> \r\n (=?UTF-8?Q?x_=28B=C3=BC=29_y?=)\r\n" +
+		"Reply-To: =?UTF-8?Q?=C3=BCser=40example=2Ecom?= :; (=?UTF-8?Q?B=C3=BCro?=)\r\n"
+	const raw = fields + "Subject: fwd\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n" +
+		"--b\r\nContent-Type: text/plain\r\n\r\nsee below\r\n" +
+		"--b\r\nContent-Type: message/rfc822\r\n\r\n" + fields + "Subject: inner\r\n\r\ninner body\r\n--b--\r\n"
+	c := dialStore(t, raw)
+	c.do("a1", "LOGIN jorg@example.test pw")
+	c.do("a2", "SELECT INBOX")
+	_, top := fetchedLiteral(t, c.do("a3", "FETCH 1 BODY.PEEK[HEADER]"))
+	_, inner := fetchedLiteral(t, c.do("a4", "FETCH 1 BODY.PEEK[2.HEADER]"))
+	if !strings.HasPrefix(top, want) {
+		t.Errorf("top-level HEADER:\n got %q\nwant it to start %q", top, want)
+	}
+	if !strings.HasPrefix(inner, want) {
+		t.Errorf("encapsulated 2.HEADER:\n got %q\nwant it to start %q", inner, want)
+	}
+	framing, whole := fetchedLiteral(t, c.do("a5", "FETCH 1 (RFC822.SIZE BODY.PEEK[])"))
+	if wantSize := fmt.Sprintf("RFC822.SIZE %d ", len(whole)); !strings.Contains(framing, wantSize) {
+		t.Fatalf("%q lacks %q; BODY[] sent %d octets", framing, wantSize, len(whole))
+	}
+	if strings.Count(whole, want) != 2 {
+		t.Fatalf("BODY[] doesn't carry the converted fields twice:\n%q", whole)
+	}
+}
+
 // An unquoted 8-bit parameter survives the downgrade of the top-level header: the
 // field keeps its name, type and other parameters, and BODYSTRUCTURE agrees.
 func TestUnquotedParameterThroughTheGateway(t *testing.T) {
