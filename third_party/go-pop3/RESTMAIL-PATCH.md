@@ -46,3 +46,12 @@ Lint job, and in its Test IMAP module job the RFC checklist, the CPython
 `poplib` reference test and `go test -race` with `-coverpkg=./...`, failing
 below the 95% statement coverage gate. `TestReadmeCoverageBadge` reads that gate
 from the server's `.github/workflows/ci.yml`.
+
+## `Server.Serve` for an already-bound listener
+
+`Server.Serve(listener net.Listener, implicitTLS bool)` serves on a listener the
+caller has already bound; `ListenAndServe` binds and then calls the same code.
+The library's own tests use it to bind `127.0.0.1:0` and keep that listener,
+instead of probing for a free port, closing it and binding again, which races
+other processes for the port (rest-mail-server's `internal/testguard`
+`TestNoFreePortProbes` refuses that pattern).
