@@ -310,6 +310,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithLimits(scannerSecret, cfg.RspamdMaxRequestBytes()))
 	pipeline.DefaultRegistry.Register("clamav", filters.NewClamAVWithLimits(scannerSecret, cfg.ClamAVMaxRequestBytes()))
 	pipeline.DefaultRegistry.Register("webhook", filters.NewWebhookWithLimit(cfg.WebhookMaxRequestBytes()))
+	pipeline.DefaultRegistry.Register("duplicate", filters.NewDuplicateWithLimit(cfg.WebhookMaxRequestBytes()))
 	// #160: javascript filters run on the deployment's sidecar, authenticated
 	// with its token; a pipeline's config cannot point them elsewhere.
 	jsSidecar := filters.JSSidecar{URL: cfg.JSFilterURL(), Token: cfg.JSFilterToken(), MaxBodyBytes: cfg.JSFilterMaxBodyBytes()}
