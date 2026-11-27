@@ -76,8 +76,13 @@ func TestTestSnapshotExamples(t *testing.T) {
 					if c.query == "SNAPSHOT_CONTEXT" && c.args[0].Value != true {
 						t.Fatal("snapshot query lost HTTP context")
 					}
-					if strings.HasPrefix(c.query, "SELECT *") {
-						selected = append(selected, c.query)
+					if from := strings.Index(c.query, ` FROM "`); strings.HasPrefix(c.query, "SELECT ") && from > 0 {
+						// The source columns of messages and outbound_queue stay
+						// out of the snapshot; every table is still read once.
+						if strings.Contains(c.query, "raw_message") || strings.Contains(c.query, "raw_octets") {
+							t.Fatalf("snapshot selected a message source: %s", c.query)
+						}
+						selected = append(selected, "SELECT * FROM"+c.query[from+len(" FROM"):])
 					}
 				}
 			}

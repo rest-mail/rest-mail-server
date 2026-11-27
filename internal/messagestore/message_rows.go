@@ -175,7 +175,7 @@ func (s *Sources) measureConverted(open func() (io.ReadCloser, int64, error)) (s
 	}
 	defer file.Close()
 	if err := os.Remove(file.Name()); err != nil {
-		defer os.Remove(file.Name())
+		defer func() { _ = os.Remove(file.Name()) }()
 	}
 	n, err := io.Copy(file, reader)
 	if err != nil {
