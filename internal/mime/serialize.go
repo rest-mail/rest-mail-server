@@ -1,8 +1,11 @@
 package mime
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"io"
 	stdmime "mime"
 	"mime/multipart"
@@ -27,13 +30,42 @@ const (
 // encoded-words. Pure-ASCII values pass through unchanged.
 var headerEncoder = stdmime.QEncoding
 
+// AttachmentSource opens the raw (unencoded) bytes of a MIME attachment.
+// SerializeTo closes the returned reader, including when rendering fails.
+type AttachmentSource interface {
+	Open() (io.ReadCloser, error)
+}
+
+// SerializeOptions supplies optional sources for the parts in EmailJSON.
+type SerializeOptions struct {
+	// A nonempty slice matches the corresponding EmailJSON slice by index.
+	// Nil entries use the attachment's existing base64 Content.
+	AttachmentSources []AttachmentSource
+	InlineSources     []AttachmentSource
+
+	// Boundary supplies a fresh boundary per multipart, starting at the root.
+	// Nil uses mime/multipart's random boundaries.
+	Boundary func() string
+}
+
 // Serialize converts an EmailJSON back to a raw RFC 5322 message.
-//
-// Header values are RFC 2047-encoded where they need to be, folded, and
-// stripped of CR/LF so a value can never start a header line of its own.
-// Multipart bodies are assembled with mime/multipart, whose boundary is random
-// rather than derived from the clock.
 func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
+	var b bytes.Buffer
+	if err := SerializeTo(&b, email, SerializeOptions{}); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// SerializeTo writes an RFC 5322 message, streaming attachment sources through
+// a base64 encoder. It may leave partial output if a read or write fails.
+func SerializeTo(dst io.Writer, email *pipeline.EmailJSON, opts SerializeOptions) error {
+	if len(opts.AttachmentSources) != 0 && len(opts.AttachmentSources) != len(email.Attachments) {
+		return fmt.Errorf("mime: attachment source count must match attachment count")
+	}
+	if len(opts.InlineSources) != 0 && len(opts.InlineSources) != len(email.Inline) {
+		return fmt.Errorf("mime: inline source count must match inline part count")
+	}
 	var b strings.Builder
 
 	if email.Headers.From.Len() > 0 {
@@ -75,97 +107,115 @@ func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 
 	switch {
 	case len(email.Attachments) > 0 || len(email.Inline) > 0:
-		if err := writeMixed(&b, email); err != nil {
-			return nil, err
-		}
+		return opts.writeMixed(dst, &b, email)
 	case len(email.Body.Parts) > 0:
-		body, boundary, err := renderAlternative(email.Body.Parts)
+		w, err := opts.multipartWriter(dst)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		writeHeader(&b, "Content-Type", multipartType(email.Body.ContentType)+`; boundary="`+boundary+`"`)
-		b.WriteString("\r\n")
-		b.Write(body)
+		writeHeader(&b, "Content-Type", multipartContentType(multipartType(email.Body.ContentType), w))
+		if err := writeHead(dst, &b); err != nil {
+			return err
+		}
+		if err := opts.writeBodyParts(w, email.Body.Parts); err != nil {
+			return err
+		}
+		return w.Close()
 	default:
 		writeHeader(&b, "Content-Type", contentTypeOr(email.Body.ContentType))
 		if email.Body.TransferEncoding != "" {
 			writeHeader(&b, "Content-Transfer-Encoding", email.Body.TransferEncoding)
 		}
-		b.WriteString("\r\n")
-		b.WriteString(email.Body.Content)
+		if err := writeHead(dst, &b); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(dst, email.Body.Content); err != nil {
+			return err
+		}
 		if !strings.HasSuffix(email.Body.Content, "\r\n") {
-			b.WriteString("\r\n")
+			_, err := io.WriteString(dst, "\r\n")
+			return err
+		}
+		return nil
+	}
+}
+
+func writeHead(dst io.Writer, b *strings.Builder) error {
+	b.WriteString("\r\n")
+	_, err := io.WriteString(dst, b.String())
+	return err
+}
+
+func (opts SerializeOptions) multipartWriter(dst io.Writer) (*multipart.Writer, error) {
+	w := multipart.NewWriter(dst)
+	if opts.Boundary != nil {
+		if err := w.SetBoundary(opts.Boundary()); err != nil {
+			return nil, err
 		}
 	}
+	return w, nil
+}
 
-	return []byte(b.String()), nil
+func multipartContentType(mediaType string, w *multipart.Writer) string {
+	return mediaType + `; boundary="` + w.Boundary() + `"`
 }
 
 // writeMixed renders a multipart/mixed body: the message body, then inline parts, then attachments.
 // A multipart/mixed body's own parts are parts of it, as they were in the message; any other body is
 // its first part.
-func writeMixed(b *strings.Builder, email *pipeline.EmailJSON) error {
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-
-	body := []pipeline.Body{email.Body}
-	if len(email.Body.Parts) > 0 && MediaType(email.Body.ContentType) == "multipart/mixed" {
-		body = email.Body.Parts
+func (opts SerializeOptions) writeMixed(dst io.Writer, b *strings.Builder, email *pipeline.EmailJSON) error {
+	w, err := opts.multipartWriter(dst)
+	if err != nil {
+		return err
 	}
-	for _, part := range body {
-		if err := writeBodyPart(w, part); err != nil {
-			return err
-		}
-	}
-	for _, att := range email.Inline {
-		if err := writeAttachmentPart(w, att); err != nil {
-			return err
-		}
-	}
-	for _, att := range email.Attachments {
-		if err := writeAttachmentPart(w, att); err != nil {
-			return err
-		}
-	}
-	if err := w.Close(); err != nil {
+	writeHeader(b, "Content-Type", multipartContentType("multipart/mixed", w))
+	if err := writeHead(dst, b); err != nil {
 		return err
 	}
 
-	writeHeader(b, "Content-Type", `multipart/mixed; boundary="`+w.Boundary()+`"`)
-	b.WriteString("\r\n")
-	b.Write(buf.Bytes())
+	parts := []pipeline.Body{email.Body}
+	if len(email.Body.Parts) > 0 && MediaType(email.Body.ContentType) == "multipart/mixed" {
+		parts = email.Body.Parts
+	}
+	if err := opts.writeBodyParts(w, parts); err != nil {
+		return err
+	}
+	if err := writeAttachments(w, email.Inline, opts.InlineSources); err != nil {
+		return err
+	}
+	if err := writeAttachments(w, email.Attachments, opts.AttachmentSources); err != nil {
+		return err
+	}
+	return w.Close()
+}
+
+func (opts SerializeOptions) writeBodyParts(w *multipart.Writer, parts []pipeline.Body) error {
+	for _, part := range parts {
+		if err := opts.writeBodyPart(w, part); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// renderAlternative renders the body parts as the parts of a multipart, returning the rendered
-// parts and the boundary that delimits them.
-func renderAlternative(parts []pipeline.Body) (body []byte, boundary string, err error) {
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	for _, part := range parts {
-		if err := writeBodyPart(w, part); err != nil {
-			return nil, "", err
-		}
-	}
-	if err := w.Close(); err != nil {
-		return nil, "", err
-	}
-	return buf.Bytes(), w.Boundary(), nil
-}
+// A nested multipart needs a boundary before its containing part can be
+// created. Create the multipart writer first, then bind its destination.
+type multipartOutput struct{ io.Writer }
 
 // writeBodyPart appends one part of the body tree. A part that has parts of its own is written as
 // the multipart it is, with its own boundary, so a body tree of any depth reaches a scanner whole:
 // the texts under multipart/mixed → multipart/alternative are what a mail client reads (#1968).
-func writeBodyPart(w *multipart.Writer, part pipeline.Body) error {
+func (opts SerializeOptions) writeBodyPart(w *multipart.Writer, part pipeline.Body) error {
 	header := textproto.MIMEHeader{"Content-Type": {contentTypeOr(part.ContentType)}}
-	content := []byte(part.Content)
+	var nested *multipart.Writer
+	var dst multipartOutput
 	if len(part.Parts) > 0 {
-		nested, boundary, err := renderAlternative(part.Parts)
+		var err error
+		nested, err = opts.multipartWriter(&dst)
 		if err != nil {
 			return err
 		}
-		header.Set("Content-Type", multipartType(part.ContentType)+`; boundary="`+boundary+`"`)
-		content = nested
+		header.Set("Content-Type", multipartContentType(multipartType(part.ContentType), nested))
 	}
 	if part.TransferEncoding != "" {
 		header.Set("Content-Transfer-Encoding", part.TransferEncoding)
@@ -174,13 +224,31 @@ func writeBodyPart(w *multipart.Writer, part pipeline.Body) error {
 	if err != nil {
 		return err
 	}
-	_, err = pw.Write(content)
+	if nested != nil {
+		dst.Writer = pw
+		if err := opts.writeBodyParts(nested, part.Parts); err != nil {
+			return err
+		}
+		return nested.Close()
+	}
+	_, err = io.WriteString(pw, part.Content)
 	return err
 }
 
-// writeAttachmentPart appends one attachment or inline part. Content is assumed
-// to be base64 already, as it is carried through the pipeline in that form.
-func writeAttachmentPart(w *multipart.Writer, att pipeline.Attachment) error {
+func writeAttachments(w *multipart.Writer, attachments []pipeline.Attachment, sources []AttachmentSource) error {
+	for i, att := range attachments {
+		var source AttachmentSource
+		if len(sources) != 0 {
+			source = sources[i]
+		}
+		if err := writeAttachmentPart(w, att, source); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeAttachmentPart(w *multipart.Writer, att pipeline.Attachment, source AttachmentSource) error {
 	disposition := att.Disposition
 	if disposition == "" {
 		disposition = "attachment"
@@ -206,8 +274,44 @@ func writeAttachmentPart(w *multipart.Writer, att pipeline.Attachment) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.WriteString(part, wrapBase64(att.Content))
-	return err
+	if source != nil {
+		return writeAttachmentSource(part, source)
+	}
+	if len(att.Content) <= base64Width {
+		_, err := io.WriteString(part, att.Content)
+		return err
+	}
+	// Preserve the pipeline's already-encoded content verbatim, including
+	// noncanonical base64, with the same line breaks as Serialize used before.
+	lines := base64LineWriter{out: bufio.NewWriter(part)}
+	var buf [4096]byte
+	if _, err := io.CopyBuffer(&lines, struct{ io.Reader }{strings.NewReader(att.Content)}, buf[:]); err != nil {
+		return err
+	}
+	return lines.out.Flush()
+}
+
+func writeAttachmentSource(dst io.Writer, source AttachmentSource) (err error) {
+	r, err := source.Open()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := r.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+	lines := base64LineWriter{out: bufio.NewWriter(dst)}
+	encoder := base64.NewEncoder(base64.StdEncoding, &lines)
+	// Read in chunks even when the source offers WriterTo, which may try to
+	// convert its entire payload to a byte slice before writing it.
+	if _, err := io.Copy(encoder, struct{ io.Reader }{r}); err != nil {
+		return err
+	}
+	if err := encoder.Close(); err != nil {
+		return err
+	}
+	return lines.out.Flush()
 }
 
 // multipartType is the multipart media type a body with parts is written as: its own, when it names
@@ -281,19 +385,32 @@ func formatAddresses(addrs []pipeline.Address) string {
 	return strings.Join(parts, ", ")
 }
 
-// wrapBase64 breaks base64 content into lines of at most base64Width octets.
-func wrapBase64(content string) string {
-	if len(content) <= base64Width {
-		return content
+// base64LineWriter inserts CRLF between base64 lines. The multipart writer
+// supplies the line break after the last line, even if it is exactly full.
+type base64LineWriter struct {
+	out    *bufio.Writer
+	column int
+}
+
+func (w *base64LineWriter) Write(p []byte) (int, error) {
+	written := 0
+	for len(p) > 0 {
+		if w.column == base64Width {
+			if _, err := w.out.WriteString("\r\n"); err != nil {
+				return written, err
+			}
+			w.column = 0
+		}
+		n := min(base64Width-w.column, len(p))
+		count, err := w.out.Write(p[:n])
+		written += count
+		w.column += count
+		if err != nil {
+			return written, err
+		}
+		p = p[n:]
 	}
-	var out strings.Builder
-	for len(content) > base64Width {
-		out.WriteString(content[:base64Width])
-		out.WriteString("\r\n")
-		content = content[base64Width:]
-	}
-	out.WriteString(content)
-	return out.String()
+	return written, nil
 }
 
 // EnvelopeFromEmail extracts envelope information from the email headers.
