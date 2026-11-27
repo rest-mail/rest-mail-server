@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,34 +19,17 @@ import (
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 )
 
-// freePorts reserves n distinct free ports and releases them. ListenAndServe
-// binds every interface, so a port it opened stays unavailable afterwards.
-func freePorts(t *testing.T, n int) []int {
+// heldPort binds a TCP port on every interface and keeps it bound until the
+// test ends, so the port is never released for another process to take. A
+// Server asked to open it must either refuse before binding or fail to listen.
+func heldPort(t *testing.T) int {
 	t.Helper()
-	var ports []int
-	var held []net.Listener
-	for range n {
-		l, err := net.Listen("tcp", ":0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		held = append(held, l)
-		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
-	}
-	for _, l := range held {
-		_ = l.Close()
-	}
-	return ports
-}
-
-// expectUnbound proves ListenAndServe left the port closed.
-func expectUnbound(t *testing.T, port int) {
-	t.Helper()
-	l, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(port)))
+	l, err := net.Listen("tcp", ":0")
 	if err != nil {
-		t.Fatalf("port %d was opened: %v", port, err)
+		t.Fatal(err)
 	}
-	_ = l.Close()
+	t.Cleanup(func() { _ = l.Close() })
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 // RFC 8314 §3.1: on the "pop3s" port a TLS handshake begins immediately. With
@@ -55,7 +37,7 @@ func expectUnbound(t *testing.T, port int) {
 // to start, and opens neither listener when a plaintext port is also asked for.
 // checklist: POP3-ITLS-05
 func TestRFC8314ImplicitTLSRequiresConfig(t *testing.T) {
-	ports := freePorts(t, 2)
+	ports := []int{heldPort(t), heldPort(t)}
 	for name, p := range map[string]pop3server.Ports{
 		"pop3s-only": {POP3TLS: ports[1]},
 		"both":       {POP3: ports[0], POP3TLS: ports[1]},
@@ -67,8 +49,6 @@ func TestRFC8314ImplicitTLSRequiresConfig(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "implicit TLS needs a TLS config") {
 				t.Fatalf("ListenAndServe(%+v) with nil TLS config = %v, want refusal", p, err)
 			}
-			expectUnbound(t, ports[0])
-			expectUnbound(t, ports[1])
 		})
 	}
 }
@@ -81,8 +61,8 @@ func TestRFC8314ImplicitTLSRequiresConfig(t *testing.T) {
 // checklist: POP3-ITLS-06
 func TestRFC8314TLSConfigNeedsCertificate(t *testing.T) {
 	for name, p := range map[string]pop3server.Ports{
-		"pop3":  {POP3: freePorts(t, 1)[0]},
-		"pop3s": {POP3TLS: freePorts(t, 1)[0]},
+		"pop3":  {POP3: heldPort(t)},
+		"pop3s": {POP3TLS: heldPort(t)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv := pop3server.New(&backend{password: "secret"}, &tls.Config{MinVersion: tls.VersionTLS12}, nil)
@@ -91,7 +71,6 @@ func TestRFC8314TLSConfigNeedsCertificate(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "TLS config has no certificate") {
 				t.Fatalf("ListenAndServe(%+v) without a certificate = %v, want refusal", p, err)
 			}
-			expectUnbound(t, p.POP3+p.POP3TLS)
 		})
 	}
 	server, _ := stlsConfigs(t)
@@ -103,7 +82,7 @@ func TestRFC8314TLSConfigNeedsCertificate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			srv := pop3server.New(&backend{password: "secret"}, config, nil)
 			t.Cleanup(func() { _ = srv.Close() })
-			if err := srv.ListenAndServe(pop3server.Ports{POP3TLS: freePorts(t, 1)[0]}); err != nil && !strings.HasPrefix(err.Error(), "failed to listen") {
+			if err := srv.ListenAndServe(pop3server.Ports{POP3TLS: heldPort(t)}); err != nil && !strings.HasPrefix(err.Error(), "failed to listen") {
 				t.Fatalf("ListenAndServe with %s = %v, want accepted", name, err)
 			}
 		})

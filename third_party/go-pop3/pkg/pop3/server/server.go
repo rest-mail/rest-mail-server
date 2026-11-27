@@ -104,6 +104,27 @@ func (s *Server) listen(port int, implicitTLS bool) error {
 		slog.Info("pop3: listening", "port", port)
 	}
 
+	s.serve(listener, implicitTLS)
+	return nil
+}
+
+// Serve accepts connections on an already-open listener in the background, as
+// ListenAndServe does for a port it opens itself, so a caller that bound its
+// own socket (port 0, say) never has to release and re-bind a port. With
+// implicitTLS the listener is wrapped in the server's TLS config. The server
+// closes the listener on [Server.Shutdown] or [Server.Close].
+func (s *Server) Serve(listener net.Listener, implicitTLS bool) error {
+	if implicitTLS {
+		if s.tlsConfig == nil {
+			return errors.New("implicit TLS needs a TLS config")
+		}
+		listener = tls.NewListener(listener, s.tlsConfig)
+	}
+	s.serve(listener, implicitTLS)
+	return nil
+}
+
+func (s *Server) serve(listener net.Listener, implicitTLS bool) {
 	s.mu.Lock()
 	s.listeners = append(s.listeners, listener)
 	s.mu.Unlock()
@@ -113,8 +134,6 @@ func (s *Server) listen(port int, implicitTLS bool) error {
 		defer s.wg.Done()
 		s.acceptLoop(listener, implicitTLS)
 	}()
-
-	return nil
 }
 
 func (s *Server) acceptLoop(listener net.Listener, implicitTLS bool) {

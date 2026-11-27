@@ -11,16 +11,18 @@ import (
 	"time"
 )
 
-// freePort returns a currently-unused TCP port. There is an unavoidable gap
-// between closing the probe listener and the server re-binding the port, but it
-// is small enough to be reliable for tests.
-func freePort(t *testing.T) int {
+// serveOnFreePort starts srv on a listener that stays open from the moment it
+// is bound, so no other process can take the port between choosing and using it.
+func serveOnFreePort(t *testing.T, srv *Server) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("freePort: %v", err)
+		t.Fatalf("listen: %v", err)
 	}
-	defer func() { _ = l.Close() }()
+	t.Cleanup(func() { _ = l.Close() })
+	if err := srv.Serve(l, false); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
 	return l.Addr().(*net.TCPAddr).Port
 }
 
@@ -64,11 +66,8 @@ func clientLogin(t *testing.T, conn net.Conn, r *bufio.Reader) {
 // soon as the accept loops stop. It first asserts Shutdown stays blocked while a
 // session is live, then that it returns promptly once the session ends.
 func TestShutdownWaitsForInflightSession(t *testing.T) {
-	port := freePort(t)
 	srv := New(newMockBackend(), nil, nil)
-	if err := srv.ListenAndServe(Ports{POP3: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 
 	conn, r := dialPOP3(t, port)
 	defer func() { _ = conn.Close() }()
@@ -101,11 +100,8 @@ func TestShutdownWaitsForInflightSession(t *testing.T) {
 // finish, Shutdown gives up at the context deadline and reports the ctx error
 // rather than blocking forever.
 func TestShutdownRespectsContextTimeout(t *testing.T) {
-	port := freePort(t)
 	srv := New(newMockBackend(), nil, nil)
-	if err := srv.ListenAndServe(Ports{POP3: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 	t.Cleanup(func() { _ = srv.Close() })
 
 	conn, r := dialPOP3(t, port)
@@ -135,11 +131,8 @@ func TestShutdownRespectsContextTimeout(t *testing.T) {
 // stop: it force-closes live connections and returns without a graceful drain,
 // leaving a subsequent Shutdown nothing to wait for.
 func TestCloseInterruptsInflightSession(t *testing.T) {
-	port := freePort(t)
 	srv := New(newMockBackend(), nil, nil)
-	if err := srv.ListenAndServe(Ports{POP3: port}); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
-	}
+	port := serveOnFreePort(t, srv)
 
 	conn, r := dialPOP3(t, port)
 	defer func() { _ = conn.Close() }()

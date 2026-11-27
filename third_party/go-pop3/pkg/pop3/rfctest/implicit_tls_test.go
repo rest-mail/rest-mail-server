@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,36 +16,31 @@ import (
 )
 
 // implicitTLSServer starts a Server whose only listener is the implicit-TLS
-// ("pop3s") one, the way the gateway runs on port 995. ListenAndServe takes a
-// fixed port, so the test reserves a free one and retries if another process
-// takes it first. This is the one fixture in this package that opens a port.
+// ("pop3s") one, the way the gateway runs on port 995. The test binds the
+// listener itself and hands it to the Server, so the port is never released
+// between choosing it and serving on it. This is the one fixture in this
+// package that opens a port.
 func implicitTLSServer(t *testing.T, config *tls.Config) (string, *stlsBackend) {
 	t.Helper()
 	b := &stlsBackend{backend: backend{password: "secret"}}
 	srv := pop3server.New(b, config, pop3.NopLimiter{})
-	for attempt := 0; ; attempt++ {
-		probe, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := probe.Addr().(*net.TCPAddr).Port
-		_ = probe.Close()
-		if err := srv.ListenAndServe(pop3server.Ports{POP3TLS: port}); err != nil {
-			if attempt < 5 {
-				continue
-			}
-			t.Fatalf("ListenAndServe: %v", err)
-		}
-		t.Cleanup(func() {
-			_ = srv.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := srv.Shutdown(ctx); err != nil {
-				t.Errorf("implicit-TLS server did not stop: %v", err)
-			}
-		})
-		return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), b
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = l.Close() })
+	if err := srv.Serve(l, true); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = srv.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			t.Errorf("implicit-TLS server did not stop: %v", err)
+		}
+	})
+	return l.Addr().String(), b
 }
 
 // implicitTLSDial completes the TLS handshake before reading anything, then
