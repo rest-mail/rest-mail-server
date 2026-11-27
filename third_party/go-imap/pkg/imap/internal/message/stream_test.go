@@ -13,20 +13,24 @@ var scanRaws = []string{
 	"Subject: only\r\n", "Subject: x\r\n\r\n\r\n\r\n",
 }
 
-// A Scan fed a message in pieces of any size finds what headerEnd, needsWireForm
-// and a NUL search find in it whole.
+// A Scan fed a message in pieces of any size finds the same header boundary
+// and the same octet properties on each side of it as the whole-message path.
 func TestScanAgreesAtEveryCut(t *testing.T) {
 	for _, raw := range scanRaws {
 		end, _ := headerEnd(raw)
+		octets := func(part string) spanOctets {
+			return spanOctets{high: has8bit(part), nul: strings.Contains(part, "\x00")}
+		}
+		header, body := octets(raw[:end]), octets(raw[end:])
 		for step := 1; step <= max(len(raw), 1); step++ {
 			s := NewScan()
 			for i := 0; i < len(raw); i += step {
 				_, _ = s.Write([]byte(raw[i:min(i+step, len(raw))]))
 			}
-			if s.HeaderEnd() != int64(end) || s.EightBit() != needsWireForm(raw) ||
-				s.NUL() != strings.Contains(raw, "\x00") || s.Size() != int64(len(raw)) {
-				t.Errorf("%q in %d-octet pieces: end %d eight %v nul %v; want %d %v %v",
-					raw, step, s.HeaderEnd(), s.EightBit(), s.NUL(), end, needsWireForm(raw), strings.Contains(raw, "\x00"))
+			if s.HeaderEnd() != int64(end) || s.header != header || s.body != body ||
+				s.NUL() != (header.nul || body.nul) || s.Size() != int64(len(raw)) {
+				t.Errorf("%q in %d-octet pieces: end %d, header %+v, body %+v; want %d, %+v, %+v",
+					raw, step, s.HeaderEnd(), s.header, s.body, end, header, body)
 			}
 		}
 	}

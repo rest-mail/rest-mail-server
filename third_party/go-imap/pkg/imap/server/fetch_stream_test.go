@@ -141,6 +141,17 @@ var fetchShapes = map[string]string{
 	"8-bit header":                     "Subject: Gr\xc3\xbc\xc3\x9fe\r\n\r\nplain\r\n",
 	"8-bit no charset":                 "Subject: x\r\n\r\ncaf\xe9\r\n",
 	"NUL in text":                      "Subject: x\r\n\r\na\x00b\r\n",
+	"UTF-8 no charset":                 "Subject: x\r\n\r\ncaf\xc3\xa9\r\n",
+	"UTF-8 split across reads":         "Subject: x\r\n\r\n" + strings.Repeat("a", 4095) + "é\x00\xef\xbf\xbd",
+	"truncated UTF-8":                  "Subject: x\r\n\r\n" + strings.Repeat("a", 4095) + "\xc3",
+	"mixed charsets and NUL":           "Subject: Grüße\x00\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\ncaf\xe9\x00\r\n",
+	"wide text with NUL as data":       "Content-Type: text/plain; charset=utf-16le\r\n\r\na\x00\xe9\x00\r\n",
+	"header NUL, clean binary body":    "Subject: ab\x00cd\r\nContent-Type: application/octet-stream\r\n\r\nabc\r\n",
+	"8-bit bare LF header":             "Subject: Grüße\n\nfirst\r\n\r\nsecond\x00\r\n",
+	"8-bit bare LF without CRLF":       "Subject: Grüße\n\ncafé\x00\n",
+	"encoded 8-bit boundary":           "Content-Type: multipart/mixed; boundary*=utf-8''%C3%A9\r\nX-Note: é\r\n\r\nplain preamble\r\n",
+	"nested text with NUL": "Content-Type: multipart/mixed; boundary=B\r\n\r\n" +
+		"--B\r\nContent-Type: message/rfc822\r\n\r\nSubject: Grüße\r\nContent-Type: text/plain; charset=utf-8\r\n\r\ncafé\x00\r\n--B--\r\n",
 	"nested parts": "Subject: n\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" +
 		"--B\r\nContent-Type: text/plain\r\n\r\nhello\r\n" +
 		"--B\r\nContent-Type: message/rfc822\r\n\r\nSubject: inner\r\nContent-Type: multipart/alternative; boundary=C\r\n\r\n" +
@@ -190,8 +201,8 @@ func TestStreamedFetchSendsTheSameOctets(t *testing.T) {
 	}
 }
 
-// A 7-bit message is copied from the stream, never fetched whole; an 8-bit one
-// is read from the stream once and converted, and BINARY[] of it is copied.
+// A streamable item opens the source once, even when wire conversion needs the
+// whole message. Items requiring a MIME parse go directly through Fetch.
 func TestStreamedFetchReadsTheStreamNotFetch(t *testing.T) {
 	for _, tc := range []struct {
 		shape, items     string
@@ -239,43 +250,63 @@ func spoolTo(dir string) func([]byte) (imap.FetchedMessage, error) {
 	}
 }
 
-// bigSevenBit is a 7-bit message of about 9 MiB.
-func bigSevenBit() []byte {
-	line := strings.Repeat("0123456789abcdef", 4) + "\r\n"
-	var b bytes.Buffer
-	b.WriteString("Subject: big\r\n\r\n")
+// bigFetchMessage is a message of about 9 MiB with a repeated body line.
+func bigFetchMessage(header, line string) string {
+	var b strings.Builder
+	b.Grow(9<<20 + len(line))
+	b.WriteString(header)
 	for b.Len() < 9<<20 {
 		b.WriteString(line)
 	}
-	return b.Bytes()
+	return b.String()
 }
 
 // FETCH BODY[] of a 9 MiB message from a store that streams it allocates a small
 // fraction of the message: the literal is copied from the store's file through
 // the connection's buffer (#2107 AC01).
 func TestStreamedFetchOfABigMessageHoldsLittleOfIt(t *testing.T) {
-	raw := bigSevenBit()
+	for _, tc := range []struct {
+		name, header, line string
+		utf8               bool
+	}{
+		{"seven-bit", "Subject: big\r\n\r\n", strings.Repeat("0123456789abcdef", 4) + "\r\n", false},
+		{"legacy-charset", "Subject: big\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\n", "café\xe9\x00\r\n", false},
+		{"utf8-default", "Subject: Grüße\r\n\r\n", "café\x00\r\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkBigStreamedFetch(t, bigFetchMessage(tc.header, tc.line), tc.utf8)
+		})
+	}
+}
+
+func checkBigStreamedFetch(t *testing.T, raw string, utf8 bool) {
+	t.Helper()
 	mock := newMockBackend()
-	mock.seed("INBOX", 7, len(raw), string(raw))
+	mock.seed("INBOX", 7, len(raw), raw)
 	// Fetch is the store's file read whole, as a store with no StreamFetcher has
 	// to; FetchStream hands over the file.
 	dir := t.TempDir()
 	sm := &fetchStreamMailbox{mockMailbox: mock.mbox, open: spoolTo(dir)}
-	h := newIMAPHarnessSession(t, &streamBackend{mockBackend: mock, mbox: sm}, mock.user, mock.pass, nil)
+	h := newIMAPHarnessSession(t, &streamBackend{mockBackend: mock, mbox: sm}, mock.user, mock.pass, func(s *Session) { s.utf8 = utf8 })
 	h.login("a1")
 	h.selectInbox("a2")
 
-	allocated := func(items string) uint64 {
+	const textPartial = "BODY.PEEK[TEXT]<0.8000000>"
+	for _, items := range []string{"BODY.PEEK[]", "BINARY.PEEK[]", "BODY[]", "RFC822", textPartial} {
 		var before, after runtime.MemStats
 		runtime.GC()
 		runtime.ReadMemStats(&before)
 		h.send("f UID FETCH 7 %s", items)
-		discardThrough(t, h, "f")
+		n := discardThrough(t, h, "f")
 		runtime.ReadMemStats(&after)
-		return after.TotalAlloc - before.TotalAlloc
-	}
-	for _, items := range []string{"BODY.PEEK[]", "BINARY.PEEK[]", "RFC822", "BODY.PEEK[TEXT]<0.8000000>"} {
-		got := allocated(items)
+		want := len(raw)
+		if items == textPartial {
+			want = 8_000_000
+		}
+		if n != want {
+			t.Errorf("FETCH %s sent %d literal octets, want %d", items, n, want)
+		}
+		got := after.TotalAlloc - before.TotalAlloc
 		t.Logf("FETCH %s of %d octets allocated %d", items, len(raw), got)
 		if got > uint64(len(raw))/16 {
 			t.Errorf("FETCH %s of %d octets allocated %d", items, len(raw), got)
@@ -291,8 +322,9 @@ func TestStreamedFetchOfABigMessageHoldsLittleOfIt(t *testing.T) {
 
 // discardThrough reads the server's octets up to the line tagged tag, literals
 // through a small buffer, so the reading allocates nothing that grows with them.
-func discardThrough(t *testing.T, h *imapHarness, tag string) {
+func discardThrough(t *testing.T, h *imapHarness, tag string) int {
 	t.Helper()
+	total := 0
 	for {
 		line := h.readLine()
 		for {
@@ -303,13 +335,14 @@ func discardThrough(t *testing.T, h *imapHarness, tag string) {
 			if _, err := io.CopyN(io.Discard, h.cr, int64(n)); err != nil {
 				t.Fatal(err)
 			}
+			total += n
 			line = h.readLine()
 		}
 		if strings.HasPrefix(line, tag+" ") {
 			if !strings.Contains(line, " OK") {
 				t.Fatalf("FETCH: %q", line)
 			}
-			return
+			return total
 		}
 	}
 }
@@ -345,7 +378,7 @@ func (p *panicStore) Store(uint32, imap.FlagUpdate) error { panic("store bug") }
 // response ends: sent, refused before sending, cut off by a read that fails in
 // the middle, the client leaving, or a panic (#2107).
 func TestStreamedFetchClosesTheMessageHoweverItEnds(t *testing.T) {
-	raw := bigSevenBit()
+	raw := bigFetchMessage("Subject: big\r\n\r\n", strings.Repeat("0123456789abcdef", 4)+"\r\n")
 	type outcome struct {
 		name  string
 		setup func(sm *fetchStreamMailbox, dir string)
@@ -407,7 +440,7 @@ func TestStreamedFetchClosesTheMessageHoweverItEnds(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := newMockBackend()
-			mock.seed("INBOX", 7, len(raw), string(raw))
+			mock.seed("INBOX", 7, len(raw), raw)
 			dir := t.TempDir()
 			sm := &fetchStreamMailbox{mockMailbox: mock.mbox, open: spoolTo(dir)}
 			if tc.setup != nil {

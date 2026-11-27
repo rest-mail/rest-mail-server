@@ -138,12 +138,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   or a client that left, or a panic. A FETCH whose body items are all BODY[],
   BODY[HEADER], BODY[TEXT], RFC822, RFC822.HEADER, RFC822.TEXT, BINARY[] or
   BINARY.SIZE[], peek and partial forms included, scans the message once in
-  32 KiB pieces and copies each literal from it. BINARY[] is always copied; the
-  BODY and RFC822 items only when the message has no 8-bit octet and no NUL,
-  because FETCH converts any other, which is read back whole once instead of
-  fetched again. ENVELOPE, BODYSTRUCTURE, numeric sections and header field
-  lists still call `Fetch`. Every octet sent is the same as before. A read
-  that fails after a literal's length went out closes the connection.
+  32 KiB pieces. BINARY[] copies the source as supplied by the backend. BODY and
+  RFC822 items also stream when the top-level header is the only block that
+  needs conversion or when a text body can be copied, with eligible NULs
+  replaced by spaces. This includes 8-bit text with a declared charset and
+  default UTF-8 text in a UTF8=ACCEPT session. Bodies requiring MIME traversal
+  or transfer-encoding changes are read back whole from the same source.
+  ENVELOPE, BODYSTRUCTURE, numeric sections and header field lists still call
+  `Fetch`. Every octet sent is the same as before. A read that fails after a
+  literal's length went out closes the connection.
 
 ### Fixed
 

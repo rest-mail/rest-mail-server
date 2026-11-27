@@ -1,9 +1,11 @@
 package message
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rest-mail/go-imap/pkg/imap/internal/wire"
 )
@@ -27,8 +29,7 @@ type SpanItem struct {
 	// Peek is set for an item that leaves \Seen alone.
 	Peek bool
 	// Binary is set for BINARY, BINARY.PEEK and BINARY.SIZE, which send the stored
-	// octets (RFC 3516); the others send the octets FETCH sends (WireForm), which
-	// are the stored ones only when [Scan.EightBit] is false.
+	// octets (RFC 3516); the others send the octets FETCH sends (WireForm).
 	Binary bool
 	// Size is set for BINARY.SIZE, answered with the count alone.
 	Size bool
@@ -141,10 +142,8 @@ func uitoa(v uint32) string {
 // Scan reads a message's octets in order, in pieces of any size, and finds what
 // sending spans of it needs, holding nothing that grows with the message.
 type Scan struct {
-	n int64
-	// eightBit is whether an octet is 8-bit or NUL: needsWireForm of the message.
-	eightBit bool
-	nul      bool
+	n            int64
+	header, body spanOctets
 	// headerEnd is headerEnd of the message once found, -1 until then; match is how
 	// much of "\r\n\r\n" the octets read so far end with.
 	headerEnd int64
@@ -159,7 +158,7 @@ func (s *Scan) Write(p []byte) (int, error) {
 	i := 0
 	for ; i < len(p) && s.headerEnd < 0; i++ {
 		c := p[i]
-		s.octet(c)
+		s.header.add(c)
 		switch {
 		case c == '\r' && s.match == 2:
 			s.match = 3
@@ -176,32 +175,32 @@ func (s *Scan) Write(p []byte) (int, error) {
 			s.match = 0
 		}
 	}
-	if !s.eightBit || !s.nul {
+	if !s.body.high || !s.body.nul {
 		for _, c := range p[i:] {
-			s.octet(c)
+			s.body.add(c)
+			if s.body.high && s.body.nul {
+				break
+			}
 		}
 	}
 	s.n += int64(len(p))
 	return len(p), nil
 }
 
-func (s *Scan) octet(c byte) {
-	if c >= 0x80 || c == 0 {
-		s.eightBit = true
-		s.nul = s.nul || c == 0
-	}
+type spanOctets struct{ high, nul bool }
+
+func (o *spanOctets) add(c byte) {
+	o.high = o.high || c >= 0x80
+	o.nul = o.nul || c == 0
 }
+
+func (o spanOctets) needsWireForm() bool { return o.high || o.nul }
 
 // Size is how many octets were read.
 func (s *Scan) Size() int64 { return s.n }
 
-// EightBit is whether the message holds an 8-bit octet or a NUL. Without one,
-// WireForm sends it as stored, so every BODY and RFC822 span is a span of the
-// stored octets.
-func (s *Scan) EightBit() bool { return s.eightBit }
-
 // NUL is whether the message holds a NUL.
-func (s *Scan) NUL() bool { return s.nul }
+func (s *Scan) NUL() bool { return s.header.nul || s.body.nul }
 
 // HeaderEnd is headerEnd of the octets read: the length of the header block,
 // blank line included.
@@ -210,6 +209,125 @@ func (s *Scan) HeaderEnd() int64 {
 		return s.n
 	}
 	return s.headerEnd
+}
+
+// SpanSource serves whole-message FETCH sections from a scanned source. A
+// converted header, when needed, precedes the copyable portion of the source.
+type SpanSource struct {
+	Size, HeaderEnd int64
+	source          io.ReaderAt
+	header          string
+	sourceStart     int64
+	spaceNUL        bool
+}
+
+func (s *Scan) StoredSpans(r io.ReaderAt) SpanSource {
+	return SpanSource{Size: s.n, HeaderEnd: s.HeaderEnd(), source: r}
+}
+
+// WireSpans builds a streaming view of WireForm if the body can be copied
+// or needs only NUL spacing. Only the top-level header is read into memory.
+// Re-encoding a leaf or walking MIME entities needs the whole-message path.
+func (s *Scan) WireSpans(r io.ReaderAt, sessionUTF8 bool) (SpanSource, bool, error) {
+	src := s.StoredSpans(r)
+	bodyNeedsWireForm := s.body.needsWireForm()
+	if !s.header.high && !bodyNeedsWireForm {
+		// wireEntity's fast path only spaces the header's NULs.
+		src.spaceNUL = s.header.nul
+		return src, true, nil
+	}
+
+	end := src.HeaderEnd
+	header := make([]byte, end)
+	if _, err := io.ReadFull(io.NewSectionReader(r, 0, end), header); err != nil {
+		return SpanSource{}, false, err
+	}
+	node := mimeNode{header: string(header), defaultType: "text/plain"}
+	t := node.wireType()
+	if strings.HasPrefix(t.mt, "multipart/") && t.boundary != "" && (bodyNeedsWireForm || has8bit(t.boundary)) {
+		return SpanSource{}, false, nil
+	}
+	if bodyNeedsWireForm {
+		if !strings.HasPrefix(t.mt, "text/") || s.body.nul && nulIsData(t.mt, t.charset) {
+			return SpanSource{}, false, nil
+		}
+		// wireLeaf copies text with a declared charset, or valid default UTF-8
+		// when enabled. Invalid or legacy 8-bit text with no charset is encoded.
+		if s.body.high && t.charset == "" {
+			if !sessionUTF8 {
+				return SpanSource{}, false, nil
+			}
+			valid, err := validUTF8Stream(io.NewSectionReader(r, end, s.n-end))
+			if err != nil || !valid {
+				return SpanSource{}, false, err
+			}
+		}
+	}
+
+	src.spaceNUL = s.NUL()
+	if s.header.high && (!sessionUTF8 || !utf8.Valid(header)) {
+		var out strings.Builder
+		wireHeader(&out, node.header, sessionUTF8)
+		src.header = out.String()
+		src.sourceStart = end
+		src.Size = int64(len(src.header)) + s.n - end
+		sectionEnd, blank := headerEnd(src.header)
+		if !blank && end < s.n {
+			return SpanSource{}, false, nil
+		}
+		src.HeaderEnd = int64(sectionEnd)
+		src.spaceNUL = s.body.nul // wireHeader already handled the header
+	}
+	return src, true, nil
+}
+
+func validUTF8Stream(src *io.SectionReader) (bool, error) {
+	r := bufio.NewReader(src)
+	for remaining := src.Size(); remaining > 0; {
+		c, width, err := r.ReadRune()
+		if err == io.EOF {
+			return false, io.ErrUnexpectedEOF
+		}
+		if err != nil {
+			return false, err
+		}
+		if c == utf8.RuneError && width == 1 {
+			return false, nil
+		}
+		remaining -= int64(width)
+	}
+	return true, nil
+}
+
+// Section opens a subrange, with offsets in this source's output octets.
+func (s SpanSource) Section(start, count int64) io.Reader {
+	headerLen := int64(len(s.header))
+	prefix := min(count, max(0, headerLen-start))
+	bodyAt := s.sourceStart + max(0, start-headerLen)
+	var body io.Reader = io.NewSectionReader(s.source, bodyAt, count-prefix)
+	if s.spaceNUL {
+		body = spaceNULReader{body}
+	}
+	if prefix == 0 {
+		return body
+	}
+	head := strings.NewReader(s.header[start : start+prefix])
+	if prefix == count {
+		return head
+	}
+	return io.MultiReader(head, body)
+}
+
+type spaceNULReader struct{ io.Reader }
+
+func (r spaceNULReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	for i, c := range p[:n] {
+		if c == 0 {
+			p[i] = ' '
+		}
+	}
+	return n, err
 }
 
 // HasNUL is whether the count octets of r at start hold a NUL, read through buf.
