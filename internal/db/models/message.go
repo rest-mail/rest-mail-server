@@ -1,9 +1,11 @@
 package models
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 	"unsafe"
 
@@ -110,10 +112,14 @@ type Message struct {
 	PendingDraft bool   `gorm:"-" json:"-"`
 	// RawOctets preserves sources that PostgreSQL text cannot represent. RawMessage is empty
 	// then: Source and SourceText read whichever holds the message.
-	RawOctets         []byte `gorm:"type:bytea" json:"-"`
+	RawOctets []byte `gorm:"type:bytea" json:"-"`
+	// SourceRef points to the stored source when neither inline column holds it.
+	SourceRef *string `gorm:"index;check:message_inline_or_referenced,source_ref IS NULL OR ((raw_message IS NULL OR raw_message = '') AND raw_octets IS NULL)" json:"-"`
+	// SourceHeader is selected by queries that need the referenced header block.
+	SourceHeader      []byte `gorm:"->;-:migration" json:"-"`
 	CalendarEventsRaw JSONB  `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`
 	SizeBytes         int    `gorm:"not null;default:0" json:"size_bytes"`
-	// RawSize is the exact octet count of RawMessage as stored — the size a
+	// RawSize is the exact octet count of the stored source — the size a
 	// protocol client receives when the raw is served verbatim. IMAP
 	// RFC822.SIZE (RFC 3501) and POP3 STAT/LIST must report the transmitted
 	// octet count exactly, which SizeBytes (a quota heuristic over
@@ -188,7 +194,8 @@ type Message struct {
 	AwaitingSince *time.Time `gorm:"-" json:"-"`
 
 	// Associations
-	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"mailbox,omitempty"`
+	Mailbox      Mailbox        `gorm:"foreignKey:MailboxID" json:"mailbox,omitempty"`
+	SourceObject *MessageSource `gorm:"foreignKey:SourceRef;references:Ref" json:"-"`
 }
 
 func (Message) TableName() string { return "messages" }
@@ -207,6 +214,17 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 		*list = readableJSON(*list)
 	}
 	m.fitColumns()
+	if m.SourceRef != nil {
+		if m.RawMessage != "" || m.RawOctets != nil {
+			return fmt.Errorf("message cannot have both inline and referenced source")
+		}
+		if tx != nil {
+			if prepare, ok := tx.Get(messageSourcePreparation); ok {
+				return prepare.(func(*Message) error)(m)
+			}
+		}
+		return fmt.Errorf("referenced message requires source preparation")
+	}
 	if m.RawSize > 0 && (m.DowngradedSize == 0 || m.POP3UTF8Size == 0 || m.IMAPSize == 0 || m.IMAPUTF8Size == 0) {
 		sizes := rmail.MeasureWireSizes(m.sourceView())
 		if m.DowngradedSize == 0 {
@@ -276,7 +294,7 @@ func returnStoredModSeq(tx *gorm.DB) {
 	stmt.AddClause(clause.Returning{Columns: append(columns, modSeq)})
 }
 
-// Source returns original octets, including historical non-UTF-8 and NUL data.
+// Source returns inline source octets, including historical non-UTF-8 and NUL data.
 func (m Message) Source() []byte {
 	if m.RawOctets != nil {
 		return m.RawOctets
@@ -290,4 +308,28 @@ func (m Message) SourceText() string {
 		return string(m.RawOctets)
 	}
 	return m.RawMessage
+}
+
+// HeaderReader reads the projected header metadata for a referenced message.
+// Inline messages use whichever source column the query has selected.
+func (m Message) HeaderReader() io.Reader {
+	if m.SourceRef != nil {
+		return bytes.NewReader(m.SourceHeader)
+	}
+	return m.SourceReader()
+}
+
+func (m Message) HeaderText() string {
+	if m.SourceRef != nil {
+		return string(m.SourceHeader)
+	}
+	return m.SourceText()
+}
+
+const messageSourcePreparation = "restmail:prepareMessageSource"
+
+// CreateWithSource prepares size and seal fields from the referenced source
+// after the usual model normalization, before inserting the message.
+func (m *Message) CreateWithSource(tx *gorm.DB, prepare func(*Message) error) error {
+	return tx.Set(messageSourcePreparation, prepare).Create(m).Error
 }

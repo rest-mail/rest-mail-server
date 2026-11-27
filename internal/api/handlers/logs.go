@@ -68,10 +68,10 @@ func (h *LogHandler) deliveryLog(_ *http.Request, in deliveryLogRequest) (endpoi
 	}
 
 	var total int64
-	query.Count(&total)
+	query.Session(&gorm.Session{}).Count(&total)
 
 	var entries []models.OutboundQueue
-	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&entries).Error; err != nil {
+	if err := query.Select(queueMetadataColumns).Order("created_at DESC").Limit(limit).Offset(offset).Find(&entries).Error; err != nil {
 		return endpoint.List[DeliveryLogEntry]{}, fmt.Errorf("delivery log: %w", err)
 	}
 

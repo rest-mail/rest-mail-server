@@ -60,6 +60,10 @@ type QueueList struct {
 	Offset int          `json:"offset"`
 }
 
+// queueMetadataColumns are the fields exposed by queue, logs and test snapshots.
+const queueMetadataColumns = "id, message_id, sender, recipient, domain, body_type, status, attempts, " +
+	"last_attempt, next_attempt, last_error, last_error_code, failure_category, max_retries, created_at, expires_at"
+
 func (h *QueueHandler) listQueue(r *http.Request, in listQueueRequest) (QueueList, error) {
 	query := h.db.WithContext(r.Context()).Model(&models.OutboundQueue{}).Order("created_at DESC")
 
@@ -85,12 +89,12 @@ func (h *QueueHandler) listQueue(r *http.Request, in listQueueRequest) (QueueLis
 	}
 
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return QueueList{}, err
 	}
 
 	var items []models.OutboundQueue
-	if err := query.Limit(limit).Offset(offset).Find(&items).Error; err != nil {
+	if err := query.Select(queueMetadataColumns).Limit(limit).Offset(offset).Find(&items).Error; err != nil {
 		return QueueList{}, err
 	}
 
@@ -129,7 +133,7 @@ var (
 
 func findQueue(db *gorm.DB, id uint32) (models.OutboundQueue, error) {
 	var item models.OutboundQueue
-	if err := db.First(&item, id).Error; err != nil {
+	if err := db.Select(queueMetadataColumns).First(&item, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return item, errQueueNotFound
 		}

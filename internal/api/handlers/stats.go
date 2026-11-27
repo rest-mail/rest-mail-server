@@ -296,6 +296,7 @@ func (h *StatsHandler) getRecentActivity() ([]RecentActivity, error) {
 	// activity ever appeared on the dashboard.
 	var messages []models.OutboundQueue
 	if err := h.db.Where("status = ?", "delivered").
+		Select("id", "recipient", "created_at").
 		Order("created_at DESC").
 		Limit(4).
 		Find(&messages).Error; err == nil {

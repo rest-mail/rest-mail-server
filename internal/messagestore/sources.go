@@ -13,7 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// MaxHeaderMetadataBytes is the maximum size of the caller's serialized header metadata.
+// MaxHeaderMetadataBytes is the maximum size of the RFC 5322 header section
+// supplied by the caller, excluding the body.
 const MaxHeaderMetadataBytes = 64 << 10
 
 const (
@@ -31,8 +32,9 @@ var (
 
 // Sources stores immutable message bytes and tracks which objects have committed owners.
 type Sources struct {
-	db    *gorm.DB
-	store sourceBackend
+	db       *gorm.DB
+	store    sourceBackend
+	spoolDir string
 }
 
 func NewSources(db *gorm.DB, cfg *config.Config) (*Sources, error) {
@@ -40,7 +42,7 @@ func NewSources(db *gorm.DB, cfg *config.Config) (*Sources, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Sources{db: db, store: backend}, nil
+	return &Sources{db: db, store: backend, spoolDir: cfg.Messages.SpoolDir}, nil
 }
 
 // Stage reserves a key before it starts the upload. The caller supplies the size
@@ -110,6 +112,10 @@ func (s *Sources) Publish(ctx context.Context, tx *gorm.DB, ref string, referenc
 // recipient, or an in-progress attempt. Record that owner in tx before commit
 // so a retry can tell whether it already acquired its reference.
 func (s *Sources) AddReference(ctx context.Context, tx *gorm.DB, ref string) error {
+	return addReference(ctx, tx, ref)
+}
+
+func addReference(ctx context.Context, tx *gorm.DB, ref string) error {
 	if !isSourceTransaction(tx) {
 		return ErrSourceTransaction
 	}
@@ -163,8 +169,12 @@ func sourceUpdate(result *gorm.DB) error {
 // of a complete read. The caller must hold a committed reference throughout
 // the read. Closing a partial read does not verify the digest.
 func (s *Sources) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
+	return s.open(ctx, s.db, ref)
+}
+
+func (s *Sources) open(ctx context.Context, db *gorm.DB, ref string) (io.ReadCloser, int64, error) {
 	var row models.MessageSource
-	err := liveSource(s.db.WithContext(ctx), ref).Select("size", "checksum").Take(&row).Error
+	err := liveSource(db.WithContext(ctx), ref).Select("size", "checksum").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, 0, ErrSourceUnavailable
 	}

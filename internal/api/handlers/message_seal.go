@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 )
 
 type MessageSeal struct {
@@ -23,11 +25,24 @@ func (handler *MessageHandler) verifyMessageSeal(request *http.Request, input me
 	if message.SealedHash == "" {
 		return result, nil
 	}
-	result.ComputedHash, err = message.SealDigest()
+	result.State = "mismatch"
+	if message.SourceRef != nil {
+		source, _, openErr := handler.openMessageSource(request.Context(), message.ID, *message.SourceRef)
+		if openErr == nil {
+			defer source.Close()
+			result.ComputedHash, err = message.SealDigestFrom(source)
+		} else {
+			err = openErr
+		}
+		if errors.Is(err, messagestore.ErrCorruptSource) || errors.Is(err, messagestore.ErrNotFound) {
+			return result, nil
+		}
+	} else {
+		result.ComputedHash, err = message.SealDigest()
+	}
 	if err != nil {
 		return MessageSeal{}, fmt.Errorf("verify message seal: %w", err)
 	}
-	result.State = "mismatch"
 	if result.ComputedHash == result.SealedHash {
 		result.State = "intact"
 	}

@@ -76,10 +76,10 @@ type unsubscribeMailtoBody struct {
 // unsigned reports that the field claimed one-click but no such signature covers it.
 func (h *MessageHandler) unsubscribeTargets(ctx context.Context, m models.Message) (targets rmail.UnsubscribeTargets, unsigned bool, err error) {
 	var source models.Message
-	if err := h.db.WithContext(ctx).Select("id", "raw_message", "raw_octets").First(&source, m.ID).Error; err != nil {
+	if err := h.db.WithContext(ctx).Select("messages.id, messages.source_ref, "+messageSourceHeaderSection).First(&source, m.ID).Error; err != nil {
 		return rmail.UnsubscribeTargets{}, false, fmt.Errorf("load the message source: %w", err)
 	}
-	header := sourceHeaderSection(source.SourceReader())
+	header := sourceHeaderSection(source.HeaderReader())
 	var headers map[string][]string
 	if err := json.Unmarshal(m.Headers, &headers); err != nil || len(headers) == 0 {
 		headers = rmail.SourceHeaders(strings.NewReader(header))

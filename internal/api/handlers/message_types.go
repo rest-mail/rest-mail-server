@@ -25,7 +25,7 @@ type Message = apitypes.Message
 func messageClass(m models.Message) string {
 	var headers map[string][]string
 	if err := json.Unmarshal(m.Headers, &headers); err != nil || len(headers) == 0 {
-		headers = rmime.SourceHeaders(m.SourceReader())
+		headers = rmime.SourceHeaders(m.HeaderReader())
 	}
 	return rmail.Classify(headers, m.RuleClass)
 }
@@ -36,7 +36,7 @@ func messageOf(m models.Message) Message {
 		loaded := mailboxOf(m.Mailbox)
 		mailbox = &loaded
 	}
-	authResults, authed := pipeline.ParseStoredAuthResults(m.SourceText())
+	authResults, authed := pipeline.ParseStoredAuthResults(m.HeaderText())
 	authVerdict := ""
 	if authed {
 		authVerdict = pipeline.AuthVerdict(authResults)
