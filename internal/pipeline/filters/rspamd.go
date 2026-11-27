@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -32,6 +33,8 @@ type rspamdAdapter struct {
 	// scan and the pipeline fails closed. Empty disables verdict verification.
 	hmacSecret string
 	client     *http.Client
+	// maxRequestBytes is the largest message sent; larger is refused.
+	maxRequestBytes int64
 }
 
 // rspamdResponse represents the relevant fields from rspamd's /checkv2 JSON response.
@@ -54,7 +57,7 @@ type rspamdSymbol struct {
 // verdict-HMAC secret. It is the init()-registered factory; routes.go re-registers
 // via NewRspamdWithSecret to bind the deployment's SCANNER_HMAC_SECRET (OSI-15).
 func NewRspamd(config []byte) (pipeline.Filter, error) {
-	return newRspamd(config, "")
+	return newRspamd(config, "", rmconfig.DefaultRspamdMaxRequestBytes)
 }
 
 // NewRspamdWithSecret returns a filter factory whose rspamd adapters
@@ -62,12 +65,19 @@ func NewRspamd(config []byte) (pipeline.Filter, error) {
 // secret leaves verdict-signature verification off; the fail-closed fallback
 // still applies regardless.
 func NewRspamdWithSecret(secret string) pipeline.FilterFactory {
+	return NewRspamdWithLimits(secret, rmconfig.DefaultRspamdMaxRequestBytes)
+}
+
+// NewRspamdWithLimits is NewRspamdWithSecret with the largest message the
+// filter sends; a larger one is not sent and takes the fallback action, as an
+// unreachable scanner does.
+func NewRspamdWithLimits(secret string, maxRequestBytes int64) pipeline.FilterFactory {
 	return func(config []byte) (pipeline.Filter, error) {
-		return newRspamd(config, secret)
+		return newRspamd(config, secret, maxRequestBytes)
 	}
 }
 
-func newRspamd(config []byte, hmacSecret string) (pipeline.Filter, error) {
+func newRspamd(config []byte, hmacSecret string, maxRequestBytes int64) (pipeline.Filter, error) {
 	cfg := rspamdConfig{
 		URL:       "http://rspamd:11333",
 		TimeoutMS: 5000,
@@ -87,8 +97,9 @@ func newRspamd(config []byte, hmacSecret string) (pipeline.Filter, error) {
 	}
 
 	adapter := &rspamdAdapter{
-		url:        strings.TrimRight(cfg.URL, "/"),
-		hmacSecret: hmacSecret,
+		url:             strings.TrimRight(cfg.URL, "/"),
+		hmacSecret:      hmacSecret,
+		maxRequestBytes: maxRequestBytes,
 		client: &http.Client{
 			Timeout: filterHTTPTimeout(cfg.TimeoutMS, 5*time.Second, 0),
 		},
@@ -122,6 +133,9 @@ func (a *rspamdAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 	rawMsg, err := rmime.Serialize(email)
 	if err != nil {
 		return nil, fmt.Errorf("rspamd: serialize email: %w", err)
+	}
+	if int64(len(rawMsg)) > a.maxRequestBytes {
+		return nil, fmt.Errorf("rspamd: request of %d bytes is over the limit of %d bytes", len(rawMsg), a.maxRequestBytes)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.url+"/checkv2", bytes.NewReader(rawMsg))

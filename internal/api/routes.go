@@ -307,8 +307,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// (defer) when the scanner is unreachable/errors. No scanner runs by default — these filters are active only when an
 	// operator adds them to a pipeline, so the default pipeline is unaffected.
 	scannerSecret := cfg.ScannerHMACSecret()
-	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithSecret(scannerSecret))
-	pipeline.DefaultRegistry.Register("clamav", filters.NewClamAVWithSecret(scannerSecret))
+	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithLimits(scannerSecret, cfg.RspamdMaxRequestBytes()))
+	pipeline.DefaultRegistry.Register("clamav", filters.NewClamAVWithLimits(scannerSecret, cfg.ClamAVMaxRequestBytes()))
+	pipeline.DefaultRegistry.Register("webhook", filters.NewWebhookWithLimit(cfg.WebhookMaxRequestBytes()))
 	// #160: javascript filters run on the deployment's sidecar, authenticated
 	// with its token; a pipeline's config cannot point them elsewhere.
 	jsSidecar := filters.JSSidecar{URL: cfg.JSFilterURL(), Token: cfg.JSFilterToken()}

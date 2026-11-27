@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -32,6 +33,8 @@ type clamavAdapter struct {
 	// scan and the pipeline fails closed. Empty disables verdict verification.
 	hmacSecret string
 	client     *http.Client
+	// maxRequestBytes is the largest message sent; larger is refused.
+	maxRequestBytes int64
 }
 
 // clamavResponse represents the JSON response from a ClamAV REST scan endpoint.
@@ -44,19 +47,26 @@ type clamavResponse struct {
 // verdict-HMAC secret. It is the init()-registered factory; routes.go re-registers
 // via NewClamAVWithSecret to bind the deployment's SCANNER_HMAC_SECRET (OSI-15).
 func NewClamAV(config []byte) (pipeline.Filter, error) {
-	return newClamAV(config, "")
+	return newClamAV(config, "", rmconfig.DefaultClamAVMaxRequestBytes)
 }
 
 // NewClamAVWithSecret returns a filter factory whose ClamAV adapters HMAC-verify
 // every verdict against secret (SCANNER_HMAC_SECRET). An empty secret leaves
 // verdict-signature verification off; the fail-closed fallback still applies.
 func NewClamAVWithSecret(secret string) pipeline.FilterFactory {
+	return NewClamAVWithLimits(secret, rmconfig.DefaultClamAVMaxRequestBytes)
+}
+
+// NewClamAVWithLimits is NewClamAVWithSecret with the largest message the
+// filter sends; a larger one is not sent and takes the fallback action, as an
+// unreachable scanner does.
+func NewClamAVWithLimits(secret string, maxRequestBytes int64) pipeline.FilterFactory {
 	return func(config []byte) (pipeline.Filter, error) {
-		return newClamAV(config, secret)
+		return newClamAV(config, secret, maxRequestBytes)
 	}
 }
 
-func newClamAV(config []byte, hmacSecret string) (pipeline.Filter, error) {
+func newClamAV(config []byte, hmacSecret string, maxRequestBytes int64) (pipeline.Filter, error) {
 	cfg := clamavConfig{
 		URL:       "http://clamav:3310",
 		TimeoutMS: 30000,
@@ -75,8 +85,9 @@ func newClamAV(config []byte, hmacSecret string) (pipeline.Filter, error) {
 	}
 
 	adapter := &clamavAdapter{
-		url:        strings.TrimRight(cfg.URL, "/"),
-		hmacSecret: hmacSecret,
+		url:             strings.TrimRight(cfg.URL, "/"),
+		hmacSecret:      hmacSecret,
+		maxRequestBytes: maxRequestBytes,
 		client: &http.Client{
 			Timeout: filterHTTPTimeout(cfg.TimeoutMS, 30*time.Second, 0),
 		},
@@ -110,6 +121,9 @@ func (a *clamavAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 	rawMsg, err := rmime.Serialize(email)
 	if err != nil {
 		return nil, fmt.Errorf("clamav: serialize email: %w", err)
+	}
+	if int64(len(rawMsg)) > a.maxRequestBytes {
+		return nil, fmt.Errorf("clamav: request of %d bytes is over the limit of %d bytes", len(rawMsg), a.maxRequestBytes)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.url+"/scan", bytes.NewReader(rawMsg))

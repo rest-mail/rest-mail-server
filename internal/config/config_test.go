@@ -49,6 +49,7 @@ var allEnvKeys = []string{
 	"DB_SSLMODE", "DB_ALLOW_INSECURE",
 	"QUEUE_TLS_INSECURE", "MTASTS_ENFORCE", "API_TLS_TERMINATED_BY_PROXY",
 	"INTERNAL_ROUTES_ALLOW_PUBLIC",
+	"WEBHOOK_MAX_REQUEST_BYTES", "RSPAMD_MAX_REQUEST_BYTES", "CLAMAV_MAX_REQUEST_BYTES",
 }
 
 // clearEnv ensures every config-related env var is truly unset for the test.

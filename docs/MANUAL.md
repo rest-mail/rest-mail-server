@@ -290,11 +290,11 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `extract_attachments` | Action | Extract to filesystem, create `attachments` row, write `storage_ref` back to message |
 | `vacation` | Action | DB-backed; reads `vacation_configs`, queues reply via `outbound_queue` with RFC 3834 headers: `Auto-Submitted: auto-replied`, `Precedence: bulk`, `In-Reply-To`, `References`, `X-Auto-Response-Suppress: All` |
 | `sieve` | Action | Sieve script execution |
-| `webhook` | Action | HTTP POST notification |
+| `webhook` | Action | HTTP POST notification. A JSON request over `WEBHOOK_MAX_REQUEST_BYTES` (default: `SMTP_MAX_MESSAGE_SIZE` x 2, which covers base64's 4/3 growth plus the envelope, headers and body renderings) is not sent; it counts as a failed call and delivery continues |
 | `duplicate` | Action | Fork a copy of the message to a webhook |
 | `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/): each script in its own QuickJS engine compiled to WebAssembly, in a Worker, with a memory limit, a CPU budget (`timeout_ms`) and a wall-clock deadline. The API calls it at `JS_FILTER_URL` with `JS_FILTER_TOKEN`; a filter's config cannot point it elsewhere |
-| `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
-| `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
+| `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum. A message over `RSPAMD_MAX_REQUEST_BYTES` (default 50 MiB, rspamd's `max_message`; set it to the value rspamd runs with) is not sent and takes `fallback_action`, as a failed scan does |
+| `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected. A message over `CLAMAV_MAX_REQUEST_BYTES` (default 25 MiB, clamd's `StreamMaxLength`; set it to the value clamd runs with) is not sent and takes `fallback_action`, as a failed scan does |
 
 Filters that need runtime dependencies — the DB-backed ones (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) — are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go). The remaining built-ins self-register via `init()` in [internal/pipeline/filters/](../internal/pipeline/filters/) on blank import.
 

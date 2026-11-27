@@ -1290,6 +1290,58 @@ func (c *Config) ScannerHMACSecret() string {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════
+// BEGIN filter request caps (#2107)
+
+// DefaultRspamdMaxRequestBytes is rspamd's own default max_message (50 MiB).
+// The repo does not configure rspamd, so its default is the ceiling.
+const DefaultRspamdMaxRequestBytes int64 = 50 * 1024 * 1024
+
+// DefaultClamAVMaxRequestBytes is clamd's own default StreamMaxLength (25 MiB).
+// The repo does not configure clamd, so its default is the ceiling.
+const DefaultClamAVMaxRequestBytes int64 = 25 * 1024 * 1024
+
+// WebhookRequestExpansionFactor is how much larger the webhook's JSON request
+// may be than the largest message the server accepts: base64 turns attachment
+// bytes into 4/3 as many, and the envelope, headers and the text and HTML
+// renderings of the body add more, so the default allows twice the message.
+const WebhookRequestExpansionFactor = 2
+
+// positiveEnvInt64 reads key as a positive integer; anything else is fallback.
+func positiveEnvInt64(key string, fallback int64) int64 {
+	n, err := strconv.ParseInt(strings.TrimSpace(getEnv(key, "")), 10, 64)
+	if err != nil || n < 1 {
+		return fallback
+	}
+	return n
+}
+
+// WebhookMaxRequestBytes is the largest JSON request the webhook filter sends
+// (WEBHOOK_MAX_REQUEST_BYTES). Default: SMTP_MAX_MESSAGE_SIZE times
+// WebhookRequestExpansionFactor.
+func (c *Config) WebhookMaxRequestBytes() int64 {
+	max := c.SMTPMaxMessageSize
+	if max < 1 {
+		max = DefaultSMTPMaxMessageSize
+	}
+	return positiveEnvInt64("WEBHOOK_MAX_REQUEST_BYTES", max*WebhookRequestExpansionFactor)
+}
+
+// RspamdMaxRequestBytes is the largest message the rspamd filter sends
+// (RSPAMD_MAX_REQUEST_BYTES). Set it to the max_message rspamd runs with.
+func (c *Config) RspamdMaxRequestBytes() int64 {
+	return positiveEnvInt64("RSPAMD_MAX_REQUEST_BYTES", DefaultRspamdMaxRequestBytes)
+}
+
+// ClamAVMaxRequestBytes is the largest message the ClamAV filter sends
+// (CLAMAV_MAX_REQUEST_BYTES). Set it to the StreamMaxLength clamd runs with.
+func (c *Config) ClamAVMaxRequestBytes() int64 {
+	return positiveEnvInt64("CLAMAV_MAX_REQUEST_BYTES", DefaultClamAVMaxRequestBytes)
+}
+
+// END filter request caps
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
 // BEGIN JS filter sidecar (#160)
 //
 // Where the API finds the sidecar that runs javascript filter scripts, and the
