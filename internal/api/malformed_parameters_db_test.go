@@ -256,15 +256,12 @@ const boundedTimes = 5
 // run varies by. Each fails once it's clearly back under, at 3x, so that its ceiling goes. They are
 // linear, and take well under a second at 1 MiB.
 //
-//   - An 8-bit boundary has to be respelled in the header and on every delimiter line, and
-//     headerWithBoundary does that with parameterField, which holds every piece of the field and a
-//     built field for each measurement of the message: 12.9x to 17.2x.
-//   - An 8-bit parameter name is percent-encoded again for each piece by each reading of the field
-//     (parameterName): 5.7x to 7.4x.
+//   - An 8-bit boundary has to be respelled in the header and on every delimiter line. Since
+//     headerWithBoundary writes the field one parameter at a time (#2330) it costs 3.9x to 6.0x,
+//     the top of that under the race detector.
 var malformedParametersStillOver = map[string]float64{
-	"a quoted 8-bit boundary": 18,
-	"a bare 8-bit boundary":   21,
-	"an 8-bit parameter name": 9,
+	"a quoted 8-bit boundary": 6,
+	"a bare 8-bit boundary":   7,
 }
 
 // TestMalformedParametersAreBounded stores each spelling of the corpus repeated through one field of
