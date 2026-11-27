@@ -17,9 +17,9 @@ import (
 	"github.com/rest-mail/go-imap/pkg/imap"
 )
 
-// streamMailbox is mockMailbox as an [imap.StreamFetcher]: FetchStream opens the
+// fetchStreamMailbox is mockMailbox as an [imap.StreamFetcher]: FetchStream opens the
 // message open makes, and the counters say which way FETCH read it.
-type streamMailbox struct {
+type fetchStreamMailbox struct {
 	*mockMailbox
 	open     func(raw []byte) (imap.FetchedMessage, error)
 	fetches  atomic.Int32 // Fetch calls
@@ -28,12 +28,12 @@ type streamMailbox struct {
 	storeErr error
 }
 
-func (m *streamMailbox) Fetch(uid uint32) ([]byte, error) {
+func (m *fetchStreamMailbox) Fetch(uid uint32) ([]byte, error) {
 	m.fetches.Add(1)
 	return m.mockMailbox.Fetch(uid)
 }
 
-func (m *streamMailbox) FetchStream(uid uint32) (imap.FetchedMessage, error) {
+func (m *fetchStreamMailbox) FetchStream(uid uint32) (imap.FetchedMessage, error) {
 	m.streams.Add(1)
 	raw, err := m.mockMailbox.Fetch(uid)
 	if err != nil {
@@ -51,7 +51,7 @@ func (m *streamMailbox) FetchStream(uid uint32) (imap.FetchedMessage, error) {
 	return &countedMessage{FetchedMessage: msg, open: &m.opened}, nil
 }
 
-func (m *streamMailbox) Store(uid uint32, f imap.FlagUpdate) error {
+func (m *fetchStreamMailbox) Store(uid uint32, f imap.FlagUpdate) error {
 	if m.storeErr != nil {
 		return m.storeErr
 	}
@@ -90,11 +90,11 @@ func (b *streamBackend) Authenticate(user, pass string) (imap.Mailbox, error) {
 // fetchTranscript is every octet the server sends for one FETCH command, from
 // a fresh session on a fresh store holding raw as UID 7, through the tagged
 // completion. The store streams when stream is set.
-func fetchTranscript(t *testing.T, raw, items string, utf8, stream bool) (string, *streamMailbox) {
+func fetchTranscript(t *testing.T, raw, items string, utf8, stream bool) (string, *fetchStreamMailbox) {
 	t.Helper()
 	mock := newMockBackend()
 	mock.seed("INBOX", 7, len(raw), raw)
-	sm := &streamMailbox{mockMailbox: mock.mbox}
+	sm := &fetchStreamMailbox{mockMailbox: mock.mbox}
 	var backend imap.Backend = mock
 	if stream {
 		backend = &streamBackend{mockBackend: mock, mbox: sm}
@@ -260,7 +260,7 @@ func TestStreamedFetchOfABigMessageHoldsLittleOfIt(t *testing.T) {
 	// Fetch is the store's file read whole, as a store with no StreamFetcher has
 	// to; FetchStream hands over the file.
 	dir := t.TempDir()
-	sm := &streamMailbox{mockMailbox: mock.mbox, open: spoolTo(dir)}
+	sm := &fetchStreamMailbox{mockMailbox: mock.mbox, open: spoolTo(dir)}
 	h := newIMAPHarnessSession(t, &streamBackend{mockBackend: mock, mbox: sm}, mock.user, mock.pass, nil)
 	h.login("a1")
 	h.selectInbox("a2")
@@ -337,7 +337,7 @@ type longerSize struct{ imap.FetchedMessage }
 func (l *longerSize) Size() int64 { return l.FetchedMessage.Size() + 10 }
 
 // panicStore panics in Store, the \Seen a non-peek FETCH sets.
-type panicStore struct{ *streamMailbox }
+type panicStore struct{ *fetchStreamMailbox }
 
 func (p *panicStore) Store(uint32, imap.FlagUpdate) error { panic("store bug") }
 
@@ -348,8 +348,8 @@ func TestStreamedFetchClosesTheMessageHoweverItEnds(t *testing.T) {
 	raw := bigSevenBit()
 	type outcome struct {
 		name  string
-		setup func(sm *streamMailbox, dir string)
-		mbox  func(sm *streamMailbox) imap.Mailbox
+		setup func(sm *fetchStreamMailbox, dir string)
+		mbox  func(sm *fetchStreamMailbox) imap.Mailbox
 		run   func(t *testing.T, h *imapHarness)
 	}
 	expectTagged := func(want string) func(t *testing.T, h *imapHarness) {
@@ -370,22 +370,22 @@ func TestStreamedFetchClosesTheMessageHoweverItEnds(t *testing.T) {
 	}
 	for _, tc := range []outcome{
 		{name: "sent", run: expectTagged("f OK")},
-		{name: "store refuses \\Seen", setup: func(sm *streamMailbox, _ string) { sm.storeErr = errors.New("no") }, run: expectTagged("f NO")},
-		{name: "scan read fails", setup: func(sm *streamMailbox, dir string) {
+		{name: "store refuses \\Seen", setup: func(sm *fetchStreamMailbox, _ string) { sm.storeErr = errors.New("no") }, run: expectTagged("f NO")},
+		{name: "scan read fails", setup: func(sm *fetchStreamMailbox, dir string) {
 			open := spoolTo(dir)
 			sm.open = func(b []byte) (imap.FetchedMessage, error) {
 				m, err := open(b)
 				return &failingAt{FetchedMessage: m, at: 1 << 20}, err
 			}
 		}, run: expectTagged("f NO")},
-		{name: "message shorter than its size", setup: func(sm *streamMailbox, dir string) {
+		{name: "message shorter than its size", setup: func(sm *fetchStreamMailbox, dir string) {
 			open := spoolTo(dir)
 			sm.open = func(b []byte) (imap.FetchedMessage, error) {
 				m, err := open(b)
 				return &longerSize{FetchedMessage: m}, err
 			}
 		}, run: expectTagged("f NO")},
-		{name: "read fails mid-literal", setup: func(sm *streamMailbox, dir string) {
+		{name: "read fails mid-literal", setup: func(sm *fetchStreamMailbox, dir string) {
 			open := spoolTo(dir)
 			calls := 0
 			sm.open = func(b []byte) (imap.FetchedMessage, error) {
@@ -399,7 +399,7 @@ func TestStreamedFetchClosesTheMessageHoweverItEnds(t *testing.T) {
 			_, _ = io.CopyN(io.Discard, h.cr, 1<<20)
 			_ = h.conn.Close()
 		}},
-		{name: "panic", mbox: func(sm *streamMailbox) imap.Mailbox { return &panicStore{sm} }, run: func(t *testing.T, h *imapHarness) {
+		{name: "panic", mbox: func(sm *fetchStreamMailbox) imap.Mailbox { return &panicStore{sm} }, run: func(t *testing.T, h *imapHarness) {
 			h.send("f UID FETCH 7 BODY[]")
 			_ = h.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 			_, _ = io.Copy(io.Discard, h.cr)
@@ -409,7 +409,7 @@ func TestStreamedFetchClosesTheMessageHoweverItEnds(t *testing.T) {
 			mock := newMockBackend()
 			mock.seed("INBOX", 7, len(raw), string(raw))
 			dir := t.TempDir()
-			sm := &streamMailbox{mockMailbox: mock.mbox, open: spoolTo(dir)}
+			sm := &fetchStreamMailbox{mockMailbox: mock.mbox, open: spoolTo(dir)}
 			if tc.setup != nil {
 				tc.setup(sm, dir)
 			}
