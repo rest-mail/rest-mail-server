@@ -64,6 +64,9 @@ type fieldReader struct {
 	// asked yet and skipping what it said.
 	wanted            func(key []byte) bool
 	decided, skipping bool
+	// colonSteps counts the octets looked at for a field's colon, which tests hold to the size of
+	// the fields read.
+	colonSteps int
 	// typeOnly says a part's fields are read only for whether it holds parts of its own. A
 	// Content-Type that can't say so isn't parsed.
 	typeOnly bool
@@ -104,14 +107,20 @@ func (r *fieldReader) takeBuffer(size int) []byte {
 }
 
 // readLine adds one line to the buffer, without its line break, unless the field is being skipped.
+// Until the field's colon turns up, only what was just added is looked at for it: what came before
+// was looked at already, and a field folded many times before its colon would otherwise cost the
+// square of its length.
 func (r *fieldReader) readLine(br *bufio.Reader) error {
 	for {
 		l, more, err := br.ReadLine()
 		if !r.skipping {
 			r.room(len(l))
+			added := len(r.line)
 			r.line = append(r.line, l...)
 			if r.wanted != nil && !r.decided {
-				if colon := bytes.IndexByte(r.line, ':'); colon >= 0 {
+				r.colonSteps += len(l)
+				if colon := bytes.IndexByte(r.line[added:], ':'); colon >= 0 {
+					colon += added
 					r.decided = true
 					if !r.wanted(bytes.Trim(r.line[:colon], " \t")) {
 						r.skipping = true
