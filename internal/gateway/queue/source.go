@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/messagestore"
@@ -52,6 +53,33 @@ func (w *Worker) releaseAttemptPin(ctx context.Context, id string) {
 	if err := messagestore.UnpinAttempt(ctx, w.db, id); err != nil {
 		slog.ErrorContext(ctx, "queue: could not release message source attempt pin", "error", err)
 	}
+}
+
+// An expiry that passes while the queue is held or stopped may prevent another
+// claim altogether. Retire those owners too, leaving a live attempt alone.
+func (w *Worker) expireQueueSources(ctx context.Context, now time.Time) error {
+	return w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var expired []models.OutboundQueue
+		err := tx.Select("id", "source_ref").
+			Where(`source_ref IS NOT NULL AND expires_at <= ?
+				AND (status IN ('pending', 'deferred') OR (status = 'delivering' AND last_attempt < ?))`,
+				now, now.Add(-w.reclaim)).
+			Order("expires_at, id").Limit(100).
+			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Find(&expired).Error
+		if err != nil {
+			return err
+		}
+		for _, row := range expired {
+			ref := *row.SourceRef
+			if err := tx.Model(&row).Updates(map[string]any{"status": "expired", "source_ref": nil}).Error; err != nil {
+				return err
+			}
+			if err := messagestore.ReleaseReference(ctx, tx, ref); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (w *Worker) openSource(ctx context.Context, item models.OutboundQueue) (io.ReadCloser, int64, error) {

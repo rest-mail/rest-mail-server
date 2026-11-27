@@ -572,7 +572,16 @@ func (w *Worker) queueSizeLoop() {
 	ticker := time.NewTicker(queueSizeInterval)
 	defer ticker.Stop()
 	for {
-		if err := refreshQueueSize(w.db, time.Now(), w.reclaim, w.maxPerDestination); err != nil {
+		now := time.Now()
+		if w.sources != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), heartbeatWriteTimeout)
+			err := w.expireQueueSources(ctx, now)
+			cancel()
+			if err != nil {
+				slog.Warn("queue: expiring source references failed", "error", err)
+			}
+		}
+		if err := refreshQueueSize(w.db, now, w.reclaim, w.maxPerDestination); err != nil {
 			slog.Warn("queue: counting the outbound queue failed", "error", err)
 		}
 		select {

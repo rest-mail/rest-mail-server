@@ -202,3 +202,21 @@ func TestQueuedReferenceRESTMAILExactLength(t *testing.T) {
 		t.Fatalf("independent open size check returned %v, want 552", err)
 	}
 }
+
+func TestQueuedReferenceExpiresBeforeClaim(t *testing.T) {
+	w, db := sourceDeliveryDB(t)
+	row := stageQueueSource(t, w, "Subject: expiry", "Subject: expiry\r\n\r\n", "a@remote.test")[0]
+	now := time.Now()
+	if err := db.Model(&row).Update("expires_at", now.Add(-time.Second)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := w.expireQueueSources(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	if stored := readRow(t, db, row.ID); stored.Status != "expired" || stored.SourceRef != nil {
+		t.Fatalf("expiry left the owner attached: %+v", stored)
+	}
+	if removed, err := w.sources.Reap(t.Context()); err != nil || removed != 1 {
+		t.Fatalf("reaper removed %d, want one (%v)", removed, err)
+	}
+}
