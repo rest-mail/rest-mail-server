@@ -114,9 +114,10 @@ implement. A plain `Backend` keeps USER/PASS and the base capabilities.
 | `pop3.LoginDelayBackend` | `LoginDelay() (seconds int, perUser bool)` | CAPA `LOGIN-DELAY`; `USER` is appended before login when delay varies by account. A negative delay omits the tag. |
 | `pop3.LoginDelayMailbox` | `LoginDelay() int` | The authenticated account's delay after login, without `USER`. Requires a `LoginDelayBackend`; otherwise the tag is absent. |
 | `pop3.ImplementationBackend` | `Implementation() (text string, transactionOnly bool)` | Informational CAPA `IMPLEMENTATION`, optionally hidden until login. Empty, non-ASCII, malformed or overlong text omits the tag. |
+| `pop3.StreamMailbox` | `OpenMessage(uid string) (pop3.StoredMessage, error)` | RETR and TOP read the message from a `pop3.StoredMessage` (`io.ReaderAt`, `Size`, `Close`) as they send it instead of taking `Retrieve`'s bytes, so the server holds no copy of it. The octets on the wire are the same. |
 
-Each optional backend interface embeds `Backend`; `LoginDelayMailbox` embeds
-`Mailbox`. Without a mailbox-specific delay, CAPA uses the backend's value.
+Each optional backend interface embeds `Backend`; `LoginDelayMailbox` and
+`StreamMailbox` embed `Mailbox`. Without a mailbox-specific delay, CAPA uses the backend's value.
 Announcing LOGIN-DELAY does not enforce it: the backend tracks login times and
 returns `pop3.ErrLoginDelay` when needed.
 
@@ -209,7 +210,11 @@ RETR and TOP canonicalize stored LF line endings to CRLF, preserve bare CR,
 add the final CRLF when needed, and dot-stuff on the wire. Message contents
 otherwise pass through unchanged. `Message.Size` must count the same canonical
 form, excluding stuffed dots and the terminator: use `pop3.OctetCount` on the
-bytes `Retrieve` returns. STAT and LIST trust that supplied size. RETR calls
+bytes `Retrieve` returns. STAT and LIST trust that supplied size. A
+`StreamMailbox` opens those same bytes: RETR reads them once to count the octets
+its `+OK` advertises and again to send them, TOP stops reading after its last
+line, and the server closes the message however the command ends. A message that
+fails to read after `+OK` ends the connection without the `.` terminator. RETR calls
 `MarkSeen` for a previously unseen message; TOP never does. A backend without
 read state may return nil from `MarkSeen`.
 
@@ -300,8 +305,9 @@ badge counts 155 mapped rows out of 204; its 49 `n/a` rows stay in the denominat
 The coverage badge shows the enforced 95% floor, with measured statement
 coverage printed in each CI run. CI measures `-coverpkg=./...`, so external wire
 proofs count toward library coverage. [COVERAGE.md](COVERAGE.md) lists the
-remaining uncovered statements. Seven fuzz targets exercise command parsing,
-redaction, UID grammar, CRLF, octet counts and RETR/TOP framing.
+remaining uncovered statements. Eight fuzz targets exercise command parsing,
+redaction, UID grammar, CRLF, octet counts and RETR/TOP framing, in memory and
+streamed.
 
 ### Independent client verification
 

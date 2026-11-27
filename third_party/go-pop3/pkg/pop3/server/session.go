@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"runtime/debug"
@@ -165,9 +166,13 @@ func (s *Session) Handle() {
 		case "UIDL":
 			s.handleUidl(arg)
 		case "RETR":
-			s.handleRetr(arg)
+			if s.handleRetr(arg) {
+				return
+			}
 		case "TOP":
-			s.handleTop(arg)
+			if s.handleTop(arg) {
+				return
+			}
 		case "DELE":
 			s.handleDele(arg)
 		case "NOOP":
@@ -736,28 +741,51 @@ func (s *Session) handleUidl(arg string) {
 	s.sendLine(".")
 }
 
-func (s *Session) handleRetr(arg string) {
+// handleRetr answers RETR. It reports whether the session must end: a streamed
+// message that could not be read or sent in full after "+OK" leaves the client
+// no way to tell, so the connection is closed instead of terminating it.
+func (s *Session) handleRetr(arg string) (hangUp bool) {
 	if !s.auth.authenticated {
 		s.err("Not authenticated")
-		return
+		return false
 	}
 
 	n, err := strconv.Atoi(arg)
 	if err != nil || n < 1 || n > len(s.messages) {
 		s.err("No such message")
-		return
+		return false
 	}
 	if s.deleted[n] {
 		s.err("Message is deleted")
-		return
+		return false
 	}
 
 	msg := s.messages[n-1]
 
-	rawBytes, err := s.mailbox.Retrieve(msg.UID)
+	if mailbox, ok := s.mailbox.(pop3.StreamMailbox); ok {
+		sent, cut := s.streamRetr(mailbox, msg.UID)
+		if !sent {
+			return cut
+		}
+	} else if !s.sendRetr(msg.UID) {
+		return false
+	}
+
+	// Mark as read
+	if !msg.Seen {
+		_ = s.mailbox.MarkSeen(msg.UID)
+		s.messages[n-1].Seen = true
+	}
+	return false
+}
+
+// sendRetr sends the RETR response from the bytes [pop3.Mailbox.Retrieve]
+// returns, reporting whether it did.
+func (s *Session) sendRetr(uid string) bool {
+	rawBytes, err := s.mailbox.Retrieve(uid)
 	if err != nil {
 		s.retrieveFailed(err)
-		return
+		return false
 	}
 	// Canonicalize line endings to CRLF first: a bare LF in stored content must
 	// not survive inside a line, or it would evade dot-stuffing and could forge
@@ -778,11 +806,44 @@ func (s *Session) handleRetr(arg string) {
 		s.sendStuffed(line)
 	}
 	s.sendLine(".")
+	return true
+}
 
-	// Mark as read
-	if !msg.Seen {
-		_ = s.mailbox.MarkSeen(msg.UID)
-		s.messages[n-1].Seen = true
+// streamRetr sends the RETR response from the message
+// [pop3.StreamMailbox.OpenMessage] opens, without holding it: one reading counts
+// the octets "+OK" advertises, and a second sends them. sent reports a complete
+// response; hangUp, a response cut off after "+OK".
+func (s *Session) streamRetr(mailbox pop3.StreamMailbox, uid string) (sent, hangUp bool) {
+	msg, err := mailbox.OpenMessage(uid)
+	if err != nil {
+		s.retrieveFailed(err)
+		return false, false
+	}
+	defer s.closeMessage(msg)
+
+	size, err := wire.CountMessage(io.NewSectionReader(msg, 0, msg.Size()))
+	if err != nil {
+		slog.Error("pop3: failed to read message", "remote", s.conn.RemoteAddr(), "uid", uid, "error", err)
+		s.retrieveFailed(err)
+		return false, false
+	}
+	s.ok("%d octets", size)
+	n, err := wire.SendMessage(s.writer, io.NewSectionReader(msg, 0, msg.Size()))
+	if err == nil && n != size {
+		err = fmt.Errorf("message changed while it was sent: counted %d octets, sent %d", size, n)
+	}
+	if err != nil {
+		slog.Error("pop3: RETR cut off", "remote", s.conn.RemoteAddr(), "uid", uid, "error", err)
+		return false, true
+	}
+	s.sendLine(".")
+	return true, false
+}
+
+// closeMessage closes a message the server opened, however its command ended.
+func (s *Session) closeMessage(msg pop3.StoredMessage) {
+	if err := msg.Close(); err != nil {
+		slog.Error("pop3: failed to close message", "remote", s.conn.RemoteAddr(), "error", err)
 	}
 }
 
@@ -799,36 +860,67 @@ func (s *Session) retrieveFailed(err error) {
 	s.err("Failed to retrieve message")
 }
 
-func (s *Session) handleTop(arg string) {
+// handleTop answers TOP. It reports whether the session must end, as
+// handleRetr does.
+func (s *Session) handleTop(arg string) (hangUp bool) {
 	if !s.auth.authenticated {
 		s.err("Not authenticated")
-		return
+		return false
 	}
 
 	parts := strings.SplitN(arg, " ", 2)
 	if len(parts) < 2 {
 		s.err("Syntax: TOP msg lines")
-		return
+		return false
 	}
 
 	n, err := strconv.Atoi(parts[0])
 	if err != nil || n < 1 || n > len(s.messages) {
 		s.err("No such message")
-		return
+		return false
 	}
 	if s.deleted[n] {
 		s.err("Message is deleted")
-		return
+		return false
 	}
 
 	lines, err := strconv.Atoi(parts[1])
 	if err != nil || lines < 0 {
 		s.err("Invalid line count")
-		return
+		return false
 	}
 
 	msg := s.messages[n-1]
-	rawBytes, err := s.mailbox.Retrieve(msg.UID)
+	if mailbox, ok := s.mailbox.(pop3.StreamMailbox); ok {
+		return s.streamTop(mailbox, msg.UID, lines)
+	}
+	s.sendTop(msg.UID, lines)
+	return false
+}
+
+// streamTop sends the TOP response from the message
+// [pop3.StreamMailbox.OpenMessage] opens, reading no further than the last line
+// it sends. It reports a response cut off after "+OK".
+func (s *Session) streamTop(mailbox pop3.StreamMailbox, uid string, lines int) (hangUp bool) {
+	msg, err := mailbox.OpenMessage(uid)
+	if err != nil {
+		s.retrieveFailed(err)
+		return false
+	}
+	defer s.closeMessage(msg)
+
+	s.ok("")
+	if err := wire.SendTop(s.writer, io.NewSectionReader(msg, 0, msg.Size()), lines); err != nil {
+		slog.Error("pop3: TOP cut off", "remote", s.conn.RemoteAddr(), "uid", uid, "error", err)
+		return true
+	}
+	s.sendLine(".")
+	return false
+}
+
+// sendTop sends the TOP response from the bytes [pop3.Mailbox.Retrieve] returns.
+func (s *Session) sendTop(uid string, lines int) {
+	rawBytes, err := s.mailbox.Retrieve(uid)
 	if err != nil {
 		s.retrieveFailed(err)
 		return

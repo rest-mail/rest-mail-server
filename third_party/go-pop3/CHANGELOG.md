@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `pop3.StreamMailbox`, an optional `Mailbox` extension: RETR and TOP read the
+  message from the `pop3.StoredMessage` its `OpenMessage` returns as they send
+  it, instead of taking the whole message from `Retrieve` and copying it while
+  framing it, so a large message costs the server fixed buffers rather than
+  several copies of itself (rest-mail/rest-mail-server#2107). RETR reads it
+  twice, to count the octets `+OK` advertises and to send them; TOP stops after
+  its last line. The octets on the wire, the replies to a message that cannot be
+  opened and the MarkSeen behaviour are those of `Retrieve`. The server closes
+  the message however the command ends, and a message that fails to read after
+  `+OK` ends the connection without the `.` terminator.
+
 ## [0.4.0] - 2026-10-26
 
 ### Changed (breaking)
