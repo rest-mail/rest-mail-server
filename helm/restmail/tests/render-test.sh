@@ -75,6 +75,30 @@ for limit in 1 0; do
   test_ac03b_destination_limit_is_configurable "$limit" "$tmp/queue-limit.yaml"
 done
 
+# #2105 AC01 (SRC-292): production is the installed default. The API reads its
+# ENVIRONMENT from a ConfigMap and each gateway from its container env; every
+# one must say production unless an operator opts out, and nothing in the chart
+# may switch off outbound MTA-STS enforcement (the code default is on, and the
+# SMTP gateway refuses an explicit disable in production).
+test_ac01_environment_is() {
+  local expected="${1:?expected environment}" manifest="${2:?rendered chart}" actual gateway
+  actual="$(yq -N e 'select(.kind == "ConfigMap" and .metadata.name == "restmail-api") | .data.ENVIRONMENT' "$manifest")"
+  [ "$actual" = "$expected" ] || fail "AC01: api ConfigMap ENVIRONMENT='$actual', expected '$expected'"
+  for gateway in smtp-gateway imap-gateway pop3-gateway; do
+    actual="$(yq -N e "select(.kind == \"Deployment\") | .spec.template.spec.containers[] | select(.name == \"$gateway\") | .env[] | select(.name == \"ENVIRONMENT\") | .value" "$manifest")"
+    [ "$actual" = "$expected" ] || fail "AC01: $gateway ENVIRONMENT='$actual', expected '$expected'"
+  done
+  pass "AC01: api and all three gateways render ENVIRONMENT=$expected"
+}
+test_ac01_mtasts_not_overridden() {
+  local manifest="${1:?rendered chart}" found
+  found="$(yq -N e '.. | select(tag == "!!map" and (has("MTASTS_ENFORCE") or .name == "MTASTS_ENFORCE")) | path | join(".")' "$manifest")"
+  [ -z "$found" ] || fail "AC01: chart sets MTASTS_ENFORCE at $found"
+  pass "AC01: chart leaves MTASTS_ENFORCE to the enforcing default"
+}
+test_ac01_environment_is production "$tmp/prod.yaml"
+test_ac01_mtasts_not_overridden "$tmp/prod.yaml"
+
 assert_absent "PrometheusRule disabled by default" "$tmp/prod.yaml" 'kind: PrometheusRule'
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set metrics.prometheusRule.enabled=false > "$tmp/metrics-off.yaml"
 assert_absent "PrometheusRule explicitly disabled" "$tmp/metrics-off.yaml" 'kind: PrometheusRule'
@@ -96,6 +120,8 @@ promtool test rules "$tmp/dkim-alerts-test.yml" "$tmp/tls-cert-alerts-test.yml" 
 
 echo "== render development overlay =="
 helm template restmail "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD" > "$tmp/dev.yaml"
+# Control: the same check reads the opted-in overlay, so it is not a constant.
+test_ac01_environment_is development "$tmp/dev.yaml"
 
 echo "== production assertions (deployability + hardening) =="
 # Deployability: the production boot validator's acknowledgement knobs are wired.
