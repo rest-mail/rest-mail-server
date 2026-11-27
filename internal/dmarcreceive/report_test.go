@@ -4,6 +4,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"errors"
+	"io/fs"
+	"os"
 	"strings"
 	"testing"
 )
@@ -114,5 +117,58 @@ func TestParseDomainNormalizationAndEpoch(t *testing.T) {
 	raw = strings.Replace(raw, "<begin>0</begin>", "", 1)
 	if _, err := Parse("text/xml", []byte(raw)); err == nil {
 		t.Fatal("missing period boundary accepted")
+	}
+}
+
+// TestAC01InflatedReportsAreSpooledAndRemoved is #2107 AC01 for the dmarc-report-mail path.
+// Each gzip or zip document is inflated to a file Parse owns, read from that file, and removed
+// before Parse returns: after success, after a refused document, and after an oversized one.
+// Plain XML is already in the message and is not copied.
+func TestAC01InflatedReportsAreSpooledAndRemoved(t *testing.T) {
+	raw := exampleXML("")
+	exact := strings.Replace(raw, "</feedback>", strings.Repeat(" ", MaxBytes-len(raw))+"</feedback>", 1)
+	if len(exact) != MaxBytes {
+		t.Fatalf("exact-limit fixture is %d bytes, want %d", len(exact), MaxBytes)
+	}
+	broken := strings.Replace(raw, "192.0.2.1", "garbage", 1)
+	for name, test := range map[string]struct {
+		media   string
+		data    []byte
+		spools  int
+		reports int
+	}{
+		"gzip":                 {"application/gzip", gzipData(t, raw), 1, 1},
+		"gzip at exact limit":  {"application/gzip", gzipData(t, exact), 1, 1},
+		"zip with two entries": {"application/zip", zipData(t, raw, strings.Replace(raw, "daily-1", "daily-2", 1)), 2, 2},
+		"gzip refused report":  {"application/gzip", gzipData(t, broken), 1, 0},
+		"zip refused second":   {"application/zip", zipData(t, raw, broken), 2, 0},
+		"gzip one byte over":   {"application/gzip", gzipData(t, exact+" "), 1, 0},
+		"plain XML":            {"text/xml", []byte(raw), 0, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var seen []string
+			spoolCreated = func(path string) {
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("spool file %s missing while parsing: %v", path, err)
+				}
+				seen = append(seen, path)
+			}
+			t.Cleanup(func() { spoolCreated = nil })
+			reports, err := Parse(test.media, test.data)
+			if test.reports == 0 && err == nil {
+				t.Fatal("accepted a report that must be refused")
+			}
+			if test.reports != 0 && (err != nil || len(reports) != test.reports) {
+				t.Fatalf("got %d reports, error %v; want %d reports", len(reports), err, test.reports)
+			}
+			if len(seen) != test.spools {
+				t.Fatalf("parse created %d spool files, want %d", len(seen), test.spools)
+			}
+			for _, path := range seen {
+				if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+					t.Fatalf("spool file %s left after Parse returned: %v", path, err)
+				}
+			}
+		})
 	}
 }

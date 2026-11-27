@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/mail"
 	"net/netip"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -40,25 +42,51 @@ type feedback struct {
 	Records []models.DMARCReceivedRecord `xml:"record"`
 }
 
+// Parse reads one DMARC aggregate report attachment. A compressed report is inflated to a
+// temporary file rather than into memory, and each document is checked and decoded from that
+// file with streaming XML decoders. The files are removed before Parse returns, whatever the
+// outcome. The byte, entry and row limits are the same for every media type.
 func Parse(media string, data []byte) ([]models.DMARCReportReceived, error) {
 	if len(data) > MaxBytes {
 		return nil, errors.New("compressed report exceeds size limit")
 	}
-	var documents [][]byte
+	var documents []io.ReadSeeker
+	var spools []*os.File
+	defer func() {
+		for _, file := range spools {
+			_ = file.Close()
+			_ = os.Remove(file.Name())
+		}
+	}()
+	inflate := func(src io.Reader, limit int) (int, error) {
+		file, err := os.CreateTemp("", "restmail-dmarc-report-*")
+		if err != nil {
+			return 0, errors.New("report spool unavailable")
+		}
+		spools = append(spools, file)
+		if spoolCreated != nil {
+			spoolCreated(file.Name())
+		}
+		size, err := spoolBounded(file, src, limit)
+		if err != nil {
+			return 0, err
+		}
+		documents = append(documents, file)
+		return size, nil
+	}
 	switch media {
 	case "text/xml":
-		documents = append(documents, data)
+		documents = append(documents, bytes.NewReader(data))
 	case "application/gzip":
 		reader, err := gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
 			return nil, errors.New("invalid gzip report")
 		}
-		raw, err := boundedRead(reader, MaxBytes)
+		_, err = inflate(reader, MaxBytes)
 		_ = reader.Close()
 		if err != nil {
 			return nil, err
 		}
-		documents = append(documents, raw)
 	case "application/zip":
 		reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
@@ -79,13 +107,12 @@ func Parse(media string, data []byte) ([]models.DMARCReportReceived, error) {
 			if err != nil {
 				return nil, errors.New("invalid zip entry")
 			}
-			raw, err := boundedRead(stream, remaining)
+			size, err := inflate(stream, remaining)
 			_ = stream.Close()
 			if err != nil {
 				return nil, err
 			}
-			remaining -= len(raw)
-			documents = append(documents, raw)
+			remaining -= size
 		}
 	default:
 		return nil, errors.New("unsupported report media type")
@@ -109,20 +136,33 @@ func Parse(media string, data []byte) ([]models.DMARCReportReceived, error) {
 	return reports, nil
 }
 
-func boundedRead(reader io.Reader, limit int) ([]byte, error) {
-	raw, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+// spoolCreated, when set by a test, is told the path of each spool file Parse creates.
+var spoolCreated func(path string)
+
+// spoolBounded copies at most limit inflated bytes from src into file and rewinds it. One byte
+// past the limit is read to tell an exact-limit report from an oversized one; the oversized one
+// is refused.
+func spoolBounded(file *os.File, src io.Reader, limit int) (int, error) {
+	written, err := io.Copy(file, io.LimitReader(src, int64(limit)+1))
 	if err != nil {
-		return nil, errors.New("invalid compressed report")
+		var disk *fs.PathError
+		if errors.As(err, &disk) {
+			return 0, errors.New("report spool write failed")
+		}
+		return 0, errors.New("invalid compressed report")
 	}
-	if len(raw) > limit {
-		return nil, errors.New("inflated report exceeds size limit")
+	if written > int64(limit) {
+		return 0, errors.New("inflated report exceeds size limit")
 	}
-	return raw, nil
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return 0, errors.New("report spool unavailable")
+	}
+	return int(written), nil
 }
 
-func parseXML(raw []byte) (models.DMARCReportReceived, error) {
+func parseXML(document io.ReadSeeker) (models.DMARCReportReceived, error) {
 	var empty models.DMARCReportReceived
-	decoder := xml.NewDecoder(bytes.NewReader(raw))
+	decoder := xml.NewDecoder(document)
 	depth, roots, rows := 0, 0, 0
 	for {
 		token, err := decoder.Token()
@@ -163,8 +203,11 @@ func parseXML(raw []byte) (models.DMARCReportReceived, error) {
 	if roots != 1 || depth != 0 {
 		return empty, errors.New("incomplete feedback document")
 	}
+	if _, err := document.Seek(0, io.SeekStart); err != nil {
+		return empty, errors.New("report spool unavailable")
+	}
 	var report feedback
-	if err := xml.Unmarshal(raw, &report); err != nil {
+	if err := xml.NewDecoder(document).Decode(&report); err != nil {
 		return empty, errors.New("invalid feedback fields")
 	}
 	if err := boundedFields(reflect.ValueOf(report)); err != nil {
