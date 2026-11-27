@@ -2693,6 +2693,39 @@ def on_a_custom_filter_of_its_own(transaction):
     )
 
 
+@hooks.before("testCustomFilter")
+def a_runnable_script_on_a_generated_custom_filter(transaction):
+    """Give the custom filter a generated test id names a script it can run.
+
+    The fuzz process sends testCustomFilter's valid path-parameter probe to a
+    generated id (17 in run 45824626516, #2051). Earlier generated
+    updateCustomFilter bodies rewrite filters' configs, and a config is any
+    object, so that filter can hold no script. The server then correctly
+    answers its documented 400 "Filter config does not contain a script", and
+    the probe reads it as a refusal of the id. The id is what the probe tests,
+    so the filter it names gets CUSTOM_FILTER's runnable script through the
+    admin API first. The path, body and credential stay as generated, an id
+    with no filter keeps its 404, and invalid probes, other processes and
+    other responses are left alone."""
+    name = transaction.get("name", "")
+    if os.environ.get("CONTRACT_FUZZ") != "1" or " > 200 > " not in name or not name.endswith(" · valid"):
+        return
+    prefix = "/api/v1/admin/custom-filters/"
+    path = transaction["fullPath"].partition("?")[0]
+    if not path.startswith(prefix):
+        return
+    resource, _, suffix = path[len(prefix):].partition("/")
+    if suffix != "test" or not positive_id(resource):
+        return
+    fixture_call(
+        transaction,
+        "PATCH",
+        prefix + resource,
+        {"config": CUSTOM_FILTER["config"]},
+        expect=(200, 404),
+    )
+
+
 def openssl(*args):
     subprocess.run(["openssl"] + list(args), check=True, capture_output=True)
 
