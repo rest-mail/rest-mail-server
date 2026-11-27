@@ -185,3 +185,38 @@ func TestMetadataStringsInUTF8Session(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryDecodedStringInUTF8Session: the counterpart of TestBodyStructureStringsSevenBit
+// and TestEnvelopeStringsSevenBit. After ENABLE UTF8=ACCEPT (RFC 6855) every string a
+// decoder produced, a group name, a disposition filename, a description, a parameter
+// of an encapsulated message and its 8-bit mailbox, is UTF-8 in a counted literal,
+// where without UTF-8 it is an encoded word or, for the mailbox, NIL.
+//
+// checklist: IMAP-INV-TEXT-01 IMAP-BS-13 IMAP-ENV-13
+func TestEveryDecodedStringInUTF8Session(t *testing.T) {
+	const top = "To: =?UTF-8?Q?Gr=C3=BCppe?=: g@example.com;\r\nSubject: s\r\n\r\nbody\r\n"
+	framing, literals := fetchUTF8Metadata(t, top, "ENVELOPE")
+	requireHolds(t, framing, `((NIL NIL {7}`, `(NIL NIL "g" "example.com")(NIL NIL NIL NIL))`)
+	if literals != "Grüppe" {
+		t.Fatalf("ENVELOPE literals = %q, want the group name", literals)
+	}
+
+	for _, item := range []string{"BODY", "BODYSTRUCTURE"} {
+		framing, literals = fetchUTF8Metadata(t, metadataStored, item)
+		for _, want := range []string{
+			"café.txt", "Grüße", "Jörg", "Grüppe", "jörg", "exämple.com", "inneré",
+		} {
+			if !strings.Contains(literals, want) {
+				t.Fatalf("%s literals %q lack %q", item, literals, want)
+			}
+		}
+		if item == "BODYSTRUCTURE" && !strings.Contains(literals, "Grüße.txt") {
+			t.Fatalf("literals %q lack the disposition filename", literals)
+		}
+		// Not valid UTF-8, so still an encoded word, as in any session.
+		requireHolds(t, framing, `"=?UNKNOWN-8BIT?Q?caf=E9=2Ebin?="`)
+		if strings.Contains(framing, "=?UTF-8?") {
+			t.Fatalf("%s framing %q still has a UTF-8 encoded word", item, framing)
+		}
+	}
+}
