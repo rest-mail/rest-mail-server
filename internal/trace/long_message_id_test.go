@@ -80,3 +80,56 @@ func TestRecorder_MixedShortAndLongMessageIDBatchCommitsEveryRow(t *testing.T) {
 		})
 	}
 }
+
+// TestMessageTrace_Varchar255ControlRejectsTheWholeBatch keeps the direct GORM
+// batch control from #2219 standing: on a copy of message_traces whose
+// rfc_message_id is the old varchar(255), the same mixed short/long batch is
+// refused with SQLSTATE 22001 and commits nothing, while the real table commits
+// both rows. If the control stops failing, the long-ID tests no longer prove
+// anything about the column type.
+func TestMessageTrace_Varchar255ControlRejectsTheWholeBatch(t *testing.T) {
+	database := openTraceTestDB(t)
+	transaction := database.Begin()
+	if transaction.Error != nil {
+		t.Fatal(transaction.Error)
+	}
+	t.Cleanup(func() { transaction.Rollback() })
+	if err := transaction.Exec(`CREATE TEMP TABLE varchar_trace_control (LIKE message_traces INCLUDING DEFAULTS) ON COMMIT DROP`).Error; err != nil {
+		t.Fatalf("create control table: %v", err)
+	}
+	if err := transaction.Exec(`ALTER TABLE varchar_trace_control ALTER COLUMN rfc_message_id TYPE varchar(255)`).Error; err != nil {
+		t.Fatalf("narrow control column: %v", err)
+	}
+	batch := func() []models.MessageTrace {
+		return []models.MessageTrace{
+			{RFCMessageID: "<short-control@example.test>", Direction: "inbound", Outcome: "rejected"},
+			{RFCMessageID: strings.Repeat("a", 256), Direction: "inbound", Outcome: "rejected"},
+		}
+	}
+
+	transaction.SavePoint("control")
+	err := transaction.Table("varchar_trace_control").CreateInBatches(batch(), 10).Error
+	if err == nil || !strings.Contains(err.Error(), "22001") {
+		t.Fatalf("varchar(255) control batch error = %v, want SQLSTATE 22001", err)
+	}
+	transaction.RollbackTo("control")
+	var controlRows int64
+	if err := transaction.Table("varchar_trace_control").Count(&controlRows).Error; err != nil {
+		t.Fatalf("count control rows: %v", err)
+	}
+	if controlRows != 0 {
+		t.Errorf("varchar(255) control committed %d rows, want 0 (the refusal is atomic)", controlRows)
+	}
+
+	rows := batch()
+	if err := transaction.CreateInBatches(rows, 10).Error; err != nil {
+		t.Fatalf("message_traces batch: %v", err)
+	}
+	var stored int64
+	if err := transaction.Model(&models.MessageTrace{}).Where("id IN ?", []uint{rows[0].ID, rows[1].ID}).Count(&stored).Error; err != nil {
+		t.Fatalf("count committed rows: %v", err)
+	}
+	if stored != 2 {
+		t.Errorf("message_traces committed %d rows, want 2", stored)
+	}
+}
