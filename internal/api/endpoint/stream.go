@@ -6,7 +6,8 @@ import (
 	"net/http"
 )
 
-// Stream is an answer written as it happens, a Server-Sent Events stream: its headers and the
+// Stream is an answer written as it happens, a Server-Sent Events stream or a body read in
+// chunks as it is sent (a message's raw source): its headers and the
 // operation's status go out at once, then Send writes the body, calling flush to put what it
 // has written on the wire, until it returns. The operation names the media type it is
 // described with (Operation.MediaType), described as text; ContentType is the header written

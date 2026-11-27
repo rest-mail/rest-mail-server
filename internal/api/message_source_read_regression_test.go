@@ -28,6 +28,9 @@ func (c messageSourceReadConnection) Driver() driver.Driver { return c }
 func (c messageSourceReadConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c messageSourceReadConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(query, "FROM messages WHERE id =") {
+		return messageSourceReadOctets(query, args)
+	}
 	if !strings.Contains(query, `FROM "messages"`) {
 		return c.personalDataReadConnection.QueryContext(ctx, query, args)
 	}
@@ -53,13 +56,7 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	if id == "6" || id == "7" || id == "101" || id == "102" || id == "103" || id == "104" {
 		mailbox = 1
 	}
-	raw := messageSourceReadRaw
-	if id == "2" {
-		raw = ""
-	}
-	if id == "6" {
-		raw = "\r\n"
-	}
+	raw := messageSourceReadSource(id)
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	headers := []byte(`{"X-Trace":["one","two"]}`)
 	if id == "101" {
@@ -69,7 +66,6 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 		headers = []byte(`{"Auto-Submitted":["auto-generated"]}`)
 	}
 	if id == "104" {
-		raw = "From: sender@example.net\r\nList-Id: News\r\n <news.example.test>\r\n\r\nHello café\r\n"
 		headers = nil
 	}
 	var ruleClass any
@@ -79,6 +75,35 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	}
 	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", headers, nil, int64(80), int64(len(raw)), int64(rmail.IMAPWireSize(raw, false)), int64(rmail.IMAPWireSize(raw, true)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw, ruleClass}}
 	return r, nil
+}
+
+// messageSourceReadSource is the source the snapshot keeps for message id.
+func messageSourceReadSource(id string) string {
+	switch id {
+	case "2":
+		return ""
+	case "6":
+		return "\r\n"
+	case "104":
+		return "From: sender@example.net\r\nList-Id: News\r\n <news.example.test>\r\n\r\nHello café\r\n"
+	}
+	return messageSourceReadRaw
+}
+
+// messageSourceReadOctets answers the raw route's reads of a source: its octet count, or a
+// range of its octets (substring's 1-based offset and length, then the id).
+func messageSourceReadOctets(query string, args []driver.NamedValue) (driver.Rows, error) {
+	id := fmt.Sprint(args[len(args)-1].Value)
+	raw := messageSourceReadSource(id)
+	switch {
+	case strings.Contains(query, "octet_length(") && len(args) == 1:
+		return &authReadSnapshotRows{columns: []string{"octet_length"}, rows: [][]driver.Value{{int64(len(raw))}}}, nil
+	case strings.Contains(query, "substring(") && len(args) == 3:
+		from, n := int(args[0].Value.(int64))-1, int(args[1].Value.(int64))
+		end := min(from+n, len(raw))
+		return &authReadSnapshotRows{columns: []string{"substring"}, rows: [][]driver.Value{{[]byte(raw[from:end])}}}, nil
+	}
+	return nil, errors.New("unexpected message source query")
 }
 
 func messageSourceReadScenarios(t *testing.T) map[string]accountReadScenario {

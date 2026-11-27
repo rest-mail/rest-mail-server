@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	"go.opentelemetry.io/otel/trace"
 
@@ -562,6 +563,28 @@ func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
 	}
 	if err := c.checkStatus(resp); err != nil {
 		return "", err
+	}
+	return readRawSource(resp)
+}
+
+// rawPreallocLimit is the largest declared Content-Length readRawSource allocates for before
+// the octets arrive; a longer source is read as it comes, so a header alone cannot make the
+// client allocate more.
+const rawPreallocLimit = 64 << 20
+
+// readRawSource is the response body as a string, allocated once when the API declares its
+// length (the raw route does): read straight into a buffer of that size and handed back as
+// the string with no copy, rather than grown to fit and then copied again, so a gateway holds
+// one copy of the message where it held several (#2107). A body shorter than it declared is
+// an error.
+func readRawSource(resp *http.Response) (string, error) {
+	if n := resp.ContentLength; n > 0 && n <= rawPreallocLimit {
+		buf := make([]byte, n)
+		if _, err := io.ReadFull(resp.Body, buf); err != nil {
+			return "", fmt.Errorf("read raw message: %w", err)
+		}
+		// buf is not written again or shared, so the string may keep it.
+		return unsafe.String(unsafe.SliceData(buf), len(buf)), nil
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

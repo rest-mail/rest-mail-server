@@ -152,6 +152,9 @@ func (c *importConnection) QueryContext(ctx context.Context, q string, args []dr
 		}
 		return grantLookupRows(columns, []driver.Value{scope, "mail:import", nil, nil}), nil
 	}
+	if strings.Contains(q, "FROM messages WHERE id =") {
+		return importSourceRows(c.state.messages, q, args)
+	}
 	if strings.Contains(q, `FROM "messages"`) {
 		if c.mode == "read_failure" {
 			c.failed = true
@@ -463,4 +466,29 @@ func TestMessageImportBinarySourceDownloadsUnchanged(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "message/rfc822" || !bytes.Equal(w.Body.Bytes(), raw) {
 		t.Fatalf("raw download changed: status=%d type=%s bytes=%x", w.Code, w.Header().Get("Content-Type"), w.Body.Bytes())
 	}
+}
+
+// importSourceRows answers the raw route's reads of an imported message's source, as
+// PostgreSQL would: raw_octets when the row keeps them, otherwise raw_message; its octet count,
+// or a range of it (substring's 1-based offset and length, then the id).
+func importSourceRows(messages []map[string]any, q string, args []driver.NamedValue) (driver.Rows, error) {
+	var source []byte
+	for _, message := range messages {
+		if message["id"] != args[len(args)-1].Value {
+			continue
+		}
+		if octets, _ := message["raw_octets"].([]byte); len(octets) != 0 {
+			source = octets
+		} else if text, ok := message["raw_message"].(string); ok {
+			source = []byte(text)
+		}
+	}
+	switch {
+	case strings.Contains(q, "octet_length(") && len(args) == 1:
+		return invitationRows([]string{"octet_length"}, []driver.Value{int64(len(source))}), nil
+	case strings.Contains(q, "substring(") && len(args) == 3:
+		from, n := int(args[0].Value.(int64))-1, int(args[1].Value.(int64))
+		return invitationRows([]string{"substring"}, []driver.Value{source[from:min(from+n, len(source))]}), nil
+	}
+	return nil, errors.New("unexpected message source query")
 }
