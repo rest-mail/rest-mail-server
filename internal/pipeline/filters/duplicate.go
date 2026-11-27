@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -23,16 +24,31 @@ type duplicateFilter struct {
 	webhookURL string
 	method     string
 	headers    map[string]string
-	timeout    time.Duration
+	client     *http.Client
+
+	maxRequestBytes int64
 }
 
 func init() {
 	pipeline.DefaultRegistry.Register("duplicate", NewDuplicate)
 }
 
-// NewDuplicate creates a duplicate filter from its JSON configuration.
-// The filter forks a copy of the email to a webhook URL.
+// NewDuplicate creates a duplicate filter with the default request cap.
 func NewDuplicate(config []byte) (pipeline.Filter, error) {
+	return newDuplicate(config, rmconfig.DefaultSMTPMaxMessageSize*rmconfig.WebhookRequestExpansionFactor)
+}
+
+// NewDuplicateWithLimit returns a filter factory whose copies refuse a request
+// over maxRequestBytes (WEBHOOK_MAX_REQUEST_BYTES) without sending it.
+func NewDuplicateWithLimit(maxRequestBytes int64) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return newDuplicate(config, maxRequestBytes)
+	}
+}
+
+// newDuplicate builds a duplicate filter from its JSON configuration.
+// The filter forks a copy of the email to a webhook URL.
+func newDuplicate(config []byte, maxRequestBytes int64) (pipeline.Filter, error) {
 	var cfg duplicateConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -47,15 +63,18 @@ func NewDuplicate(config []byte) (pipeline.Filter, error) {
 	if cfg.Method == "" {
 		cfg.Method = "POST"
 	}
-	if cfg.TimeoutMS == 0 {
-		cfg.TimeoutMS = 5000
-	}
+	timeout := filterHTTPTimeout(cfg.TimeoutMS, 5*time.Second, 0)
 
 	return &duplicateFilter{
 		webhookURL: cfg.WebhookURL,
 		method:     cfg.Method,
 		headers:    cfg.Headers,
-		timeout:    time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		// The webhook URL is operator-supplied (pipelines:write), so the
+		// client refuses loopback/link-local targets to blunt SSRF (see
+		// ssrf.go). Its timeout also bounds the detached send.
+		client: newGuardedHTTPClient(timeout),
+
+		maxRequestBytes: maxRequestBytes,
 	}, nil
 }
 
@@ -67,6 +86,17 @@ func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 	payload, err := json.Marshal(email)
 	if err != nil {
 		slog.ErrorContext(ctx, "duplicate: failed to marshal email for webhook", "error", err)
+	} else if int64(len(payload)) > f.maxRequestBytes {
+		// A copy over the cap is not sent; the email still continues.
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "duplicate",
+				Result: "error",
+				Detail: fmt.Sprintf("duplicate not sent: request body of %d bytes is over the limit of %d bytes", len(payload), f.maxRequestBytes),
+			},
+		}, nil
 	} else {
 		go f.sendWebhook(payload)
 	}
@@ -87,10 +117,6 @@ func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 // sendWebhook posts the email JSON payload to the configured webhook URL.
 // It runs in a goroutine and logs errors instead of returning them.
 func (f *duplicateFilter) sendWebhook(payload []byte) {
-	// The webhook URL is operator-supplied (pipelines:write), so the client
-	// refuses loopback/link-local targets to blunt SSRF (see ssrf.go).
-	client := newGuardedHTTPClient(f.timeout)
-
 	req, err := http.NewRequestWithContext(context.Background(), f.method, f.webhookURL, bytes.NewReader(payload))
 	if err != nil {
 		slog.Error("duplicate: failed to create webhook request", "url", f.webhookURL, "error", err)
@@ -102,7 +128,7 @@ func (f *duplicateFilter) sendWebhook(payload []byte) {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := f.client.Do(req)
 	if err != nil {
 		slog.Error("duplicate: webhook request failed", "url", f.webhookURL, "error", err)
 		return
