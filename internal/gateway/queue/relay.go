@@ -168,14 +168,20 @@ func (w *Worker) deliverToRelay(ctx context.Context, settings relaySettings, ite
 			return fail("AUTH", err)
 		}
 	}
-	if ok, _ := client.Extension("8BITMIME"); !ok && messageRequires8BitTransport(item.BodyType, item.RawMessage) {
+	supports8Bit, _ := client.Extension("8BITMIME")
+	content, err := w.smtpContent(ctx, item, settings.host, supports8Bit)
+	if err != nil {
+		return err
+	}
+	defer content.close()
+	if !supports8Bit && content.eightBit {
 		return &SMTPError{Code: 550, Enhanced: "5.6.3", Message: "relay requires 8BITMIME", RemoteMTA: settings.host}
 	}
-	if err := checkSMTPUTF8(client, sender, recipient, item.RawMessage, settings.host); err != nil {
+	if err := checkSMTPUTF8(client, sender, recipient, content.headers, settings.host); err != nil {
 		return err
 	}
 	armStep(conn, timeouts.Mail)
-	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, item.RawMessage) != "", item.RequireTLS && item.Sender != ""); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, content.headers) != "", item.RequireTLS && item.Sender != ""); err != nil {
 		return fail("MAIL", err)
 	}
 	armStep(conn, timeouts.Rcpt)
@@ -187,7 +193,7 @@ func (w *Worker) deliverToRelay(ctx context.Context, settings relaySettings, ite
 	if err != nil {
 		return fail("DATA", err)
 	}
-	if err := writeDataBlocks(data, client.Text.W.Flush, item.RawMessage, func() { armStep(conn, timeouts.DataBlock) }); err != nil {
+	if err := writeSMTPContent(client, conn, data, timeouts, settings.host, content); err != nil {
 		return fail("DATA write", err)
 	}
 	armStep(conn, timeouts.FinalReply)
@@ -253,6 +259,9 @@ func (w *Worker) relayRoute(item models.OutboundQueue) (*relaySettings, error) {
 // deliverViaRelay prepares the message once, exactly as the direct path does,
 // and hands it to the relay. There is no RESTMAIL probe and no fallback to MX.
 func (w *Worker) deliverViaRelay(ctx context.Context, settings relaySettings, item models.OutboundQueue) error {
+	if item.SourceRef != nil {
+		return w.deliverToRelay(ctx, settings, item)
+	}
 	normal, err := forData(item.RawMessage, settings.host)
 	if err != nil {
 		return err

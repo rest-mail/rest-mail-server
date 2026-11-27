@@ -11,6 +11,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"gorm.io/gorm"
 )
 
@@ -122,9 +123,11 @@ func (w *Worker) startHeartbeatWithTicks(ctx context.Context, item models.Outbou
 	// but not its cancellation: only stop ends it.
 	refreshContext := context.WithoutCancel(ctx)
 	ctx, cancel := context.WithCancel(refreshContext)
+	pin, _ := ctx.Value(attemptPinKey{}).(string)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		keepClaim := true
 		for {
 			if ctx.Err() != nil {
 				return
@@ -136,7 +139,18 @@ func (w *Worker) startHeartbeatWithTicks(ctx context.Context, item models.Outbou
 				if ctx.Err() != nil {
 					return
 				}
-				if !refreshClaim(refreshContext, db, item) {
+				if pin != "" {
+					pinCtx, cancel := context.WithTimeout(refreshContext, heartbeatWriteTimeout)
+					err := messagestore.RenewAttempt(pinCtx, db, pin)
+					cancel()
+					if err != nil {
+						slog.WarnContext(ctx, "queue: message source pin heartbeat failed", "id", item.ID, "error", err)
+					}
+				}
+				if keepClaim {
+					keepClaim = refreshClaim(refreshContext, db, item)
+				}
+				if !keepClaim && pin == "" {
 					return
 				}
 			}

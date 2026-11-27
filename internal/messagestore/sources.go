@@ -43,6 +43,14 @@ func NewSources(db *gorm.DB, cfg *config.Config) (*Sources, error) {
 	return &Sources{db: db, store: backend}, nil
 }
 
+// WithDB keeps the backend and binds metadata reads to the caller's connection.
+func (s *Sources) WithDB(db *gorm.DB) *Sources {
+	if s == nil {
+		return nil
+	}
+	return &Sources{db: db, store: s.store}
+}
+
 // Stage reserves a key before it starts the upload. The caller supplies the size
 // cap for the complete wire source and any already-extracted header metadata.
 // The reaper owns cleanup even if saving the metadata or acknowledging the
@@ -121,6 +129,12 @@ func (s *Sources) AddReference(ctx context.Context, tx *gorm.DB, ref string) err
 // can tell whether it already released the reference. Once the last owner
 // releases it, the source is permanently eligible for reaping.
 func (s *Sources) ReleaseReference(ctx context.Context, tx *gorm.DB, ref string) error {
+	return ReleaseReference(ctx, tx, ref)
+}
+
+// ReleaseReference drops an owner from a transaction that needs no access to
+// the storage backend.
+func ReleaseReference(ctx context.Context, tx *gorm.DB, ref string) error {
 	if !isSourceTransaction(tx) {
 		return ErrSourceTransaction
 	}

@@ -22,6 +22,10 @@ type OutboundQueue struct {
 	// and finding a row need do nothing; a raw query's Scan calls JoinSource itself.
 	RawMessage string `gorm:"type:text" json:"-"`
 	RawOctets  []byte `gorm:"type:bytea" json:"-"`
+	// SourceRef owns one reference to an immutable, already-prepared message.
+	// SourceHeaders is its bounded RFC 5322 header metadata, loaded by the worker.
+	SourceRef     *string `gorm:"index:,where:source_ref IS NOT NULL;check:queue_source_is_exclusive,source_ref IS NULL OR (coalesce(raw_message, '') = '' AND raw_octets IS NULL)" json:"-"`
+	SourceHeaders string  `gorm:"-" json:"-"`
 	// BodyType is the SMTP BODY= parameter declared for this message at submission
 	// (7BIT, 8BITMIME, or BINARYMIME; empty when the client declared none). The
 	// outbound worker consults it so it never relays 8-bit content to a next hop

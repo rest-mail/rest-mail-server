@@ -22,6 +22,7 @@ import (
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
@@ -281,7 +282,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	messageSources, err := messagestore.NewSources(database, cfg)
+	if err != nil {
+		slog.Error("failed to configure outbound message source storage", "error", err)
+		os.Exit(1)
+	}
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
+	queueWorker.SetMessageSources(messageSources)
 	queueWorker.EnableTestReset(cfg)
 	queueWorker.SetDestinationLimit(cfg.QueueMaxPerDestination)
 	queueWorker.SetRESTMAILRootCAs(restmailRoots)
