@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -1363,6 +1364,24 @@ func (c *Config) JSFilterURL() string {
 // every javascript filter fails, with its failure_action (defer by default).
 func (c *Config) JSFilterToken() string {
 	return getEnv("JS_FILTER_TOKEN", "")
+}
+
+// DefaultJSFilterMaxBodyBytes is the largest request body the JS filter sidecar
+// accepts unless JS_FILTER_MAX_BODY_BYTES says otherwise (32 MiB), the same
+// default as projects/js-filter-sidecar/server.js.
+const DefaultJSFilterMaxBodyBytes int64 = 32 * 1024 * 1024
+
+// JSFilterMaxBodyBytes returns the sidecar's request body limit
+// (JS_FILTER_MAX_BODY_BYTES), read as the sidecar reads it: a positive number,
+// fractions dropped, anything else the default. Give the API the value the
+// sidecar runs with, and it refuses a larger request itself instead of uploading
+// it to be answered with 413.
+func (c *Config) JSFilterMaxBodyBytes() int64 {
+	n, err := strconv.ParseFloat(strings.TrimSpace(getEnv("JS_FILTER_MAX_BODY_BYTES", "")), 64)
+	if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 1 || n >= 1<<62 {
+		return DefaultJSFilterMaxBodyBytes
+	}
+	return int64(n)
 }
 
 // END JS filter sidecar

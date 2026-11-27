@@ -312,7 +312,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("webhook", filters.NewWebhookWithLimit(cfg.WebhookMaxRequestBytes()))
 	// #160: javascript filters run on the deployment's sidecar, authenticated
 	// with its token; a pipeline's config cannot point them elsewhere.
-	jsSidecar := filters.JSSidecar{URL: cfg.JSFilterURL(), Token: cfg.JSFilterToken()}
+	jsSidecar := filters.JSSidecar{URL: cfg.JSFilterURL(), Token: cfg.JSFilterToken(), MaxBodyBytes: cfg.JSFilterMaxBodyBytes()}
 	pipeline.DefaultRegistry.Register("javascript", filters.NewJavaScriptWithSidecar(jsSidecar))
 
 	// The message-processing engine carries the metrics observer so real

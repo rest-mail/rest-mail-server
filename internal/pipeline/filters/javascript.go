@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,18 +22,84 @@ import (
 type JSSidecar struct {
 	URL   string
 	Token string
+	// MaxBodyBytes is the largest request body the sidecar accepts
+	// (JS_FILTER_MAX_BODY_BYTES on both sides). Zero means the default,
+	// rmconfig.DefaultJSFilterMaxBodyBytes. The javascript filter refuses a larger
+	// request itself, so the message is not uploaded just to be answered with 413.
+	MaxBodyBytes int64
+}
+
+func (s JSSidecar) maxBodyBytes() int64 {
+	if s.MaxBodyBytes > 0 {
+		return s.MaxBodyBytes
+	}
+	return rmconfig.DefaultJSFilterMaxBodyBytes
 }
 
 // Post sends body to one of the sidecar's endpoints ("/execute", "/validate")
 // with the token, so the sidecar knows the request comes from the API.
 func (s JSSidecar) Post(ctx context.Context, client *http.Client, path string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.URL, "/")+path, bytes.NewReader(body))
+	return s.post(ctx, client, path, sidecarRequestBody{body})
+}
+
+// post sends a body whose parts are not joined into one slice.
+func (s JSSidecar) post(ctx context.Context, client *http.Client, path string, body sidecarRequestBody) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.URL, "/")+path, body.reader())
 	if err != nil {
 		return nil, fmt.Errorf("create sidecar request: %w", err)
 	}
+	req.ContentLength = body.size()
+	if req.ContentLength == 0 {
+		req.Body = http.NoBody
+	}
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(body.reader()), nil }
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.Token)
 	return client.Do(req)
+}
+
+// sidecarRequestBody is a request body kept as the pieces it is made of, so a
+// message the size of the sidecar's limit is not copied into one more buffer to be
+// sent.
+type sidecarRequestBody [][]byte
+
+func (b sidecarRequestBody) size() int64 {
+	var n int64
+	for _, part := range b {
+		n += int64(len(part))
+	}
+	return n
+}
+
+func (b sidecarRequestBody) reader() io.Reader {
+	readers := make([]io.Reader, len(b))
+	for i, part := range b {
+		readers[i] = bytes.NewReader(part)
+	}
+	return io.MultiReader(readers...)
+}
+
+// bytes joins the pieces; only tests and small bodies need it.
+func (b sidecarRequestBody) bytes() []byte {
+	return bytes.Join(b, nil)
+}
+
+// executeRequest is POST /execute's body, SidecarExecute{Script, Email, TimeoutMS}
+// as encoding/json writes it, with the message marshalled once and sent as it is
+// rather than marshalled again inside the envelope.
+func executeRequest(script string, message []byte, timeoutMS int) (sidecarRequestBody, error) {
+	scriptJSON, err := json.Marshal(script)
+	if err != nil {
+		return nil, fmt.Errorf("marshal sidecar request: %w", err)
+	}
+	head := append(make([]byte, 0, len(scriptJSON)+32), `{"script":`...)
+	head = append(head, scriptJSON...)
+	head = append(head, `,"email":`...)
+	tail := []byte("}")
+	if timeoutMS != 0 { // omitempty, as SidecarExecute.TimeoutMS
+		tail = append(strconv.AppendInt([]byte(`,"timeout_ms":`), int64(timeoutMS), 10), '}')
+	}
+	return sidecarRequestBody{head, message, tail}, nil
 }
 
 type jsFilterConfig struct {
@@ -144,25 +212,32 @@ func (f *jsFilter) fail(result, detail string) *pipeline.FilterResult {
 func (f *jsFilter) Name() string              { return "javascript" }
 func (f *jsFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
-func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+// request is the body of POST /execute for email: the message marshalled once.
+func (f *jsFilter) request(email *pipeline.EmailJSON) (sidecarRequestBody, error) {
 	message, err := json.Marshal(email)
 	if err != nil {
 		return nil, fmt.Errorf("marshal the email for the sidecar: %w", err)
 	}
-	bodyBytes, err := json.Marshal(SidecarExecute{
-		Script:    f.script,
-		Email:     message,
-		TimeoutMS: int(f.timeout.Milliseconds()),
-	})
+	return executeRequest(f.script, message, int(f.timeout.Milliseconds()))
+}
+
+func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	body, err := f.request(email)
 	if err != nil {
-		return nil, fmt.Errorf("marshal sidecar request: %w", err)
+		return nil, err
+	}
+	// The sidecar answers 413 to a body over its limit once it has been uploaded;
+	// the same refusal is made here, with the sidecar's own words, before any of it
+	// is sent.
+	if limit := f.sidecar.maxBodyBytes(); body.size() > limit {
+		return f.fail("error", fmt.Sprintf("script error: request body too large (limit %d bytes)", limit)), nil
 	}
 
 	client := &http.Client{
 		Timeout: f.timeout + sidecarHTTPHeadroom,
 	}
 
-	resp, err := f.sidecar.Post(ctx, client, "/execute", bodyBytes)
+	resp, err := f.sidecar.post(ctx, client, "/execute", body)
 	if err != nil {
 		return f.fail("error", fmt.Sprintf("sidecar request failed: %v", err)), nil
 	}
