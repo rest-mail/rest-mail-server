@@ -158,7 +158,7 @@ Bounded streaming proof: [#2238](https://github.com/rest-mail/rest-mail-server/p
 | AC03b in-flight limit configurable and distinguishable | **P** | chart default, override and zero; held rows excluded from alertable backlog |
 | AC04 receiver backoff policy explicit and isolated | D | domain-vs-MX decision not recorded |
 | AC05 DSN actions and provenance cannot mislead | **P** | delivering-row races fenced |
-| AC01 transport defaults enforced | **P** + R | SMTP startup MTA-STS policy and signing lookup failure handling are proven below; installed chart defaults, listener and SNI controls are still needed |
+| AC01 transport defaults enforced | **P** + R | SMTP startup MTA-STS policy and signing lookup failure handling are proven below; the chart's production default is guarded in the render test; a receipt mapping the listener and SNI tests is still needed |
 | AC02 real deployment sends and receives authenticated mail | X | live install |
 | AC03 receiving server verifies our authentication | X | third-party receiver |
 | AC04 complaint ingestion attributable and safe | D | ingestion provider decision |
@@ -174,6 +174,8 @@ Partial transport AC01 / SRC-292 evidence:
 
 - [#2257](https://github.com/rest-mail/rest-mail-server/pull/2257): [`TestSMTPGatewayMTASTSPolicy`](../internal/config/transport_policy_test.go) covers 24 combinations of environment and MTA-STS value through the config loader and SMTP startup guard. The guard refuses an explicit disable in production, including when the environment is unset. Development and test allow it with a warning; the default remains enabled. [CI](https://github.com/rest-mail/rest-mail-server/actions/runs/45326973449) and [E2E](https://github.com/rest-mail/rest-mail-server/actions/runs/45326973409) passed on `58a8f9ad6c78bcae7279566398030f37207377cc`, whose tree matches squash commit `862456de7434a9d47e1c021807f27db15fc56ba7`.
 - [#2263](https://github.com/rest-mail/rest-mail-server/pull/2263): [`TestSigningDomainLookup`](../internal/outbound/domain_key_test.go) runs nine cases across DKIM signing, outbound preparation and ARC sealing. A known-unhosted domain leaves the message unchanged; a failed or cancelled lookup returns an error and no message rather than continuing unsigned. [CI](https://github.com/rest-mail/rest-mail-server/actions/runs/45299947571) and [E2E](https://github.com/rest-mail/rest-mail-server/actions/runs/45299947419) passed on `aec2a5fe52973c6fb0df90f049aa2d5a74deb264`. All files changed by squash commit `a7cac7bfd5bc8830b446be96fe0471a1d09d05c9` match that tested head; the complete trees differ.
+
+- Chart default (pending merge): `test_ac01_environment_is` and `test_ac01_mtasts_not_overridden` in [`render-test.sh`](../helm/restmail/tests/render-test.sh) require the API ConfigMap and all three gateway containers to render `ENVIRONMENT=production` by default and the development overlay to render `development`, and refuse any `MTASTS_ENFORCE` override in the chart. Three mutations each failed the run: one gateway defaulted to `development`, an `MTASTS_ENFORCE: "false"` env entry, and the API ConfigMap without `ENVIRONMENT`.
 
 Re-run these focused guards with `go test -count=1 -v -run '^(TestSMTPGatewayMTASTSPolicy|TestSigningDomainLookup)$' ./internal/config ./internal/outbound`. Neither receipt proves policy enforcement on a live SMTP delivery, listener or SNI behavior, or an independent receiver verdict.
 
