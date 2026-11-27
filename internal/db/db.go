@@ -106,6 +106,7 @@ func autoMigrate(db *gorm.DB) error {
 		// The API's ACME account key per CA directory, reused by renewals.
 		&models.ACMEAccount{},
 		&models.OutboundQueue{},
+		&models.MessageSource{},
 		// Addresses a domain no longer sends to after a hard bounce (#141).
 		&models.Suppression{},
 		&models.DNSBLListingEvent{},

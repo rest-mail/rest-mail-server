@@ -55,11 +55,22 @@ type Store interface {
 	Delete(ctx context.Context, ref string) error
 }
 
+// sourceBackend lets the source ledger reserve a key before any object can exist.
+type sourceBackend interface {
+	Store
+	newRef() string
+	putNamed(ctx context.Context, ref string, source io.Reader, limit int64) (Object, error)
+}
+
 // New is the store the configuration names: S3 where attachments are in S3, which a cluster
 // uses because it answers from whichever node asks, and the filesystem otherwise, for a single
 // server with a volume every container can reach. Its objects sit beside attachments, never among them, because the attachment
 // cleaner removes what no attachment refers to.
 func New(c config.MessageStorageConfig, attachments config.AttachmentStorageConfig) (Store, error) {
+	return newBackend(c, attachments)
+}
+
+func newBackend(c config.MessageStorageConfig, attachments config.AttachmentStorageConfig) (sourceBackend, error) {
 	switch attachments.Type {
 	case "s3":
 		attachments.S3Prefix = c.S3Prefix
@@ -90,7 +101,10 @@ func limitReader(source io.Reader, limit int64) *limited {
 }
 
 func (l *limited) Read(p []byte) (int, error) {
-	if int64(len(p)) > l.left+1 {
+	if l.left < 0 {
+		return 0, ErrTooLarge
+	}
+	if int64(len(p)) > l.left {
 		p = p[:l.left+1]
 	}
 	n, err := l.source.Read(p)

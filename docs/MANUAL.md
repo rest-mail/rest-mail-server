@@ -138,6 +138,7 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - `quota_usage` — mailbox_id, subject_bytes, body_bytes, attachment_bytes, total_bytes (GENERATED), message_count
 - `attachments` — message_id, filename, content_type, size, checksum (indexed for dedup), storage_type, storage_ref, is_inline
 - `outbound_queue` — sender, recipient, domain, raw_message, status, attempts, last_error, expires_at (72 h default), max_retries (30 default)
+- `message_sources` — object key, byte length, SHA-256 digest, up to 64 KiB of header metadata, state, owner count and cleanup deadline.
 - `vacation_configs` — mailbox_id (unique), enabled, subject, body, start_date, end_date
 - `bans` — ip, reason, protocol (smtp|imap|pop3|all), created_by, expires_at (NULL = permanent)
 
@@ -829,6 +830,9 @@ Implemented in slices; issue #153 remains open.
 | `TOTP_2FA_ENABLED` | `true` | Lets accounts enroll in TOTP 2FA. The bootstrap admin must enroll, so the API refuses to create one while this is off. |
 | `ENVIRONMENT` | `production` | Development/test runs must explicitly set `development` or `test` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `MESSAGE_STORAGE_DIR` | `/messages` | Absolute path to the message source volume when attachment storage uses the filesystem. Mount the same volume wherever the stored sources are used. |
+| `MESSAGE_S3_PREFIX` | `messages/` | Message source key prefix in the configured attachment bucket. The prefix must end in `/` and be disjoint from `ATTACHMENT_S3_PREFIX`. |
+| `MESSAGE_SPOOL_DIR` | System temporary directory | Local scratch space for message source uploads to S3. |
 | `PIPELINE_FILTER_ERROR_ACTION` | `defer` | What a pipeline does with a filter that is missing, fails, panics or runs out of time: `defer` (temp-fail, the sender retries), `reject`, or `continue` (skip the filter). Any other value is `defer` |
 | `PIPELINE_FILTER_TIMEOUT_SECONDS` | `60` | Longest one filter may run before it is stopped and handled as `PIPELINE_FILTER_ERROR_ACTION` says. Whole seconds; a non-positive or malformed value is the default |
 | `PIPELINE_TOTAL_TIMEOUT_SECONDS` | `120` | Longest one run of a pipeline may take, all its filters together. When it passes, the filter running is stopped and the rest are not started, each handled as a filter that ran out of time (deferred by default). A message whose required checks and content checks run apart has this for each. Whole seconds; a non-positive or malformed value is the default |
