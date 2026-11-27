@@ -1068,7 +1068,12 @@ func (c *Client) checkStatus(resp *http.Response) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
-	body, _ := io.ReadAll(resp.Body)
+	const maxErrorBodyBytes = 64 << 10
+	// Read one extra byte to distinguish truncation from a body at the limit.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
+	if len(body) > maxErrorBodyBytes {
+		body = append(body[:maxErrorBodyBytes], "\n[response body truncated]"...)
+	}
 	return &APIError{
 		StatusCode: resp.StatusCode,
 		Body:       string(body),
