@@ -2953,6 +2953,31 @@ CI's `Test report` has no live results to read, so `--defer-live` leaves it the
 pairs a live runner selects, and they are judged in the merge queue instead. Every
 other pair still fails there.
 
+### IMAP and POP3 reference-client report (#2107)
+
+The E2E live-proof job also runs `reference_mail_live.py`. It imports the original
+octets into a disposable mailbox, checks what Python's IMAP and POP3 clients receive,
+and removes the mailbox. Read `reference-mail/report.json` in the
+`live-example-proofs` artifact. The report records the deployed commit, topology,
+and the expected and actual value of each check. The runner exits nonzero on any
+failure. Its results are independent of the API example-proof union.
+
+To run it separately, prepare the MFA administrator on the disposable topology
+with `chore test:contract-mfa-admin` and set the three endpoint addresses as seen
+from the machine running Python. Use the exact SHA built into the topology.
+
+```sh
+python3 -B tests/contract/reference_mail_live.py "$CONTRACT_ENDPOINT" \
+  "${CONTRACT_LIVE_PROOFS:-.cache/contract/live-proofs}/reference-mail/report.json" \
+  --commit "$DEPLOYED_SHA" --topology "$TOPOLOGY_NAME" \
+  --imap-host "$IMAP_HOST" --imap-port "$IMAP_PORT" \
+  --pop3-host "$POP3_HOST" --pop3-port "$POP3_PORT" --ca-file "$TESTBED_CA"
+```
+
+Run inside the topology network or use its forwarded listener ports. When using
+loopback forwarding with the disposable testbed's certificates, use
+`--insecure` in place of `--ca-file`.
+
 ### In-process example proofs
 
 Give `RESTMAIL_EXAMPLE_PROOFS` a fresh path for each run. The Go writer merges an
