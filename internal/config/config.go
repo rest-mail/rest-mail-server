@@ -1152,6 +1152,14 @@ const DefaultPipelineFilterErrorAction = "defer"
 // preempts a legitimately slow scan. Override with PIPELINE_FILTER_TIMEOUT_SECONDS.
 const DefaultPipelineFilterTimeoutSeconds = 60
 
+// DefaultPipelineTotalTimeoutSeconds is the deadline for one run of a pipeline,
+// all its filters together (#2107). Without it a run's worst case is the number
+// of filters times the per-filter backstop. Twice that backstop leaves room for
+// the two slowest built-in scans together and stays well under the 10 minutes an
+// SMTP client waits for the reply to the end of DATA (RFC 5321 §4.5.3.2.6).
+// Override with PIPELINE_TOTAL_TIMEOUT_SECONDS.
+const DefaultPipelineTotalTimeoutSeconds = 120
+
 // RestmailDeliverAuthSettings configures server-to-server authentication on the
 // RESTMAIL inbound-delivery endpoint POST /restmail/messages (OSI-3). Without
 // it any host can inject a spoofed-From message into a local mailbox
@@ -1232,6 +1240,20 @@ func (c *Config) PipelineFilterTimeout() time.Duration {
 	secs := getEnvInt("PIPELINE_FILTER_TIMEOUT_SECONDS", DefaultPipelineFilterTimeoutSeconds)
 	if secs <= 0 {
 		secs = DefaultPipelineFilterTimeoutSeconds
+	}
+	return time.Duration(secs) * time.Second
+}
+
+// PipelineTotalTimeout returns the deadline for one run of a pipeline, all its
+// filters together. When it passes the filter running is stopped and the rest
+// are not started, each routed through PipelineFilterErrorAction as a filter
+// that timed out (deferred by default). Set with PIPELINE_TOTAL_TIMEOUT_SECONDS
+// (a whole number of seconds). A malformed or non-positive value falls back to
+// the default rather than removing the deadline.
+func (c *Config) PipelineTotalTimeout() time.Duration {
+	secs := getEnvInt("PIPELINE_TOTAL_TIMEOUT_SECONDS", DefaultPipelineTotalTimeoutSeconds)
+	if secs <= 0 {
+		secs = DefaultPipelineTotalTimeoutSeconds
 	}
 	return time.Duration(secs) * time.Second
 }

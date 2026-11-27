@@ -44,7 +44,7 @@ var allEnvKeys = []string{
 	"TRACE_RETENTION_DAYS", "TRACE_SAMPLE_RATE", "TRACE_MAX_ROWS", "ROLLUP_INTERVAL",
 	"ENVIRONMENT",
 	"SECURITY_HEADERS_ENABLED", "HSTS_MAX_AGE_SECONDS",
-	"PIPELINE_FILTER_ERROR_ACTION", "PIPELINE_FILTER_TIMEOUT_SECONDS",
+	"PIPELINE_FILTER_ERROR_ACTION", "PIPELINE_FILTER_TIMEOUT_SECONDS", "PIPELINE_TOTAL_TIMEOUT_SECONDS",
 	"INTERNAL_DELIVERY_FLOOR_RATE",
 	"DB_SSLMODE", "DB_ALLOW_INSECURE",
 	"QUEUE_TLS_INSECURE", "MTASTS_ENFORCE", "API_TLS_TERMINATED_BY_PROXY",
@@ -893,6 +893,39 @@ func TestPipelineFilterTimeout(t *testing.T) {
 			t.Setenv("PIPELINE_FILTER_TIMEOUT_SECONDS", bad)
 			if got := cfg.PipelineFilterTimeout(); got != want {
 				t.Errorf("PipelineFilterTimeout() with %q = %v, want default %v (backstop never disabled)", bad, got, want)
+			}
+		}
+	})
+}
+
+// TestPipelineTotalTimeout covers the deadline for a whole run of a pipeline: the
+// default when unset, an override, and the default again for a value that is
+// not a positive whole number of seconds (the deadline is never removed).
+func TestPipelineTotalTimeout(t *testing.T) {
+	cfg := &Config{}
+	want := time.Duration(DefaultPipelineTotalTimeoutSeconds) * time.Second
+
+	t.Run("default when unset", func(t *testing.T) {
+		clearEnv(t)
+		if got := cfg.PipelineTotalTimeout(); got != want {
+			t.Errorf("PipelineTotalTimeout() = %v, want default %v", got, want)
+		}
+	})
+
+	t.Run("override", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("PIPELINE_TOTAL_TIMEOUT_SECONDS", "90")
+		if got := cfg.PipelineTotalTimeout(); got != 90*time.Second {
+			t.Errorf("PipelineTotalTimeout() = %v, want 90s", got)
+		}
+	})
+
+	t.Run("non-positive and malformed fall back to the default", func(t *testing.T) {
+		for _, bad := range []string{"0", "-5", "abc", "2m"} {
+			clearEnv(t)
+			t.Setenv("PIPELINE_TOTAL_TIMEOUT_SECONDS", bad)
+			if got := cfg.PipelineTotalTimeout(); got != want {
+				t.Errorf("PipelineTotalTimeout() with %q = %v, want default %v", bad, got, want)
 			}
 		}
 	})

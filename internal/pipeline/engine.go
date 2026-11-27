@@ -34,6 +34,13 @@ type Engine struct {
 	// filter's own I/O timeouts (webhook 5s, clamav/rspamd 30s), not in place of
 	// them. Zero disables the backstop. Override via SetFilterTimeout.
 	filterTimeout time.Duration
+	// totalTimeout bounds one whole run of ExecuteStage: every filter of the
+	// stage shares it. Without it the worst case is the number of filters times
+	// filterTimeout. When it passes, the filter in flight is stopped and the
+	// filters after it do not start; each is a filter error, routed through
+	// filterErrorAction exactly as a filter that timed out on its own. Zero
+	// disables it. Override via SetTotalTimeout.
+	totalTimeout time.Duration
 }
 
 // DefaultFilterTimeout is the per-filter execution backstop applied unless
@@ -41,6 +48,18 @@ type Engine struct {
 // filter's own I/O timeout (the slowest being clamav/rspamd at 30s) so it never
 // preempts a legitimately slow scan — it only fires for a genuinely hung filter.
 const DefaultFilterTimeout = 60 * time.Second
+
+// DefaultTotalTimeout is the deadline for one run of a pipeline, all its filters
+// together, unless overridden via SetTotalTimeout. It is twice the per-filter
+// backstop, room for the two slowest built-in scans (clamav and rspamd, 30s each)
+// and more, and well under the 10 minutes an SMTP client waits for the reply to
+// the end of DATA (RFC 5321 §4.5.3.2.6).
+const DefaultTotalTimeout = 2 * DefaultFilterTimeout
+
+// ErrPipelineDeadline is the cause a run's context carries when the run's own
+// deadline (SetTotalTimeout) passed, telling it apart from a filter's own
+// timeout and from a caller that went away.
+var ErrPipelineDeadline = errors.New("pipeline deadline exceeded")
 
 // NewEngine creates a pipeline execution engine.
 //
@@ -62,7 +81,15 @@ func NewEngine(registry *Registry, logger *slog.Logger, observer ...Observer) *E
 		observer:          obs,
 		filterErrorAction: ActionDefer, // fail-closed by default (OSI-18)
 		filterTimeout:     DefaultFilterTimeout,
+		totalTimeout:      DefaultTotalTimeout,
 	}
+}
+
+// SetTotalTimeout overrides the deadline for one run of a pipeline, all its
+// filters together. A non-positive value disables it. Call once at wiring time —
+// it is not safe to change while Execute is running.
+func (e *Engine) SetTotalTimeout(d time.Duration) {
+	e.totalTimeout = d
 }
 
 // SetFilterTimeout overrides the per-filter execution backstop. A non-positive
@@ -128,6 +155,14 @@ func (e *Engine) ExecuteStage(ctx context.Context, pipeline *PipelineConfig, ema
 		attribute.String("pipeline.direction", pipeline.Direction),
 	))
 	defer runSpan.End()
+	// One deadline for the whole run (#2107): every filter's context derives from
+	// it, so the filter in flight when it passes is stopped as by its own
+	// timeout, and the check before each filter keeps the rest from starting.
+	if e.totalTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeoutCause(ctx, e.totalTimeout, ErrPipelineDeadline)
+		defer cancel()
+	}
 	result := &ExecutionResult{
 		FinalAction: ActionContinue,
 		FinalEmail:  email,
@@ -198,6 +233,24 @@ Loop:
 			recordStep(step)
 			e.logger.DebugContext(ctx, "filter skipped", "filter", fc.Name, "reason", step.SkipReason)
 			continue
+		}
+
+		// The run's deadline passed, or its caller went away, after the last
+		// filter: this one is not started. It is a filter error like the timeout
+		// that stopped the last one, so the same policy decides: deferred by
+		// default, skipped under the fail-open choice.
+		if err := ctx.Err(); err != nil {
+			step.Error = "not run: " + e.stopReason(ctx)
+			step.Action = e.filterErrorAction
+			step.Duration = Elapsed(time.Since(stepStart))
+			recordStep(step)
+			e.logger.ErrorContext(ctx, "filter not run", "filter", fc.Name, "error", step.Error, "fail_action", e.filterErrorAction)
+			if e.filterErrorAction == ActionContinue {
+				continue // fail-open
+			}
+			result.FinalAction = e.filterErrorAction
+			result.RejectMsg = fmt.Sprintf("filter %q not run", fc.Name)
+			break Loop
 		}
 
 		// Create the filter instance. A create failure means an unknown, renamed,
@@ -359,11 +412,24 @@ func (e *Engine) runFilter(ctx context.Context, filter Filter, email *EmailJSON)
 		// The backstop deadline (or an upstream cancellation) fired before the
 		// filter returned. Abandon the in-flight goroutine and fail this step.
 		cause := context.Cause(fctx)
-		if errors.Is(cause, context.Canceled) {
-			return nil, fmt.Errorf("filter execution aborted, the caller cancelled it: %w", cause)
+		if errors.Is(cause, context.Canceled) || errors.Is(cause, ErrPipelineDeadline) {
+			return nil, fmt.Errorf("filter execution aborted, %s: %w", e.stopReason(fctx), cause)
 		}
 		return nil, fmt.Errorf("filter execution aborted (timeout %s): %w", e.filterTimeout, cause)
 	}
+}
+
+// stopReason says why a run's context ended: its caller cancelled it, or the
+// run's own deadline passed.
+func (e *Engine) stopReason(ctx context.Context) string {
+	cause := context.Cause(ctx)
+	if errors.Is(cause, ErrPipelineDeadline) {
+		return fmt.Sprintf("the pipeline's deadline (%s) passed", e.totalTimeout)
+	}
+	if errors.Is(cause, context.Canceled) {
+		return "the caller cancelled it"
+	}
+	return fmt.Sprintf("its context ended: %v", cause)
 }
 
 // FilterExecutionError distinguishes a running filter's failure from a refused

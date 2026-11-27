@@ -131,7 +131,10 @@ func newSieveFilter(config []byte, policy SieveRedirectPolicy) (pipeline.Filter,
 func (f *sieveFilter) Name() string              { return "sieve" }
 func (f *sieveFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
-func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *sieveFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("sieve: not evaluated: %w", context.Cause(ctx))
+	}
 	if f.script.Empty() {
 		return &pipeline.FilterResult{
 			Type:    pipeline.FilterTypeTransform,
@@ -160,10 +163,24 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 		email:        &modified,
 		redirect:     f.redirect,
 		localDomains: recipientDomains(&modified),
+		ctx:          ctx,
+	}
+	msg := sieveMessage(&modified)
+	if lists, ok := msg.Headers.Lists.(*sieveLists); ok {
+		lists.ctx = ctx
 	}
 	// Evaluate applies the RFC 5228 implicit-keep model itself and returns the
 	// terminal Outcome; sieveResult maps that Outcome onto the pipeline result.
-	outcome := f.script.Evaluate(sieveMessage(&modified), exec)
+	outcome := f.script.Evaluate(msg, exec)
+	// go-sieve takes no context. The adapter checks it at each point it is
+	// called back (every action, and every address an address test reads) and
+	// stops the evaluation there by panicking, which Evaluate recovers into
+	// outcome.Error. A stopped evaluation is not the RFC 5228 fail-safe keep: it
+	// decided nothing, so it is this filter's error, and the engine's policy for
+	// a filter that ran out of time applies.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("sieve: evaluation stopped: %w", context.Cause(ctx))
+	}
 	if outcome.Error != nil {
 		// RFC 5228 §2.10.6: a runtime error fails safe to an implicit keep — the
 		// message is kept, never lost. Log it so the failure stays visible.
@@ -334,6 +351,9 @@ var sieveRawDecoder = &mime.WordDecoder{}
 // message had when evaluation began.
 type sieveLists struct {
 	from, to, cc, bcc pipeline.AddressList
+	// ctx, when set, is checked before each address is handed to a test, so a
+	// cancelled evaluation stops in a long list (see stopIfDone).
+	ctx context.Context
 	// built keeps what All made, so a script of many header or size tests builds each list once.
 	built map[string][]sieve.Address
 }
@@ -363,6 +383,7 @@ func (l *sieveLists) field(name string) pipeline.AddressList {
 
 // All is every address of a field, for a test that reads the whole of it.
 func (l *sieveLists) All(name string) []sieve.Address {
+	stopIfDone(l.ctx)
 	if all, done := l.built[name]; done {
 		return all
 	}
@@ -381,18 +402,43 @@ func (l *sieveLists) Specs(name string, visit func(spec string) bool) {
 	if list.Len() == 0 {
 		return
 	}
-	visitUntil(visit, list.VisitAddresses)
+	visitUntil(l.checked(visit), list.VisitAddresses)
 }
 
 // RawSpecs visits each address of a raw value as net/mail reads it: all of them, or none when any of
 // the value doesn't read.
 func (l *sieveLists) RawSpecs(raw string, visit func(spec string) bool) {
+	stopIfDone(l.ctx)
 	if _, ok := mailaddr.Valid(raw, sieveRawDecoder, nil); !ok {
 		return
 	}
-	visitUntil(visit, func(each func(string)) bool {
+	visitUntil(l.checked(visit), func(each func(string)) bool {
 		return mailaddr.EachAddress(raw, sieveRawDecoder, nil, each) == nil
 	})
+}
+
+// checked checks the evaluation's context before each address it visits.
+func (l *sieveLists) checked(visit func(spec string) bool) func(spec string) bool {
+	if l.ctx == nil {
+		return visit
+	}
+	return func(spec string) bool {
+		stopIfDone(l.ctx)
+		return visit(spec)
+	}
+}
+
+// errSieveStopped is the panic value stopIfDone stops an evaluation with.
+var errSieveStopped = errors.New("sieve: evaluation stopped, its context ended")
+
+// stopIfDone stops a running evaluation once ctx has ended. go-sieve has no
+// context or interrupt of its own; a panic from a host callback is the one way
+// to end Evaluate early, which recovers it into Outcome.Error. A nil ctx (a
+// message evaluated outside Execute) is never stopped.
+func stopIfDone(ctx context.Context) {
+	if ctx != nil && ctx.Err() != nil {
+		panic(fmt.Errorf("%w: %w", errSieveStopped, context.Cause(ctx)))
+	}
 }
 
 // visitUntil stops calling visit once it answers false. The reader goes on to the end of its field,
@@ -451,14 +497,20 @@ type metadataExecutor struct {
 	// external targets are governed by the policy (deny by default).
 	redirect     SieveRedirectPolicy
 	localDomains []string
+
+	// ctx is checked at each action, so a cancelled evaluation records nothing
+	// more (see stopIfDone).
+	ctx context.Context
 }
 
 func (e *metadataExecutor) Keep() {
+	stopIfDone(e.ctx)
 	e.hasLocalDelivery = true
 	e.applied = append(e.applied, "keep")
 }
 
 func (e *metadataExecutor) FileInto(folder string, create bool) {
+	stopIfDone(e.ctx)
 	ensureMetadata(e.email)
 	e.email.Metadata["deliver_to_folder"] = folder
 	if create {
@@ -472,6 +524,7 @@ func (e *metadataExecutor) FileInto(folder string, create bool) {
 // handling here: forwarding is the same either way, and whether the message is
 // also kept locally is decided by outcome.ImplicitKeep in sieveResult.
 func (e *metadataExecutor) Redirect(addr string, isCopy bool) {
+	stopIfDone(e.ctx)
 	if !e.redirectAllowed(addr) {
 		// Deny: do NOT record the target, so the delivery path never forwards the
 		// message off-domain. This is the OSI-13 exfiltration guard.
@@ -614,11 +667,13 @@ func domainOf(addr string) string {
 }
 
 func (e *metadataExecutor) Flag(op string, flags []string) {
+	stopIfDone(e.ctx)
 	applyFlags(e.email, op, flags)
 	e.applied = append(e.applied, op+":"+strings.Join(flags, " "))
 }
 
 func (e *metadataExecutor) Vacation(v sieve.Vacation) {
+	stopIfDone(e.ctx)
 	ensureMetadata(e.email)
 
 	// go-sieve only calls Vacation when a reply is allowed (RFC 5230): the
@@ -669,6 +724,7 @@ func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 }
 
 func (e *metadataExecutor) Notify(method, message string) {
+	stopIfDone(e.ctx)
 	ensureMetadata(e.email)
 	e.email.Metadata["notify_method"] = method
 	e.email.Metadata["notify_message"] = message
