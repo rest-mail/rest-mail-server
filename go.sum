@@ -160,8 +160,6 @@ github.com/rest-mail/go-dmarc v0.6.0 h1:cSMHsMR9Hea9Rnn53qn0pxLW8zu0Kimjj9LuFHvU
 github.com/rest-mail/go-dmarc v0.6.0/go.mod h1:Q0+iwDfb++dpj3MObRvmKvcRFpykflPbluXJVGENvIo=
 github.com/rest-mail/go-mtasts v0.5.0 h1:+VxjzpDmlIneOXKTK0ECn8J9wfpyX6c83oTfSLh6DrM=
 github.com/rest-mail/go-mtasts v0.5.0/go.mod h1:2jtzwtnBD7BM+MpyDdpq5SwlYZtVQEqAzLKIf2lbVBY=
-github.com/rest-mail/go-pop3 v0.4.0 h1:IoSQXGTJgjZVkkTZQQ6Byko9cSkotD7+xrdMTp3AmHY=
-github.com/rest-mail/go-pop3 v0.4.0/go.mod h1:fH/VVM73Bq7WEue4T/sIolhTa+uWsmD+v/vyb5R8EM8=
 github.com/rest-mail/go-sieve v0.9.0 h1:bsA+tgDhoxYkh0l1171cIMn6eAxmFmdgxxsINXVAffE=
 github.com/rest-mail/go-sieve v0.9.0/go.mod h1:nRzH/o6SMddM7dBUrzscyKA5+ZHPIZ5dtmTfW4u4MIo=
 github.com/rest-mail/go-smtp v0.32.0 h1:aIyHNKqKDtOKvFW2wB7jCS0wnDTCFFxu/g+xa1qobjk=

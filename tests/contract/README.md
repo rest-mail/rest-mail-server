@@ -111,6 +111,9 @@ coverage and the 95% floor. Its 32-bit wire proofs only build here for linux/386
 because a Mac cannot run 386, so only CI shows they pass. The IMAP
 module has a 30-minute limit here and 10 minutes in CI: its checklist is one test
 and took over 10 minutes on a Mac at a load of 300.
+The nested POP3 module runs when it, `go.mod`, `go.sum` or CI's workflow changes, or
+with `--all`, with CI's gates: vet, its own lint, the RFC checklist, race tests with
+coverage, the CPython `poplib` reference test included, and the 95% floor.
 API changes also discover and run every
 `*WithVertrag` test, in three isolated-database shards, rejecting empty
 discovery or a test that skips whole; a subtest that skips itself is named. `--all` forces those examples too. It does not
@@ -126,7 +129,7 @@ checksum-verified Vertrag binary are cached outside the repository, under
 installed the first step ends `COULD-NOT-RUN`, names it and says how to repair the
 venv. To run a suite by hand, use that venv's `python`. Missing Python/Go/
 Docker tools or failed installs are errors, not successful skips. The Go
-toolchain must match CI, including inside the nested IMAP module.
+toolchain must match CI, including inside the nested IMAP and POP3 modules.
 
 The task runs the gate through `scripts/scratch_run.py`, so the whole run has
 `GOTMPDIR` and `TMPDIR` in a directory of its own, removed even after a SIGKILL along

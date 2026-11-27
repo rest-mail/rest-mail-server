@@ -793,6 +793,69 @@ class VertragShards(unittest.TestCase):
             profile = next(call for call in calls if "-coverprofile=" in call)
             self.assertIn(f"-coverprofile={temporary}", profile)
 
+    def test_the_pop3_step_runs_each_gate_ci_runs_on_the_module(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), True)
+            with (
+                patch.object(
+                    local,
+                    "linter",
+                    return_value=(
+                        "/bin/lint",
+                        {"with": {"args": "--timeout=5m --no-config"}},
+                    ),
+                ) as linter,
+                patch.object(local, "run") as commands,
+            ):
+                self.assertIsNone(local.pop3())
+            linter.assert_called_once_with("Run golangci-lint on the POP3 module")
+            calls = [
+                " ".join(str(part) for part in call.args[0])
+                for call in commands.call_args_list
+            ]
+            for expected in (
+                "go vet ./...",
+                "/bin/lint run --timeout=5m --no-config",
+                "go run ./internal/checklist pkg/pop3/rfctest",
+                "go test -race -count=1 -timeout=10m -covermode=atomic -coverpkg=./...",
+                "BEGIN { exit !(t + 0 >= 95) }",
+            ):
+                self.assertTrue(
+                    any(expected in call for call in calls),
+                    f"{expected} not in {calls}",
+                )
+            for call in commands.call_args_list:
+                self.assertEqual(call.kwargs["root"], ROOT / "third_party/go-pop3")
+            test = next(call for call in commands.call_args_list if "-race" in call.args[0])
+            self.assertTrue(test.kwargs["env"]["POP3_REFERENCE_PYTHON"])
+            # The profile stays out of the tree, which a local run must not change.
+            profile = next(call for call in calls if "-coverprofile=" in call)
+            self.assertIn(f"-coverprofile={temporary}", profile)
+        # The floor is CI's, which the module's coverage badge test reads.
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertIn("awk -v t=\"$total\" 'BEGIN { exit !(t + 0 >= 95) }'", workflow)
+
+    def test_the_pop3_step_runs_when_the_module_or_its_toolchain_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            local = gate.Gate(ROOT, Path(temporary), Path(temporary), False)
+            for changed in ("third_party/go-pop3/pkg/pop3/stream.go", "go.mod", "go.sum", ".github/workflows/ci.yml"):
+                local.files = [changed]
+                with (
+                    self.subTest(changed=changed),
+                    patch.object(
+                        local,
+                        "linter",
+                        return_value=("/bin/lint", {"with": {"args": ""}}),
+                    ),
+                    patch.object(local, "run") as commands,
+                ):
+                    self.assertIsNone(local.pop3())
+                    commands.assert_called()
+            local.files = ["internal/gateway/pop3/backend.go"]
+            with patch.object(local, "run") as commands:
+                self.assertIn("NOT REQUIRED", local.pop3())
+            commands.assert_not_called()
+
     def test_the_32_bit_step_compiles_for_linux_and_does_not_claim_to_run(self):
         # macOS has no 386 at all, so the local step can only prove it builds, and the
         # manifest says CI alone runs those wire proofs.

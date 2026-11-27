@@ -52,6 +52,7 @@ STEP_NAMES = (
     "PostgreSQL",
     "Go tests",
     "IMAP module",
+    "POP3 module",
     "Empty database fixtures",
     "Contract fault switch",
     "Contract pairs",
@@ -1677,6 +1678,51 @@ class Gate:
             root=module,
         )
 
+    def pop3(self):
+        """The vendored go-pop3 module's gates, as CI runs them on every change (#2107)."""
+        if not self.all_packages and not any(
+            name.startswith("third_party/go-pop3/")
+            or name in {"go.mod", "go.sum", ".github/workflows/ci.yml"}
+            for name in self.files
+        ):
+            return "NOT REQUIRED: nested POP3 module and its toolchain are unchanged"
+        module = self.root / "third_party/go-pop3"
+        self.run(["go", "vet", "./..."], root=module)
+        binary, step = self.linter("Run golangci-lint on the POP3 module")
+        self.run([binary, "run", *step["with"]["args"].split()], root=module)
+        self.run(["go", "run", "./internal/checklist", "pkg/pop3/rfctest"], root=module)
+        # Not in the module: CI's checkout is thrown away, and this may be a working tree.
+        profile = self.work / "go-pop3-coverage.out"
+        self.run_go_test(
+            [
+                "go",
+                "test",
+                "-race",
+                "-count=1",
+                "-timeout=10m",
+                "-covermode=atomic",
+                "-coverpkg=./...",
+                f"-coverprofile={profile}",
+                "./...",
+            ],
+            root=module,
+            env=dict(self.env, POP3_REFERENCE_PYTHON=str(self.python)),
+        )
+        # CI's "Require at least 95% statement coverage of the POP3 module", on that profile.
+        self.run(
+            [
+                "bash",
+                "-c",
+                "set -euo pipefail; "
+                """total=$(go tool cover -func="$1" | awk '/^total:/ {sub(/%/, "", $3); print $3}'); """
+                'echo "Statement coverage: ${total}%"; '
+                """awk -v t="$total" 'BEGIN { exit !(t + 0 >= 95) }'""",
+                "bash",
+                profile,
+            ],
+            root=module,
+        )
+
     def fixtures(self):
         if not self.all_packages and not any(
             package.endswith(
@@ -2032,6 +2078,7 @@ class Gate:
             self.postgres,
             self.go_tests,
             self.imap,
+            self.pop3,
             self.fixtures,
             self.faults,
             self.fault_pairs,
