@@ -309,6 +309,9 @@ func main() {
 	queueReclaim := cfg.StaleDeliveringReclaim()
 	queueWorker.SetSMTPTimeouts(cfg.QueueSMTPTimeouts)
 	queueWorker.SetDeliveryDeadline(cfg.InternalDeliveryDeadline, queueReclaim)
+	// #2107 AC02: a queued source longer than the largest delivery body the API
+	// accepts bounces without being read.
+	queueWorker.SetMaxSourceOctets(cfg.InternalDeliveryBodyLimit())
 	slog.Info("queue delivery timing configured",
 		"smtp_greeting_timeout", cfg.QueueSMTPTimeouts.Greeting.String(),
 		"smtp_mail_timeout", cfg.QueueSMTPTimeouts.Mail.String(),

@@ -34,7 +34,19 @@ const (
 	// unresponsive instead of holding the SMTP session open for the whole
 	// large-message delivery budget.
 	internalCheckTimeout = 30 * time.Second
+	// defaultMaxRawMessageBytes is the most GetRawMessage reads when the gateway
+	// does not set its own ceiling (WithMaxRawMessageBytes): what
+	// config.InternalDeliveryBodyLimit gives at the default SMTP_MAX_MESSAGE_SIZE,
+	// 3 × 10 MiB + 1 MiB. No stored source can be longer than the delivery body it
+	// arrived in.
+	defaultMaxRawMessageBytes = 3*(10<<20) + 1<<20
 )
+
+// ErrRawMessageTooLarge is GetRawMessage's refusal of a source longer than the
+// client's ceiling (WithMaxRawMessageBytes), whether the API declared that length
+// or sent it. Nothing past the ceiling is read, so a corrupted row or a hostile
+// answer cannot make the gateway allocate more than the ceiling.
+var ErrRawMessageTooLarge = errors.New("raw message exceeds the read ceiling")
 
 // Client is the REST API client used by all gateway protocol handlers.
 //
@@ -69,6 +81,10 @@ type Client struct {
 	// is always a finite, bounded value (never zero/infinite); it defaults to
 	// defaultRequestTimeout when the option is not supplied.
 	msgDeadline time.Duration
+
+	// maxRawBytes is the most GetRawMessage reads of one stored source: always
+	// positive, so the read is always bounded (WithMaxRawMessageBytes).
+	maxRawBytes int64
 
 	// requestID is the connection's ID (#1580), sent as X-Request-Id on every
 	// call so the API's log lines for it carry the gateway's. Empty: none sent.
@@ -175,6 +191,19 @@ func WithMessageDeadline(d time.Duration) Option {
 	}
 }
 
+// WithMaxRawMessageBytes sets the most GetRawMessage reads of one stored source,
+// independent of what the API declares or sends. The gateways pass
+// config.InternalDeliveryBodyLimit: no stored source can be longer than the
+// delivery body it arrived in. A non-positive value is ignored, so the read can
+// never be unbounded.
+func WithMaxRawMessageBytes(n int64) Option {
+	return func(c *Client) {
+		if n > 0 {
+			c.maxRawBytes = n
+		}
+	}
+}
+
 // New creates a new API client pointing at the given (public) base URL. Options
 // may add a separate internal mTLS destination for the two machine routes.
 func New(baseURL string, opts ...Option) *Client {
@@ -187,6 +216,7 @@ func New(baseURL string, opts ...Option) *Client {
 		internalBaseURL:    baseURL,
 		internalHTTPClient: httpClient,
 		msgDeadline:        defaultRequestTimeout,
+		maxRawBytes:        defaultMaxRawMessageBytes,
 		do:                 plainDo,
 	}
 	for _, opt := range opts {
@@ -564,21 +594,29 @@ func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
 	if err := c.checkStatus(resp); err != nil {
 		return "", err
 	}
-	return readRawSource(resp)
+	raw, err := readRawSource(resp, c.maxRawBytes)
+	if err != nil {
+		return "", fmt.Errorf("GET raw message %d: %w", msgID, err)
+	}
+	return raw, nil
 }
-
-// rawPreallocLimit is the largest declared Content-Length readRawSource allocates for before
-// the octets arrive; a longer source is read as it comes, so a header alone cannot make the
-// client allocate more.
-const rawPreallocLimit = 64 << 20
 
 // readRawSource is the response body as a string, allocated once when the API declares its
 // length (the raw route does): read straight into a buffer of that size and handed back as
 // the string with no copy, rather than grown to fit and then copied again, so a gateway holds
 // one copy of the message where it held several (#2107). A body shorter than it declared is
 // an error.
-func readRawSource(resp *http.Response) (string, error) {
-	if n := resp.ContentLength; n > 0 && n <= rawPreallocLimit {
+//
+// limit bounds the read whatever the API says (#2107 AC02): a declared length over it is
+// refused before anything is allocated, and a body with no declared length is read through
+// a reader that stops one octet past it, so a longer one is refused having read at most
+// limit+1 octets. HTTP/1.1 framing makes a declared length the whole body: octets a server
+// sends past it are not part of this response and are never read into it.
+func readRawSource(resp *http.Response, limit int64) (string, error) {
+	if resp.ContentLength > limit {
+		return "", fmt.Errorf("%w: the API declared %d octets, the ceiling is %d", ErrRawMessageTooLarge, resp.ContentLength, limit)
+	}
+	if n := resp.ContentLength; n > 0 {
 		buf := make([]byte, n)
 		if _, err := io.ReadFull(resp.Body, buf); err != nil {
 			return "", fmt.Errorf("read raw message: %w", err)
@@ -586,9 +624,12 @@ func readRawSource(resp *http.Response) (string, error) {
 		// buf is not written again or shared, so the string may keep it.
 		return unsafe.String(unsafe.SliceData(buf), len(buf)), nil
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return "", err
+	}
+	if int64(len(body)) > limit {
+		return "", fmt.Errorf("%w: the API sent more than %d octets", ErrRawMessageTooLarge, limit)
 	}
 	return string(body), nil
 }

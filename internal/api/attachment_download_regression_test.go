@@ -38,7 +38,7 @@ func (c attachmentDownloadConnection) QueryContext(ctx context.Context, query st
 		if id == "3" {
 			return nil, errors.New("private attachment lookup detail")
 		}
-		r := &authReadSnapshotRows{columns: []string{"id", "message_id", "filename", "content_type", "storage_type", "storage_ref"}}
+		r := &authReadSnapshotRows{columns: []string{"id", "message_id", "filename", "content_type", "size_bytes", "storage_type", "storage_ref"}}
 		if id == "2147483647" {
 			return r, nil
 		}
@@ -46,11 +46,14 @@ func (c attachmentDownloadConnection) QueryContext(ctx context.Context, query st
 		if err != nil {
 			return nil, err
 		}
-		ref, storage, filename := c.fullRef, "s3", "résumé.html\r\nX-Injected: yes"
+		ref, storage, filename, size := c.fullRef, "s3", "résumé.html\r\nX-Injected: yes", int64(len(attachmentDownloadBytes))
 		switch id {
 		case "2":
 			ref = c.emptyRef
 			filename = "empty.txt"
+			size = 0
+		case "12": // the object holds one octet more than the row records
+			size--
 		case "4":
 			ref = "attachments/" + strings.Repeat("b", 64)
 		case "6":
@@ -62,7 +65,7 @@ func (c attachmentDownloadConnection) QueryContext(ctx context.Context, query st
 			storage = "filesystem"
 			ref = "/attachments/restmail-contract-missing-73ef"
 		}
-		r.rows = [][]driver.Value{{n, n, filename, "text/html", storage, ref}}
+		r.rows = [][]driver.Value{{n, n, filename, "text/html", size, storage, ref}}
 		return r, nil
 	}
 	if strings.Contains(query, `FROM "messages"`) {
@@ -81,7 +84,7 @@ func (c attachmentDownloadConnection) QueryContext(ctx context.Context, query st
 		if err != nil {
 			return nil, err
 		}
-		if id == "4" || id == "6" || id == "7" || id == "8" {
+		if id == "4" || id == "6" || id == "7" || id == "8" || id == "12" {
 			n = 1
 		}
 		if id == "11" {
@@ -170,5 +173,26 @@ func TestAttachmentDownloadRangeAndConditionalWiring(t *testing.T) {
 		if tc.status == 206 && rr.Header().Get("Content-Range") != fmt.Sprintf("bytes 0-9/%d", len(attachmentDownloadBytes)) {
 			t.Fatal("range lost content bounds")
 		}
+	}
+}
+
+// An object holding more than its attachment row records is refused before any of it is
+// sent (#2107 AC02); one holding exactly what the row records comes back byte for byte.
+func TestAttachmentDownloadRefusesStorageLargerThanRecorded(t *testing.T) {
+	scenarios, _ := attachmentDownloadScenarios(t)
+	s := scenarios["found"]
+	get := func(id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/attachments/"+id, nil)
+		req.Header.Set("Authorization", "Bearer "+s.token)
+		rr := httptest.NewRecorder()
+		s.handler.ServeHTTP(rr, req)
+		return rr
+	}
+	if rr := get("1"); rr.Code != 200 || rr.Body.String() != attachmentDownloadBytes {
+		t.Fatalf("at the recorded size: %d %q", rr.Code, rr.Body.String())
+	}
+	rr := get("12")
+	if rr.Code != 500 || rr.Body.String() != "{\"error\":{\"code\":\"internal_error\",\"message\":\"Attachment storage holds more than was recorded\"}}\n" {
+		t.Fatalf("one octet over the recorded size: %d %q", rr.Code, rr.Body.String())
 	}
 }
