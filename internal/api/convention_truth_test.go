@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"testing"
 	"time"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
+
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 func TestWireConventionsRefuseByParseabilityAndVisibility(t *testing.T) {
@@ -48,6 +53,12 @@ func TestWireConventionsRefuseByParseabilityAndVisibility(t *testing.T) {
 	compiler := descriptionSchemaCompiler(t, doc)
 	const send = "/api/v1/messages/send"
 	const intake = "/.well-known/smtp-tlsrpt"
+	const draftSend = "/api/v1/messages/draft/{id}/send"
+	draft := models.Message{MailboxID: fixture.mailboxID, Folder: "Drafts", IsDraft: true,
+		Sender: "admin@restmail.test", RecipientsTo: models.JSONB(`["recipient@example.net"]`), RecipientsCc: models.JSONB(`[]`)}
+	if err := fixture.db.Create(&draft).Error; err != nil {
+		t.Fatal(err)
+	}
 	var hidden *httptest.ResponseRecorder
 	for _, decision := range []struct {
 		operation, name, path, code, field string
@@ -55,11 +66,14 @@ func TestWireConventionsRefuseByParseabilityAndVisibility(t *testing.T) {
 	}{
 		{"receiveTlsReport", "unsupported_media", intake, "bad_request", "", 400, 422},
 		{"sendMessage", "malformed_json", send, "bad_request", "", 400, 422},
+		{"sendDraft", "malformed_json", draftSend, "bad_request", "", 400, 422},
+		{"receiveTlsReport", "malformed_json", intake, "bad_request", "", 400, 422},
 		{"sendMessage", "from_missing", send, "validation_failed", "from", 422, 400},
 		{"sendMessage", "foreign_sender", send, "not_found", "", 404, 403},
 		{"sendMessage", "read_only_send_as", send, "forbidden", "", 403, 404},
 	} {
 		t.Run(decision.operation+"/"+decision.name, func(t *testing.T) {
+			examplepairs.Proven(t, decision.operation, decision.name)
 			pair := publishedDescriptionPair(t, pairs, decision.operation, decision.name)
 			if pair.Response.Status != decision.status {
 				t.Fatalf("published status %d, decision requires %d", pair.Response.Status, decision.status)
@@ -75,6 +89,12 @@ func TestWireConventionsRefuseByParseabilityAndVisibility(t *testing.T) {
 					t.Fatalf("expected malformed wire text, got %q (%v)", pair.Request.Body, err)
 				}
 				pair.Request.Body = []byte(malformed)
+				switch decision.operation {
+				case "sendDraft":
+					pair = withPathID(pair, draft.ID)
+				case "receiveTlsReport":
+					token = ""
+				}
 			}
 			response := sendDescriptionPair(fixture.router, requirementRoute{http.MethodPost, decision.path}, token, pair)
 			if err := refusalStatus(response, decision.status); err != nil {
@@ -124,6 +144,99 @@ func TestWireConventionsRefuseByParseabilityAndVisibility(t *testing.T) {
 	if got := outbound(fixture); got != 0 {
 		t.Fatalf("refusals enqueued %d messages", got)
 	}
+	var kept models.Message
+	if err := fixture.db.First(&kept, draft.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !kept.IsDraft || kept.Folder != "Drafts" {
+		t.Fatalf("malformed sendDraft moved the draft: draft=%v folder=%q", kept.IsDraft, kept.Folder)
+	}
+	var reports int64
+	if err := fixture.db.Model(&models.TLSReport{}).Count(&reports).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reports != 0 {
+		t.Fatalf("malformed TLS report stored %d reports", reports)
+	}
+}
+
+// Every operation whose live description takes an application/json request body
+// publishes a pair sending truncated JSON and answering 400 bad_request, so the
+// malformed-400 half of the 400/422 convention is stated for each body, not only
+// for the operations someone remembered (#2099 AC02).
+func TestEveryJSONBodyPublishesItsMalformedRefusal(t *testing.T) {
+	fixture := newSendLimitFixture(t)
+	doc, _ := liveDescription(t, fixture.router)
+	pairs := readPublishedDescriptionPairs(t)
+	operations := jsonBodyOperations(t, doc)
+	if len(operations) == 0 {
+		t.Fatal("the live description has no application/json request bodies")
+	}
+	var missing []string
+	for _, operation := range operations {
+		if !publishesMalformedRefusal(pairs[operation]) {
+			missing = append(missing, operation)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("%d of %d JSON-body operations publish no malformed_json 400 pair: %v", len(missing), len(operations), missing)
+	}
+	t.Logf("%d JSON-body operations each publish a malformed-body 400", len(operations))
+	t.Run("control", func(t *testing.T) {
+		without := maps.Clone(pairs["sendDraft"])
+		delete(without, "malformed_json")
+		if publishesMalformedRefusal(without) {
+			t.Fatal("sendDraft without its malformed_json pair still counted as covered")
+		}
+		wrong := maps.Clone(pairs["sendDraft"])
+		pair := wrong["malformed_json"]
+		pair.Response.Status = http.StatusUnprocessableEntity
+		wrong["malformed_json"] = pair
+		if publishesMalformedRefusal(wrong) {
+			t.Fatal("a malformed body answered 422 still counted as covered")
+		}
+	})
+}
+
+func jsonBodyOperations(t *testing.T, doc map[string]any) []string {
+	t.Helper()
+	paths, _ := doc["paths"].(map[string]any)
+	var operations []string
+	for _, item := range paths {
+		methods, _ := item.(map[string]any)
+		for _, raw := range methods {
+			operation, _ := raw.(map[string]any)
+			body, _ := operation["requestBody"].(map[string]any)
+			content, _ := body["content"].(map[string]any)
+			if _, ok := content["application/json"]; !ok {
+				continue
+			}
+			id, _ := operation["operationId"].(string)
+			if id == "" {
+				t.Fatalf("a JSON-body operation has no operationId: %v", operation["summary"])
+			}
+			operations = append(operations, id)
+		}
+	}
+	sort.Strings(operations)
+	return operations
+}
+
+func publishesMalformedRefusal(named map[string]oapifly.ExamplePair) bool {
+	for _, pair := range named {
+		if pair.Requires["body"] != "malformed" || pair.Response.Status != http.StatusBadRequest {
+			continue
+		}
+		var envelope struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(pair.Response.Body, &envelope) == nil && envelope.Error.Code == "bad_request" {
+			return true
+		}
+	}
+	return false
 }
 
 func refusalStatus(response *httptest.ResponseRecorder, want int) error {

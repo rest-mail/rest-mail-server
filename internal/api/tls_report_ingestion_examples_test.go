@@ -134,6 +134,14 @@ func tlsIngestionWire(name string, pair oapifly.ExamplePair) ([]byte, string) {
 			body = encoded
 		}
 	}
+	// A malformed pair's body is the truncated JSON text itself, a JSON string in
+	// the example, and is sent as those raw bytes rather than quoted.
+	if pair.Requires["body"] == "malformed" {
+		var raw string
+		if json.Unmarshal(body, &raw) == nil {
+			body = []byte(raw)
+		}
+	}
 	if name == "request_too_large" || name == "body_boundary" {
 		n := tlsIngestionLimit
 		if name == "request_too_large" {
