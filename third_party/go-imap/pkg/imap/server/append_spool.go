@@ -11,6 +11,9 @@ import (
 // appendSpoolChunk is how much of an APPEND literal is held at once on its way to the spool.
 const appendSpoolChunk = 32 << 10
 
+// createAppendSpool makes an APPEND's spool file. Tests replace it to fail the writes.
+var createAppendSpool = func() (*os.File, error) { return os.CreateTemp("", "imap-append-*") }
+
 // appendSpool is an APPEND literal on its way to the store: its octets in a temporary file,
 // and what the server must know of them, found as they were copied, so that no step holds
 // the message whole (#2107).
@@ -31,7 +34,7 @@ type appendSpool struct {
 // spool it answers is never nil, and the caller removes it however the command ends.
 func (s *Session) spoolLiteral(size int64) (*appendSpool, error) {
 	spool := &appendSpool{size: size}
-	spool.file, spool.diskErr = os.CreateTemp("", "imap-append-*")
+	spool.file, spool.diskErr = createAppendSpool()
 	if spool.diskErr != nil {
 		spool.file = nil
 	}

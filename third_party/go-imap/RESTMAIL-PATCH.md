@@ -411,5 +411,6 @@ before. Refusals, their order and their wording are unchanged; the one new answe
 is `NO APPEND failed` when the server cannot write the file, after the literal is
 read to its end so the session goes on. `TestAppendStreamsTheLiteralFromASpoolFile`,
 `TestAppendSpoolIsRemovedHoweverTheCommandEnds`,
-`TestAppendWithoutStreamAppenderReadsTheSpoolBack` and `TestAppendSpoolFailureIsANo`
+`TestAppendWithoutStreamAppenderReadsTheSpoolBack`, `TestAppendSpoolFailureIsANo` and
+`TestAppendSpoolWriteFailureNeverReachesTheStore`
 prove it.

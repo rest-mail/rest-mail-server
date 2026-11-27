@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -192,6 +193,29 @@ func TestAppendWithoutStreamAppenderReadsTheSpoolBack(t *testing.T) {
 	syncSession(h)
 	if files := spoolFiles(t, dir); len(files) != 0 {
 		t.Errorf("spool left %v", files)
+	}
+}
+
+// A spool file that stops taking writes part way (a full disk) never reaches a store that
+// reads the file: it would hold a cut-off message. The APPEND is answered NO, and the session
+// goes on.
+func TestAppendSpoolWriteFailureNeverReachesTheStore(t *testing.T) {
+	h, mbox, _ := newStreamHarness(t)
+	readOnly := filepath.Join(t.TempDir(), "read-only")
+	if err := os.WriteFile(readOnly, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved := createAppendSpool
+	t.Cleanup(func() { createAppendSpool = saved })
+	createAppendSpool = func() (*os.File, error) { return os.Open(readOnly) }
+	if _, st := h.appendMsg("a2", "INBOX", "", "Subject: s\r\n\r\nbody\r\n"); st != "a2 NO APPEND failed" {
+		t.Fatalf("APPEND = %q, want a2 NO APPEND failed", st)
+	}
+	syncSession(h)
+	mbox.mu.Lock()
+	defer mbox.mu.Unlock()
+	if mbox.got != nil {
+		t.Errorf("the store read %q from a spool that failed", mbox.got)
 	}
 }
 
