@@ -19,7 +19,7 @@ import (
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
 
-func storeAPI(t *testing.T, raw string) *apiclient.Client {
+func storeAPI(t *testing.T, raw string, opts ...apiclient.Option) *apiclient.Client {
 	t.Helper()
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, body string) {
@@ -43,7 +43,7 @@ func storeAPI(t *testing.T, raw string) *apiclient.Client {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return apiclient.New(srv.URL)
+	return apiclient.New(srv.URL, opts...)
 }
 
 type pop3Client struct {
