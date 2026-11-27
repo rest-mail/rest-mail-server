@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -269,6 +270,11 @@ type Attachment struct {
 	StorageRef  string    `gorm:"size:500;not null;index" json:"storage_ref"`
 	Checksum    string    `gorm:"size:64;index" json:"checksum"` // SHA-256 hex
 	CreatedAt   time.Time `json:"created_at"`
+	// Disposition and ContentID are the part's own, as the message had them, so it is sent on
+	// as it came (an inline image keeps the cid: its HTML names it by) without the stored
+	// message being read for them (#2107).
+	Disposition string `gorm:"size:20;not null;default:attachment" json:"disposition"` // "attachment" or "inline"
+	ContentID   string `gorm:"type:text;not null;default:''" json:"content_id"`
 
 	// NOTE: no Message association here, deliberately — it was unused (queries
 	// join messages by raw SQL) and, like the one removed from OutboundQueue,
@@ -287,7 +293,18 @@ func (a *Attachment) BeforeCreate(*gorm.DB) error {
 	if !fitsColumn(a.ContentType, attachmentTypeColumn) {
 		a.ContentType = "application/octet-stream"
 	}
+	a.Disposition = PartDisposition(a.Disposition)
+	a.ContentID = ReadableText(a.ContentID)
 	return nil
+}
+
+// PartDisposition is how a part is shown: inline only when the part says so, and an
+// attachment otherwise, as a part without a Content-Disposition is (RFC 2183 §2.8).
+func PartDisposition(disposition string) string {
+	if strings.EqualFold(disposition, "inline") {
+		return "inline"
+	}
+	return "attachment"
 }
 
 // SieveScript stores per-mailbox Sieve filter scripts.

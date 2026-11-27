@@ -708,6 +708,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spoo
 					attachmentRows = append(attachmentRows, models.Attachment{
 						Filename: attachment.Filename, ContentType: attachment.ContentType, SizeBytes: attachment.Size,
 						StorageType: attachment.Storage, StorageRef: attachment.Ref, Checksum: attachment.Checksum,
+						Disposition: attachment.Disposition, ContentID: attachment.ContentID,
 					})
 					attachmentBytes += attachment.Size
 				}

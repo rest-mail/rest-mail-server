@@ -315,7 +315,7 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			for _, group := range [][]pipeline.Attachment{parsed.Attachments, parsed.Inline} {
 				for _, att := range group {
 					rows = append(rows, models.Attachment{Filename: att.Filename, ContentType: att.ContentType,
-						SizeBytes: att.Size, StorageType: att.Storage, StorageRef: att.Ref, Checksum: att.Checksum})
+						SizeBytes: att.Size, StorageType: att.Storage, StorageRef: att.Ref, Checksum: att.Checksum, Disposition: att.Disposition, ContentID: att.ContentID})
 					attachmentBytes += att.Size
 				}
 			}
@@ -483,7 +483,7 @@ func (p *importParts) store(ctx context.Context, part io.Reader) (rmime.StoredPa
 
 // attachmentRowColumns are every column of models.Attachment but its id, each under the name its JSON
 // field has (TestAttachmentRowColumnsAreTheModels).
-const attachmentRowColumns = "message_id, filename, content_type, size_bytes, storage_type, storage_ref, checksum, created_at"
+const attachmentRowColumns = "message_id, filename, content_type, size_bytes, storage_type, storage_ref, checksum, disposition, content_id, created_at"
 
 // createAttachmentRows stores a message's attachment rows as one parameter. A message can have a
 // thousand, and through gorm each is nine parameters, each encoded and copied on its own: about 6 KiB

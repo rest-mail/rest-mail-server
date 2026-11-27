@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -222,6 +223,15 @@ func (f *jsFilter) request(email *pipeline.EmailJSON) (sidecarRequestBody, error
 }
 
 func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	// A part handed in by reference reaches the script as content, as it always did.
+	limit := f.sidecar.maxBodyBytes()
+	email, err := withReferencedContent(ctx, email, limit)
+	if errors.Is(err, errOverRequestLimit) {
+		return f.fail("error", fmt.Sprintf("script error: request body too large (limit %d bytes)", limit)), nil
+	}
+	if err != nil {
+		return f.fail("error", fmt.Sprintf("read a referenced attachment: %v", err)), nil
+	}
 	body, err := f.request(email)
 	if err != nil {
 		return nil, err
@@ -229,7 +239,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 	// The sidecar answers 413 to a body over its limit once it has been uploaded;
 	// the same refusal is made here, with the sidecar's own words, before any of it
 	// is sent.
-	if limit := f.sidecar.maxBodyBytes(); body.size() > limit {
+	if body.size() > limit {
 		return f.fail("error", fmt.Sprintf("script error: request body too large (limit %d bytes)", limit)), nil
 	}
 

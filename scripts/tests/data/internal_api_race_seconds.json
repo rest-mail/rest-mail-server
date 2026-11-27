@@ -165,7 +165,7 @@
   "TestFolderQuarantineFailuresAreNotDeniedOrEmpty": 0.1,
   "TestFolderQuarantineReadExamples": 0.7,
   "TestForwardAttachmentsCanonicalExamples": 1.4,
-  "TestForwardAttachmentsLocalAndLegacyEmptyPartsRemainReadable": 0.4,
+  "TestForwardAttachmentsLocalAndEmptyPartsRemainReadable": 0.4,
   "TestForwardAttachmentsRealRoutePreservesPartsAndIndependentStorage": 0.1,
   "TestForwardAttachmentsRealRouteRefusesPartialWrites": 0.4,
   "TestFreshInstall_EndToEnd": 22.5,

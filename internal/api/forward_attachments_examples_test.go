@@ -224,9 +224,6 @@ func newForwardFixture(t *testing.T, mode string) *forwardFixture {
 	actorID := uint(100000 + forwardActorSequence.Add(1))
 	c := &forwardConnection{actorID: actorID, importConnection: importConnection{mode: mode}, original: map[string]any{"id": int64(7), "mailbox_id": int64(12), "message_id": "<original@example.test>", "sender": "old@example.test", "subject": "receipt", "body_text": "original receipt", "body_html": email.Body.Content, "raw_message": string(raw), "has_attachments": true, "received_at": time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}}
 	for i, part := range parts {
-		if mode == "legacy_empty" && part.Size == 0 {
-			continue
-		}
 		data, _ := base64.StdEncoding.DecodeString(part.Content)
 		ref, sum, err := store.Put(t.Context(), data)
 		if err != nil {
@@ -240,7 +237,7 @@ func newForwardFixture(t *testing.T, mode string) *forwardFixture {
 		if mode == "checksum" && i == 0 {
 			sum = strings.Repeat("0", 64)
 		}
-		c.sources = append(c.sources, map[string]any{"id": int64(11 + i), "message_id": int64(7), "filename": part.Filename, "content_type": part.ContentType, "size_bytes": part.Size, "storage_type": "s3", "storage_ref": ref, "checksum": sum})
+		c.sources = append(c.sources, map[string]any{"id": int64(11 + i), "message_id": int64(7), "filename": part.Filename, "content_type": part.ContentType, "size_bytes": part.Size, "storage_type": "s3", "storage_ref": ref, "checksum": sum, "disposition": part.Disposition, "content_id": part.ContentID})
 	}
 	pool := sql.OpenDB(c)
 	pool.SetMaxOpenConns(1)
@@ -329,9 +326,11 @@ func TestForwardAttachmentsRealRouteRefusesPartialWrites(t *testing.T) {
 	}
 }
 
-func TestForwardAttachmentsLocalAndLegacyEmptyPartsRemainReadable(t *testing.T) {
+// The parts come from their rows alone, an empty one and an inline one's Content-ID with
+// them: the stored message is not read for them (#2107).
+func TestForwardAttachmentsLocalAndEmptyPartsRemainReadable(t *testing.T) {
 	useRealGrants(t)
-	for _, mode := range []string{"local", "local_policies", "legacy_empty", "outbound_extract"} {
+	for _, mode := range []string{"local", "local_policies", "outbound_extract"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newForwardFixture(t, mode)
 			w := f.request(t)

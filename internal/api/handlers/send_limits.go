@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -51,21 +50,9 @@ func (h *MessageHandler) reserveLayeredSend(r *http.Request, req sendMessageRequ
 			if err != nil {
 				return err
 			}
-			retained := parts
-			if parts != nil {
-				retained = append(make([]pipeline.Attachment, 0, len(parts)), parts...)
-				remaining := h.maxForwardBytes
-				for i, p := range retained {
-					data, err := h.forwardPartBytes(r.Context(), p, remaining)
-					if err != nil {
-						return err
-					}
-					remaining -= int64(len(data))
-					retained[i].Content = base64.StdEncoding.EncodeToString(data)
-					retained[i].Size = int64(len(data))
-					retained[i].Storage = ""
-					retained[i].Ref = ""
-				}
+			retained, err := h.retainHeldParts(r.Context(), parts)
+			if err != nil {
+				return err
 			}
 			rawParts, err := json.Marshal(retained)
 			if err != nil {
@@ -96,6 +83,30 @@ func (h *MessageHandler) reserveLayeredSend(r *http.Request, req sendMessageRequ
 	}
 	out := scheduledMessageOf(held)
 	return &out, nil
+}
+
+// retainHeldParts gives a held send's parts copies of their own, streamed into the attachment
+// store, and answers references to them: the held row keeps no part's bytes, and the message
+// the parts came from may be deleted before the send is released (#2107). The attachment
+// cleanup keeps an object a held row refers to.
+func (h *MessageHandler) retainHeldParts(ctx context.Context, parts []pipeline.Attachment) ([]pipeline.Attachment, error) {
+	if parts == nil {
+		return nil, nil
+	}
+	retained := append(make([]pipeline.Attachment, 0, len(parts)), parts...)
+	remaining := h.maxForwardBytes
+	for i, part := range retained {
+		if part.Size > remaining {
+			return nil, errForwardTooLarge
+		}
+		storage, ref, checksum, err := h.putIndependentPart(ctx, part)
+		if err != nil {
+			return nil, err
+		}
+		remaining -= part.Size
+		retained[i].Content, retained[i].Storage, retained[i].Ref, retained[i].Checksum = "", storage, ref, checksum
+	}
+	return retained, nil
 }
 
 func (h *MessageHandler) RegisterSendLimits(rs endpoint.Routes, checks SessionRouteChecks) {

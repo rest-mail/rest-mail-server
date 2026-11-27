@@ -19,8 +19,9 @@ type ScheduledSend struct {
 	// Request is the POST /messages/send body as it arrived, with
 	// scheduled_at removed, so replaying it sends rather than schedules.
 	Request JSONB `gorm:"type:jsonb;not null" json:"-"`
-	// ForwardParts retains attachment bytes for a held forward independently of
-	// the original mailbox objects. Never exposed by the listing API.
+	// ForwardParts are a held forward's parts, each a reference to a stored copy
+	// of its own, independent of the original mailbox objects; the attachment
+	// cleanup keeps what they refer to. Never exposed by the listing API.
 	ForwardParts  JSONB     `gorm:"type:jsonb" json:"-"`
 	CredentialID  uint      `json:"-"`
 	SessionID     string    `gorm:"type:text" json:"-"`
