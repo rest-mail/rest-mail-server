@@ -82,6 +82,11 @@ fileAssociations:
 #    role: Editor
 #    mimeType: image/jpeg  # (optional)
 
+# Custom URL schemes the app handles. REST Mail can be the default mail app.
+protocols:
+  - scheme: mailto
+    description: Email message
+
 # Other data
 other:
   - name: My Other Data

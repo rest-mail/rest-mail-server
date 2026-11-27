@@ -45,6 +45,7 @@ type Native struct {
 	noticeSequence uint64
 	files          attachments.Holder
 	dropSequence   uint64
+	mailto         []native.Mailto
 }
 
 func newNative() *Native {

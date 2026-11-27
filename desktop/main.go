@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiclient"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/apiproxy"
 	"github.com/rest-mail/rest-mail-server/desktop/internal/localmail"
+	"github.com/rest-mail/rest-mail-server/desktop/internal/native"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -62,7 +63,10 @@ func main() {
 	var mainWindow *application.WebviewWindow
 	options.SingleInstance = &application.SingleInstanceOptions{
 		UniqueID: singleInstanceID(currentInstance()),
-		OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+		OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+			if link := native.MailtoArgument(data.Args); link != "" {
+				nativeUI.openMailto(link)
+			}
 			if mainWindow != nil {
 				mainWindow.UnMinimise()
 				mainWindow.Show()
@@ -115,6 +119,16 @@ func main() {
 		}
 	})
 	nativeUI.install(app)
+	// macOS delivers mailto: links as an open-URL event; Windows and Linux pass
+	// them as an argument, which Wails reports only for links containing "://".
+	app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {
+		if link := event.Context().URL(); native.IsMailto(link) {
+			nativeUI.openMailto(link)
+		}
+	})
+	if link := native.MailtoArgument(os.Args[1:]); link != "" {
+		nativeUI.openMailto(link)
+	}
 
 	// Embedded MCP service registration.
 	stopMCP := startMCP(app, sessionManager, mailClient, nativeUI, imports)
