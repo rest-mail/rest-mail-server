@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -47,6 +48,21 @@ const (
 // or sent it. Nothing past the ceiling is read, so a corrupted row or a hostile
 // answer cannot make the gateway allocate more than the ceiling.
 var ErrRawMessageTooLarge = errors.New("raw message exceeds the read ceiling")
+
+// jsonCeilingFactor is how many times the raw-source ceiling a JSON response may be
+// (#2107 AC02). The message detail (GET /api/v1/messages/{id}) carries the source's
+// decoded text body, its HTML body, its headers and its calendar parts, each at most about
+// the source's own length, so three such fields are about three sources; JSON escaping
+// (quotes, backslashes, control characters) adds a little to that. The raw ceiling is
+// already 3 × the largest delivery body plus 1 MiB, so 3 × that is about nine times the
+// largest message the server accepts: no real detail comes near it, and a corrupted row
+// or a hostile answer is stopped there rather than decoded without bound.
+const jsonCeilingFactor = 3
+
+// ErrResponseTooLarge is the refusal of a JSON response longer than the client's JSON
+// ceiling (jsonCeilingFactor × WithMaxRawMessageBytes), whether the API declared that
+// length or sent it. Callers treat it as a failed read, as ErrRawMessageTooLarge is.
+var ErrResponseTooLarge = errors.New("API response exceeds the read ceiling")
 
 // Client is the REST API client used by all gateway protocol handlers.
 //
@@ -1061,7 +1077,32 @@ func (c *Client) decodeResponse(resp *http.Response, out interface{}) error {
 	if out == nil {
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return decodeBounded(resp, out, jsonCeiling(c.maxRawBytes))
+}
+
+// jsonCeiling is the most JSON a client with raw-source ceiling raw reads.
+func jsonCeiling(raw int64) int64 {
+	if raw > math.MaxInt64/jsonCeilingFactor {
+		return math.MaxInt64 - 1
+	}
+	return raw * jsonCeilingFactor
+}
+
+// decodeBounded decodes the JSON body into out, reading at most limit octets whatever the
+// API says (#2107 AC02): a declared length over limit is refused before the body is read,
+// and a body with no declared length is read through a reader that stops one octet past
+// limit, so a longer one is refused having read at most limit+1 octets.
+func decodeBounded(resp *http.Response, out interface{}, limit int64) error {
+	if resp.ContentLength > limit {
+		return fmt.Errorf("%w: the API declared %d octets, the ceiling is %d", ErrResponseTooLarge, resp.ContentLength, limit)
+	}
+	body := &io.LimitedReader{R: resp.Body, N: limit + 1}
+	dec := json.NewDecoder(body)
+	err := dec.Decode(out)
+	if body.N <= 0 && (err != nil || dec.InputOffset() > limit) {
+		return fmt.Errorf("%w: the API sent more than %d octets", ErrResponseTooLarge, limit)
+	}
+	return err
 }
 
 func (c *Client) checkStatus(resp *http.Response) error {
