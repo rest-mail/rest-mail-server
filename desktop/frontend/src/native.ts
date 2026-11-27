@@ -9,6 +9,7 @@ import { tabs, type HeldAttachment } from './tabs';
 import { layoutPreferences } from './layout';
 import { createMailNotificationBatch } from './notifications';
 import { appearanceSettings } from './appearance/engine';
+import { mailtoCompose, type Mailto } from './mailto';
 
 const invoke = <Result,>(method: string, ...args: unknown[]) => Call.ByName(`main.Native.${method}`, ...args) as Promise<Result>;
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : 'Native action failed');
@@ -92,6 +93,11 @@ export function installNative(events: RuntimeEvents, windowName: string) {
     void invoke('NewMailBatch', messages).catch(report);
   }, id => document.hasFocus() && tabs.get().active === 'mail' && useUIStore.getState().view === 'mail' && !useMailStore.getState().loadingMessage && useMailStore.getState().selectedMessage?.id === id);
   if (windowName === 'main') notificationBatch = batch;
+  // A mailto: link waits in Go until a signed-in main window takes it.
+  const takeMailto = () => {
+    if (disposed || windowName !== 'main' || !useAuthStore.getState().isAuthenticated) return;
+    void invoke<Mailto[] | null>('TakeMailto').then(links => { if (!disposed) (links ?? []).forEach(link => native.openCompose(mailtoCompose(link))); }).catch(report);
+  };
   const sync = () => {
     const auth = useAuthStore.getState();
     const mail = useMailStore.getState();
@@ -100,7 +106,10 @@ export function installNative(events: RuntimeEvents, windowName: string) {
     const preferences = layoutPreferences.get();
     const state = { signedIn, editing: isEditing(document.activeElement), viewing: !appearanceSettings.get() && tabs.get().active === 'mail' && useUIStore.getState().view === 'mail', composeTab: !appearanceSettings.get() && tabs.get().active !== 'mail', activeTab: tabs.get().active, messageId: mail.loadingMessage ? 0 : message?.id ?? 0, draft: message?.is_draft ?? false, read: message?.is_read ?? false, flagged: message?.is_flagged ?? false, layout: preferences.layout, folders: preferences.folders, reader: preferences.reader };
     const serialized = JSON.stringify(state);
-    if (lastState !== serialized) { lastState = serialized; void invoke('SyncState', windowName, state).catch(report); }
+    if (lastState !== serialized) {
+      lastState = serialized;
+      void invoke('SyncState', windowName, state).then(() => { if (signedIn) takeMailto(); }).catch(report);
+    }
     if (windowName !== 'main') return;
     if (!signedIn || mail.activeAccountId !== lastAccount) batch.clear();
     lastAccount = mail.activeAccountId;
@@ -142,6 +151,7 @@ export function installNative(events: RuntimeEvents, windowName: string) {
       const command = data as { window: string; action: string };
       if (command.window === windowName) runNativeCommand(command.action, windowName);
     }),
+    events.on('native:mailto', takeMailto),
     events.on('native:mail-changed', () => { if (windowName === 'main') void useMailStore.getState().refresh().catch(report); }),
     events.on('native:open-message', async data => {
       if (windowName !== 'main' || !useAuthStore.getState().isAuthenticated) return;

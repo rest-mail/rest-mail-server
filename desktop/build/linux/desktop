@@ -7,5 +7,6 @@ Exec=/usr/local/bin/RESTMail %u
 Terminal=false
 Type=Application
 Icon=RESTMail
-Categories=Utility;
+Categories=Network;Email;
+MimeType=x-scheme-handler/mailto;
 StartupWMClass=RESTMail
