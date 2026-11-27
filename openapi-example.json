@@ -36149,6 +36149,26 @@
         }
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: nothing is stored.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "no_matching_domains": {
       "request": {
         "body": {
@@ -42570,6 +42590,29 @@
                 "id": "must be at least 1"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: the draft is not sent.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
