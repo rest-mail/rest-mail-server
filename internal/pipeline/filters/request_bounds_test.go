@@ -118,7 +118,11 @@ func TestAC02FilterRequestsDeclareTheirLengthAndCarryOneCopy(t *testing.T) {
 // response, and the filter's context cuts the upload too. The message is far larger than
 // the socket buffers, so the write itself blocks.
 func TestAC02FilterRequestUploadIsBoundedByTimeoutAndContext(t *testing.T) {
-	email := largeEmail(48 << 20)
+	// 8 MiB is far larger than the socket buffers, so the write still blocks, but small
+	// enough that serializing it (twice for the JS envelope) under -race on a CI runner
+	// stays well inside the 5 s bound below. At 48 MiB the JS case spent most of its time
+	// marshalling before the upload started.
+	email := largeEmail(8 << 20)
 	for _, test := range requestBoundsCases() {
 		for _, mode := range []string{"http-timeout", "context-deadline"} {
 			if test.name == "javascript" && mode == "http-timeout" {
