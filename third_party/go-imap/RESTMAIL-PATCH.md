@@ -374,6 +374,19 @@ strings becomes a space, while boundaries, addr-specs, identifiers and stored
 octets retain their spelling. `TestFetchSpacesNULInEncodedWord` and field-scratch
 tests retain the corresponding semantic and allocation controls.
 
+## A host's conversion of 8-bit header fields (#2107, source #1891)
+
+The server downgrades a message's top-level header block itself (RFC 6857), and
+this engine converts every other block, so a forwarded message's address fields
+used to read differently from the message's own: no space between an encoded
+group name and its colon, an encoded word inside an angle-addr where the server
+writes an A-label, and a comment whose closing parenthesis went inside an encoded
+word, so the comment never closed. `wireform.SetFieldWriter` lets the host
+convert each 8-bit field it takes, in every header block, before
+`encodeHeaderValue`; Content-Type and Content-Disposition stay this engine's. With
+no writer set, nothing changes. `TestSetFieldWriterConvertsEveryHeaderBlock`
+proves the hook; the server's tests prove the two conversions agree.
+
 ## The Backend can learn the client's address
 
 `Backend.Authenticate` takes a user and password, and nothing says where they

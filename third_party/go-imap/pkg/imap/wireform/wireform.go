@@ -132,6 +132,22 @@ func WriteFoldedParameterField(w interface {
 	return message.WriteFoldedParameterField(w, name, value)
 }
 
+// FieldWriter is a host's conversion of one header field holding an 8-bit octet: it writes
+// the whole field, name, colon and a 7-bit value, and says true, or writes nothing and says
+// false. value is the field's text after the colon, still folded. See [SetFieldWriter].
+type FieldWriter = message.FieldWriter
+
+// SetFieldWriter makes [Convert], [Size] and FETCH try write first on each field holding an
+// 8-bit octet, in every header block they convert: a part's, an encapsulated message's and
+// the top level's. A host that downgrades the top-level header block itself (RFC 6857) sets
+// it, so an encapsulated message's header reads the same as that block would. A field write
+// declines, and Content-Type and Content-Disposition, which keep their parameters, are
+// converted as before. nil restores the engine's own conversion. Set it before the first
+// conversion, since a size measured before then counts the other one.
+func SetFieldWriter(write FieldWriter) {
+	message.SetFieldWriter(write)
+}
+
 // FieldScratch is memory for what reading one field builds and then drops, which a host that reads a
 // long field more than once uses again. See [TakeFieldScratch].
 type FieldScratch = message.FieldScratch

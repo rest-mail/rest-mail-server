@@ -142,3 +142,42 @@ func TestParameterFieldPreservesReadableParameters(t *testing.T) {
 		})
 	}
 }
+
+// A host's field writer converts every 8-bit field it takes, in an encapsulated message's
+// header and in a part's, and Size counts what it writes. A field it declines, and
+// Content-Type, are the engine's, and nil restores the engine's conversion everywhere.
+func TestSetFieldWriterConvertsEveryHeaderBlock(t *testing.T) {
+	const raw = "Content-Type: multipart/mixed; boundary=b\r\n\r\n" +
+		"--b\r\nContent-Type: text/plain; name=\"J\xc3\xb6rg\"\r\nTo: J\xc3\xb6rg <j@example.com>\r\nX-Note: J\xc3\xb6rg\r\n\r\nx\r\n" +
+		"--b\r\nContent-Type: message/rfc822\r\n\r\nTo: J\xc3\xb6rg <j@example.com>\r\n\r\ninner\r\n--b--\r\n"
+	engine := wireform.Convert(raw, false)
+	wireform.SetFieldWriter(func(w interface {
+		io.Writer
+		io.StringWriter
+	}, name, value string) bool {
+		if name != "To" {
+			return false
+		}
+		_, _ = w.WriteString(name + ": host")
+		return true
+	})
+	t.Cleanup(func() { wireform.SetFieldWriter(nil) })
+
+	got := wireform.Convert(raw, false)
+	want := strings.ReplaceAll(engine, "To: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>", "To: host")
+	if strings.Count(engine, "To: =?UTF-8?Q?J=C3=B6rg?= <j@example.com>") != 2 || got != want {
+		t.Fatalf("with a host writer\n got %q\nwant %q", got, want)
+	}
+	for _, kept := range []string{"name*=UTF-8''J%C3%B6rg", "X-Note: =?UTF-8?Q?J=C3=B6rg?="} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("%q lacks the engine's %q", got, kept)
+		}
+	}
+	if size := wireform.Size(raw, false); size != len(got) {
+		t.Errorf("Size = %d, sent %d", size, len(got))
+	}
+	wireform.SetFieldWriter(nil)
+	if again := wireform.Convert(raw, false); again != engine {
+		t.Fatalf("after nil\n got %q\nwant %q", again, engine)
+	}
+}

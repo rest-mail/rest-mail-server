@@ -8,6 +8,7 @@ import (
 	"mime/quotedprintable"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -1098,6 +1099,11 @@ func sevenBitField(w wireSink, field string) {
 			}
 		}
 		if !written {
+			if host := hostFieldWriter.Load(); host != nil {
+				written = (*host)(w, name, value)
+			}
+		}
+		if !written {
 			_, _ = w.WriteString(name)
 			_, _ = w.WriteString(":")
 			encodeHeaderValue(w, len(name)+1, value)
@@ -1106,6 +1112,29 @@ func sevenBitField(w wireSink, field string) {
 	if eol {
 		_, _ = w.WriteString("\r\n")
 	}
+}
+
+// FieldWriter writes a whole field, name, colon and a 7-bit value, and says true, or writes
+// nothing and says false. value is the field's text after the colon, still folded.
+type FieldWriter func(w interface {
+	io.Writer
+	io.StringWriter
+}, name, value string) bool
+
+// hostFieldWriter is a host's conversion of a field holding an 8-bit octet, see
+// SetFieldWriter.
+var hostFieldWriter atomic.Pointer[FieldWriter]
+
+// SetFieldWriter gives sevenBitField a host's conversion to try before encodeHeaderValue, so
+// a host that converts its own top-level header block converts every other block the same
+// way. Content-Type and Content-Disposition stay the engine's. nil goes back to the engine's
+// conversion for every field.
+func SetFieldWriter(write FieldWriter) {
+	if write == nil {
+		hostFieldWriter.Store(nil)
+		return
+	}
+	hostFieldWriter.Store(&write)
 }
 
 func unfoldHeader(s string) string {
