@@ -203,7 +203,7 @@ func TestDowngradedSize_CountsTheConvertedAddressField(t *testing.T) {
 // what IMAP sends and reports doesn't change.
 func TestDowngradeForPOP3_RespellsAnEightBitBoundary(t *testing.T) {
 	const raw = "Subject: Grüße\r\nContent-Type: multipart/mixed; boundary=\"Jö\"\r\n\r\n--Jö\r\n\r\nHö\r\n--Jö--\r\n"
-	const want = "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"J=C3=B6\"\r\n\r\n" +
+	const want = "Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"J=C3=B6\"\r\n\r\n" +
 		"--J=C3=B6\r\n\r\nHö\r\n--J=C3=B6--\r\n"
 	got := DowngradeForPOP3(raw)
 	if got != want {
@@ -212,7 +212,7 @@ func TestDowngradeForPOP3_RespellsAnEightBitBoundary(t *testing.T) {
 	if size := DowngradedSize(raw); size != len(want) {
 		t.Fatalf("DowngradedSize = %d, want %d", size, len(want))
 	}
-	const imap = "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n boundary*=UTF-8''J%C3%B6\r\n\r\n" +
+	const imap = "Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\nContent-Type: multipart/mixed;\r\n boundary*=UTF-8''J%C3%B6\r\n\r\n" +
 		"--Jö\r\n\r\nHö\r\n--Jö--\r\n"
 	if got := DowngradeHeaders(raw); got != imap {
 		t.Fatalf("DowngradeHeaders\n got %q\nwant %q", got, imap)

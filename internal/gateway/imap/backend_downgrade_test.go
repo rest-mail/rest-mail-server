@@ -35,7 +35,7 @@ func TestFetch_DowngradesUTF8Headers(t *testing.T) {
 		t.Fatalf("Fetch: %v", err)
 	}
 	want := "From: =?UTF-8?Q?J=C3=B6rg?= <joerg@xn--bcher-kva.example>\r\n" +
-		"Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\n\r\nHallo, Jörg.\r\n"
+		"Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n\r\nHallo, Jörg.\r\n"
 	if string(got) != want {
 		t.Fatalf("Fetch served:\n%q\nwant\n%q", got, want)
 	}

@@ -128,7 +128,7 @@ func TestUTF8AcceptThroughTheSession(t *testing.T) {
 	}
 	plain.do("a3", "SELECT INBOX")
 	got := plain.do("a4", "FETCH 1 BODY.PEEK[HEADER.FIELDS (SUBJECT)]")
-	if !strings.Contains(got, "Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=") || strings.Contains(got, "Grüße") {
+	if !strings.Contains(got, "Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=") || strings.Contains(got, "Grüße") {
 		t.Fatalf("FETCH without ENABLE did not downgrade: %q", got)
 	}
 

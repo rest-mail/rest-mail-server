@@ -118,13 +118,13 @@ func TestRetrSendsEveryLineInCRLF(t *testing.T) {
 		"bare LF in the body":   {raw: "Subject: hi\r\n\r\nbody\nmore\r\n", sent: "Subject: hi\r\n\r\nbody\r\nmore\r\n"},
 		"bare LF, 8-bit header": {
 			raw:  "Subject: J\xc3\xb6\n\nbody\nmore\n",
-			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\n\r\nbody\r\nmore\r\n",
+			sent: "Subject: =?UTF-8?Q?J=C3=B6?=\r\n\r\nbody\r\nmore\r\n",
 			utf8: "Subject: J\xc3\xb6\r\n\r\nbody\r\nmore\r\n",
 		},
 		"no last break": {raw: "Subject: hi\r\n\r\nbody", sent: "Subject: hi\r\n\r\nbody\r\n"},
 		"no last break, 8-bit": {
 			raw:  "Subject: J\xc3\xb6\r\n\r\nbody",
-			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\n\r\nbody\r\n",
+			sent: "Subject: =?UTF-8?Q?J=C3=B6?=\r\n\r\nbody\r\n",
 			utf8: "Subject: J\xc3\xb6\r\n\r\nbody\r\n",
 		},
 		"a CR at the end": {raw: "Subject: hi\r\n\r\nbody\r", sent: "Subject: hi\r\n\r\nbody\r\r\n"},
@@ -132,7 +132,7 @@ func TestRetrSendsEveryLineInCRLF(t *testing.T) {
 		"nothing to add":  {raw: "Subject: hi\r\n\r\nbody\r\n", sent: "Subject: hi\r\n\r\nbody\r\n"},
 		"8-bit boundary, no last break": {
 			raw:  "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--",
-			sent: "Subject: =?utf-8?q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"=C3=B6\"\r\n\r\n--=C3=B6\r\n\r\nx\r\n--=C3=B6--\r\n",
+			sent: "Subject: =?UTF-8?Q?J=C3=B6?=\r\nContent-Type: multipart/mixed;\r\n boundary=\"=C3=B6\"\r\n\r\n--=C3=B6\r\n\r\nx\r\n--=C3=B6--\r\n",
 			utf8: "Subject: J\xc3\xb6\r\nContent-Type: multipart/mixed; boundary=\"\xc3\xb6\"\r\n\r\n--\xc3\xb6\r\n\r\nx\r\n--\xc3\xb6--\r\n",
 		},
 	} {

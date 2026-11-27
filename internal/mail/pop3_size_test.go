@@ -58,9 +58,9 @@ func TestDowngradedSize_CountsTheFormRetrSends(t *testing.T) {
 		{"ASCII header, CRLF", "Subject: hi\r\n\r\nbody\r\n", len("Subject: hi\r\n\r\nbody\r\n")},
 		{"ASCII header, bare LF", "Subject: hi\n\nbody\n", len("Subject: hi\r\n\r\nbody\r\n")},
 		{"ASCII header, no final line break", "Subject: hi\r\n\r\nbody", len("Subject: hi\r\n\r\nbody\r\n")},
-		{"8-bit header, bare LF", "Subject: Grüße\n\nbody\n", len("Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\n\r\nbody\r\n")},
-		{"8-bit header, no final line break", "Subject: Grüße\r\n\r\nbody", len("Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\n\r\nbody\r\n")},
-		{"8-bit header only", "Subject: Grüße", len("Subject: =?utf-8?q?Gr=C3=BC=C3=9Fe?=\r\n\r\n")},
+		{"8-bit header, bare LF", "Subject: Grüße\n\nbody\n", len("Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n\r\nbody\r\n")},
+		{"8-bit header, no final line break", "Subject: Grüße\r\n\r\nbody", len("Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n\r\nbody\r\n")},
+		{"8-bit header only", "Subject: Grüße", len("Subject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n\r\n")},
 		{"bare CR stays", "Subject: hi\r\n\r\na\rb\r\n", len("Subject: hi\r\n\r\na\rb\r\n")},
 		{"empty", "", 0},
 	} {

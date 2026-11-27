@@ -3,7 +3,6 @@ package mail
 import (
 	"fmt"
 	"math/rand"
-	"mime"
 	"runtime"
 	"strings"
 	"testing"
@@ -99,19 +98,6 @@ func TestWireSizesAreWhatFetchSends(t *testing.T) {
 			m[r.Intn(len(m))] = alphabet[r.Intn(len(alphabet))]
 		}
 		measuresWhatFetchSends(t, "mutated", string(m))
-	}
-}
-
-func TestWriteQWordsMatchesTheLibrary(t *testing.T) {
-	for _, text := range []string{
-		"ü", "Grüße", "a=b?c_d e\tfü", strings.Repeat("ü", 200), strings.Repeat("x", 62) + "ü", strings.Repeat("\U0001F600", 40),
-		strings.Repeat("a", 200) + "ü", "ü\r\n", "\x01ü\x7f",
-	} {
-		var b strings.Builder
-		writeQWords(&b, text)
-		if want := mime.QEncoding.Encode("utf-8", text); b.String() != want {
-			t.Fatalf("%q: got %q, the library says %q", text, b.String(), want)
-		}
 	}
 }
 

@@ -41,7 +41,7 @@ var downgradeAgreementRows = []struct{ name, stored, want string }{
 		"To: =?UTF-8?Q?=C3=BCser=40example=2Ecom?= :; (=?UTF-8?Q?B=C3=BCro?=), b@example.com"},
 	{"8-bit local part in a group", "Resent-To: Team: üser@example.com, b@example.com; (kept), c@example.com",
 		"Resent-To: Team =?UTF-8?Q?=C3=BCser=40example=2Ecom=2C_b=40example=2Ecom?= :; (kept), c@example.com"},
-	{"not an address list", "To: Jörg", "Downgraded-To: =?utf-8?q?J=C3=B6rg?="},
+	{"not an address list", "To: Jörg", "Downgraded-To: =?UTF-8?Q?J=C3=B6rg?="},
 }
 
 // The top-level header a gateway downgrades (RFC 6857) and the header of an encapsulated
@@ -69,6 +69,39 @@ func TestDowngrade_AddressFieldAgreesWithTheEngine(t *testing.T) {
 				if size := wireform.Size(shape.outer, false); size != len(sent) {
 					t.Errorf("%s: measured %d octets, sent %d", shape.name, size, len(sent))
 				}
+			}
+		})
+	}
+}
+
+// An 8-bit Subject spells its encoded words the same in the top-level header a gateway
+// downgrades and in the header of an encapsulated message the engine converts: same case,
+// same Q set, same folding, and the size is the octets sent (#2107).
+func TestDowngrade_UnstructuredFieldAgreesWithTheEngine(t *testing.T) {
+	for name, subject := range map[string]string{
+		"short":     "Grüße",
+		"reserved":  "ü=b?c_d.e",
+		"one word":  strings.Repeat("ü", 8),
+		"not UTF-8": "caf\xe9 \xf6",
+	} {
+		t.Run(name, func(t *testing.T) {
+			inner := "Subject: " + subject + "\r\n\r\nbody\r\n"
+			top, _, _ := strings.Cut(DowngradeHeaders(inner), "\r\n\r\n")
+			want := top + "\r\n\r\n"
+			for _, outer := range []string{
+				"Content-Type: message/rfc822\r\n\r\n" + inner,
+				"Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: message/rfc822\r\n\r\n" + inner + "--b--\r\n",
+			} {
+				sent := wireform.Convert(outer, false)
+				if !strings.Contains(sent, "message/rfc822\r\n\r\n"+want+"body\r\n") {
+					t.Errorf("the engine sent\n%q\nwant the encapsulated header\n%q", sent, want)
+				}
+				if size := wireform.Size(outer, false); size != len(sent) {
+					t.Errorf("measured %d octets, sent %d", size, len(sent))
+				}
+			}
+			if got, sent := DowngradedSize(inner), len(DowngradeForPOP3(inner)); got != sent {
+				t.Errorf("POP3 measured %d octets, sent %d", got, sent)
 			}
 		})
 	}
