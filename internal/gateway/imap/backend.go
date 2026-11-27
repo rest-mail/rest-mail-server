@@ -6,9 +6,11 @@
 package imap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"time"
@@ -193,8 +195,10 @@ var (
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits
 // APPENDUID / COPYUID response codes and honours UID EXPUNGE for rest-mail. It
-// also takes the client's APPEND date-time as the INTERNALDATE (DateAppender).
+// also takes the client's APPEND date-time as the INTERNALDATE (DateAppender), and
+// the message from the server's spool file rather than memory (StreamAppender).
 var (
+	_ goimap.StreamAppender = (*mailbox)(nil)
 	_ goimap.UIDPlusMailbox = (*mailbox)(nil)
 	_ goimap.Mover          = (*mailbox)(nil)
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
@@ -221,10 +225,18 @@ var (
 // idle is replaced; one that cannot be opened leaves the import to be audited on
 // its own, so the API, not the gateway, decides whether the import may happen.
 func (m *mailbox) importMessage(accountID uint, req *apiclient.ImportRequest) (*apiclient.ImportResponse, error) {
-	resp, err := m.api.ImportMessage(m.token, accountID, m.importSession(accountID), req)
+	return m.importIn(accountID, func(session string) (*apiclient.ImportResponse, error) {
+		return m.api.ImportMessage(m.token, accountID, session, req)
+	})
+}
+
+// importIn makes an import call in the account's import session, opening another
+// once when the API has closed that one for being idle.
+func (m *mailbox) importIn(accountID uint, call func(session string) (*apiclient.ImportResponse, error)) (*apiclient.ImportResponse, error) {
+	resp, err := call(m.importSession(accountID))
 	if apiclient.IsImportSessionGone(err) {
 		delete(m.imports, accountID)
-		resp, err = m.api.ImportMessage(m.token, accountID, m.importSession(accountID), req)
+		resp, err = call(m.importSession(accountID))
 	}
 	return resp, err
 }
@@ -747,7 +759,7 @@ func (m *mailbox) Append(dest string, f goimap.FlagUpdate, raw []byte) error {
 // it answers with that message's UID and stores nothing (#1707). An out-of-range UID
 // is surfaced as an error rather than a bogus success carrying UID 0.
 func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint32, error) {
-	return m.appendAt(dest, f, time.Now(), raw)
+	return m.appendAt(dest, f, time.Now(), bytes.NewReader(raw), int64(len(raw)))
 }
 
 // AppendWithDate is AppendUID for an APPEND that carries a date-time (DateAppender):
@@ -755,30 +767,46 @@ func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint3
 // RFC 9051 §6.3.12 ask. Without a date-time the server calls AppendUID, which
 // stores the current time.
 func (m *mailbox) AppendWithDate(dest string, f goimap.FlagUpdate, internalDate time.Time, raw []byte) (uint32, error) {
-	return m.appendAt(dest, f, internalDate, raw)
+	return m.appendAt(dest, f, internalDate, bytes.NewReader(raw), int64(len(raw)))
 }
 
-// appendAt stores raw in dest with internalDate as its INTERNALDATE and returns
-// the UID the import assigned.
-func (m *mailbox) appendAt(dest string, f goimap.FlagUpdate, internalDate time.Time, raw []byte) (uint32, error) {
+// AppendFrom is how the server hands over every APPEND (StreamAppender): the
+// size octets of msg are its spool file, read here and sent to the import as
+// they are read, so neither the gateway nor the call holds the message (#2107).
+// A zero internalDate means the command carried no date-time, and the message
+// is stored at the current time, as AppendUID stores it.
+func (m *mailbox) AppendFrom(dest string, f goimap.FlagUpdate, internalDate time.Time, msg io.ReaderAt, size int64) (uint32, error) {
+	if internalDate.IsZero() {
+		internalDate = time.Now()
+	}
+	return m.appendAt(dest, f, internalDate, msg, size)
+}
+
+// appendAt stores the size octets of msg in dest with internalDate as its
+// INTERNALDATE and returns the UID the import assigned.
+func (m *mailbox) appendAt(dest string, f goimap.FlagUpdate, internalDate time.Time, msg io.ReaderAt, size int64) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
 	}
-	// Normalize line endings to CRLF at ingest. An APPEND'd LF-only message would
-	// otherwise be stored with bare LFs, breaking POP3 RETR/TOP framing (go-pop3
-	// splits on CRLF and does not dot-stuff bare-LF lines, risking premature
-	// termination) and diverging from the CRLF wire form of every other stored
-	// message. Done before parsing/storing so both the parsed fields and the
-	// persisted raw are consistent.
-	raw = normalizeToCRLF(raw)
-	resp, err := m.importMessage(m.accountID, &apiclient.ImportRequest{
-		RawMessage:   raw,
+	// The import receives the message with its line endings made CRLF
+	// (crlfReader): one pass counts the octets that makes, for the request's
+	// length, and each send reads it again.
+	open := func() io.Reader { return newCRLFReader(io.NewSectionReader(msg, 0, size)) }
+	normalized, err := io.Copy(io.Discard, open())
+	if err != nil {
+		return 0, err
+	}
+	req := &apiclient.ImportRequest{
 		Folder:       dest,
 		Flags:        importFlags(f),
 		InternalDate: internalDate,
 		AlwaysStore:  true,
 		// Only APPEND asks: COPY names a message the client can already see.
 		MatchSubmission: true,
+	}
+	content := apiclient.ImportContent{Open: open, Size: normalized}
+	resp, err := m.importIn(m.accountID, func(session string) (*apiclient.ImportResponse, error) {
+		return m.api.ImportMessageFrom(m.token, m.accountID, session, req, content)
 	})
 	if err != nil {
 		return 0, err

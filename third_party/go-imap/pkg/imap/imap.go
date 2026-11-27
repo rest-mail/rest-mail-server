@@ -34,8 +34,10 @@
 // UID EXPUNGE — and one that implements [Mover] turns the baseline MOVE
 // ([RFC 6851]) into a single atomic backend operation. A Mailbox that implements
 // [DateAppender] additionally receives the client-supplied INTERNALDATE on
-// APPEND, and one that implements [UTF8Mailbox] turns on UTF8=ACCEPT
-// ([RFC 6855]) through ENABLE. One that implements [Subscriber] keeps a real
+// APPEND, one that implements [StreamAppender] takes APPEND's message from the
+// server's spool file instead of memory, and one that implements [UTF8Mailbox]
+// turns on UTF8=ACCEPT ([RFC 6855]) through ENABLE.
+// One that implements [Subscriber] keeps a real
 // subscription list for SUBSCRIBE, UNSUBSCRIBE, LSUB and LIST's SUBSCRIBED
 // options ([RFC 5258]). One that implements [RightsMailbox] tells the server
 // what the user may do with each mailbox, for read-only selections, TRYCREATE
@@ -59,6 +61,7 @@ package imap
 
 import (
 	"errors"
+	"io"
 	"time"
 )
 
@@ -613,6 +616,23 @@ type DateAppender interface {
 	// also sets the message's internal date to internalDate, and returns the UID
 	// assigned to the stored message (0 if the backend does not track UIDs).
 	AppendWithDate(dest string, f FlagUpdate, internalDate time.Time, raw []byte) (uid uint32, err error)
+}
+
+// StreamAppender is the optional interface a [Mailbox] may also implement to
+// take an APPEND's message without either side holding it in memory. The server
+// always copies the literal to a temporary file as it arrives, and removes that
+// file when the command ends, however it ends. When the concrete Mailbox
+// satisfies this interface the server calls AppendFrom with that file instead of
+// [Mailbox.Append], [UIDPlusMailbox.AppendUID] or [DateAppender.AppendWithDate];
+// otherwise it reads the file back into memory for them, as before.
+type StreamAppender interface {
+	// AppendFrom delivers the size octets of msg into dest exactly like
+	// [DateAppender.AppendWithDate] when internalDate is not zero, and like
+	// [UIDPlusMailbox.AppendUID] (the current time as the internal date) when it
+	// is. msg may be read any number of times, from any offset, until AppendFrom
+	// returns, and not after. It returns the UID assigned to the stored message,
+	// 0 when the backend does not track UIDs.
+	AppendFrom(dest string, f FlagUpdate, internalDate time.Time, msg io.ReaderAt, size int64) (uid uint32, err error)
 }
 
 // SearchZoneMailbox is the optional interface a [Mailbox] may also implement to

@@ -396,3 +396,20 @@ client (rest-mail/rest-mail-server#1957). A `Backend` that also implements the
 optional `ClientAddressBackend` is asked, at each LOGIN or AUTHENTICATE, for the
 `Backend` to use for the client's IP address, the one the `Limiter` already goes
 by. A `Backend` without it is called as before.
+
+## APPEND spools its literal (#2107)
+
+Upstream reads an APPEND literal into one `[]byte` and hands it to the store, so
+a 10 MiB message is held whole, and the host made two more whole copies of it on
+its way to its own store. The literal now goes to a temporary file as it is read,
+in 32 KiB pieces, with the NUL and RFC 6855 header checks made on each piece
+(`message.Header8bitScanner` agrees with `HeaderHas8bit` at every cut). The file
+goes when the command ends, a panic in the store included. A `Mailbox` that
+implements the optional `StreamAppender` reads the message from the file in
+`AppendFrom`; one that does not is given the file read back into memory, as
+before. Refusals, their order and their wording are unchanged; the one new answer
+is `NO APPEND failed` when the server cannot write the file, after the literal is
+read to its end so the session goes on. `TestAppendStreamsTheLiteralFromASpoolFile`,
+`TestAppendSpoolIsRemovedHoweverTheCommandEnds`,
+`TestAppendWithoutStreamAppenderReadsTheSpoolBack` and `TestAppendSpoolFailureIsANo`
+prove it.

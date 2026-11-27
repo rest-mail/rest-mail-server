@@ -20,6 +20,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- APPEND copies its literal to a temporary file as it arrives, finding a NUL
+  and 8-bit header octets as it copies, and removes the file when the command
+  ends, however it ends. A Mailbox that implements the new optional
+  `imap.StreamAppender` interface takes the message from that file through
+  `AppendFrom`, so the server never holds it whole; any other Mailbox gets it
+  read back into memory, as before. A literal the server cannot spool is read
+  to its end and answered `NO APPEND failed`. The size limits and every other
+  refusal are unchanged.
 - `wireform.SetFieldWriter` lets a host convert each 8-bit header field it
   takes, in every header block `Convert`, `Size` and FETCH convert, before the
   engine's own conversion. A host that downgrades the top-level header block

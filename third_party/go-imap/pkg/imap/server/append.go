@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-imap/pkg/imap"
-	"github.com/rest-mail/go-imap/pkg/imap/internal/message"
 	"github.com/rest-mail/go-imap/pkg/imap/internal/wire"
 )
 
@@ -259,8 +258,11 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 		s.send("+ Ready for literal data")
 	}
 
-	data := make([]byte, size)
-	if _, err := io.ReadFull(s.reader, data); err != nil {
+	// The literal goes to a spool file as it arrives, never into memory whole,
+	// and the file goes when the command ends, a panic included (#2107).
+	spool, err := s.spoolLiteral(int64(size))
+	defer spool.remove()
+	if err != nil {
 		// Incomplete commands must never reach the backend. The stream cannot
 		// be reused after a partial literal or timeout.
 		return true
@@ -288,14 +290,19 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 	// RFC 3501 §9 literal payloads are CHAR8 (%x01-ff). After the counted
 	// octets and terminator have been consumed, this refusal leaves the next
 	// command boundary intact, including for a non-synchronizing literal.
-	if bytes.IndexByte(data, 0) >= 0 {
+	if spool.nul {
 		s.tagged(tag, "BAD", "NUL in message literal")
 		return false
 	}
 	// Until the client has enabled UTF-8, a UTF8=ACCEPT server must refuse a
 	// message whose header fields carry 8-bit octets (RFC 6855 §4).
-	if utf8OK && !s.utf8 && message.HeaderHas8bit(data) {
+	if utf8OK && !s.utf8 && spool.header.Found() {
 		s.tagged(tag, "NO", "8-bit header fields need ENABLE UTF8=ACCEPT")
+		return false
+	}
+	if spool.diskErr != nil {
+		slog.Warn("imap: append could not spool the message", "error", spool.diskErr)
+		s.tagged(tag, "NO", "APPEND failed")
 		return false
 	}
 
@@ -306,15 +313,28 @@ func (s *Session) handleAppend(tag, args string) (closeConn bool) {
 		return false
 	}
 
-	var err error
-	// Deliver. Precedence: a client date-time with a DateAppender backend honours
-	// INTERNALDATE; otherwise a UIDPlusMailbox reports the assigned UID; otherwise
-	// the base Append. AppendWithDate and AppendUID both return the UID for the
-	// APPENDUID (RFC 4315) response code.
+	// Deliver. Precedence: a StreamAppender reads the spool file itself, with
+	// the client's date-time when there is one; otherwise the message is read
+	// back into memory, and a client date-time with a DateAppender backend
+	// honours INTERNALDATE; otherwise a UIDPlusMailbox reports the assigned UID;
+	// otherwise the base Append. AppendFrom, AppendWithDate and AppendUID all
+	// return the UID for the APPENDUID (RFC 4315) response code.
 	up, isUIDPlus := s.mailbox.(imap.UIDPlusMailbox)
 	da, isDater := s.mailbox.(imap.DateAppender)
+	sa, isStreamer := s.mailbox.(imap.StreamAppender)
 	var uid uint32
+	var data []byte
+	if !isStreamer {
+		if data, err = spool.bytes(); err != nil {
+			slog.Warn("imap: append could not read the spooled message", "error", err)
+			s.tagged(tag, "NO", "APPEND failed")
+			return false
+		}
+	}
 	switch {
+	case isStreamer:
+		// internalDate is zero when the command carries no date-time.
+		uid, err = sa.AppendFrom(folder, flags, internalDate, spool.file, spool.size)
 	case hasInternalDate && isDater:
 		uid, err = da.AppendWithDate(folder, flags, internalDate, data)
 	case isUIDPlus:
