@@ -61,6 +61,23 @@ func (s *Session) handleFetch(tag, args string) {
 // response, so a backend error cannot produce a successful-looking partial
 // response or phantom flags. Read-only selections never set or echo new \Seen.
 func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) error {
+	// A Mailbox that streams messages answers the whole message, its header and its
+	// text from a reader (#2107): opened and scanned once, and closed however the
+	// response ends. A scan that shows the response cannot be copied from it, an
+	// 8-bit message FETCH converts, reads it back whole instead of fetching again.
+	var stream *fetchStream
+	if s.streamSpans(tokens) {
+		st, err := s.openFetchStream(msg.UID)
+		if err != nil {
+			return err
+		}
+		defer st.close()
+		if st.streamable(tokens) {
+			return s.streamedFetchResponse(seq, msg, tokens, st)
+		}
+		stream = st
+	}
+
 	marksSeen := false
 	// The message is loaded lazily: a metadata-only fetch (FLAGS, RFC822.SIZE, …)
 	// must never pull the body — that is the entire point of answering RFC822.SIZE
@@ -70,7 +87,9 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 	loadStored := func() (string, bool) {
 		if !storedLoaded {
 			storedLoaded = true
-			if b, err := s.mailbox.Fetch(msg.UID); err == nil {
+			if stream != nil {
+				stored, storedOK = stream.whole()
+			} else if b, err := s.mailbox.Fetch(msg.UID); err == nil {
 				stored, storedOK = string(b), true
 			}
 		}
@@ -183,24 +202,10 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 		return errors.New("cannot load message data")
 	}
 
-	// Only advertise a new \Seen after the backend accepted it. Earlier
-	// messages in a multi-message FETCH may already have succeeded; an error
-	// stops this command without rolling their completed writes back.
-	if marksSeen && !msg.Seen && !s.readOnly {
-		if err := s.storeFlags(seq, imap.FlagUpdate{Seen: boolPtr(true)}, storeCondition{}); err != nil {
-			return err
-		}
-		msg.Seen = true
-		s.messages[seq-1].Seen = true
+	head, err := s.fetchHead(seq, msg, plain, marksSeen)
+	if err != nil {
+		return err
 	}
-	plain[1] = fmt.Sprintf("FLAGS (%s)", s.flagString(msg))
-	// Once CONDSTORE is on, every FETCH carries MODSEQ (RFC 7162 §3.1); a
-	// FETCH that asks for MODSEQ or CHANGEDSINCE has turned it on.
-	if s.condstore && s.modSeqs() {
-		plain = append(plain, fmt.Sprintf("MODSEQ (%d)", s.messages[seq-1].ModSeq))
-	}
-
-	head := fmt.Sprintf("* %d FETCH (%s", seq, strings.Join(plain, " "))
 	if len(lits) == 0 {
 		s.writeString(head + ")\r\n")
 		return nil
@@ -216,6 +221,28 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 	}
 	s.writeString(")\r\n")
 	return nil
+}
+
+// fetchHead is a FETCH response up to its literals, once any \Seen it sets is
+// stored: plain is its items, with the FLAGS slot at index 1 still empty.
+func (s *Session) fetchHead(seq int, msg imap.Message, plain []string, marksSeen bool) (string, error) {
+	// Only advertise a new \Seen after the backend accepted it. Earlier
+	// messages in a multi-message FETCH may already have succeeded; an error
+	// stops this command without rolling their completed writes back.
+	if marksSeen && !msg.Seen && !s.readOnly {
+		if err := s.storeFlags(seq, imap.FlagUpdate{Seen: boolPtr(true)}, storeCondition{}); err != nil {
+			return "", err
+		}
+		msg.Seen = true
+		s.messages[seq-1].Seen = true
+	}
+	plain[1] = fmt.Sprintf("FLAGS (%s)", s.flagString(msg))
+	// Once CONDSTORE is on, every FETCH carries MODSEQ (RFC 7162 §3.1); a
+	// FETCH that asks for MODSEQ or CHANGEDSINCE has turned it on.
+	if s.condstore && s.modSeqs() {
+		plain = append(plain, fmt.Sprintf("MODSEQ (%d)", s.messages[seq-1].ModSeq))
+	}
+	return fmt.Sprintf("* %d FETCH (%s", seq, strings.Join(plain, " ")), nil
 }
 
 // rawLoader returns a lazy, memoized loader of msg's raw RFC 5322 bytes for the
