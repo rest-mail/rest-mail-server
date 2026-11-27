@@ -29,8 +29,21 @@ func TestBlockedOutboundIP(t *testing.T) {
 		{"172.20.0.3", true},      // RFC1918
 		{"192.168.1.10", true},    // RFC1918
 		{"fd00::1", true},         // IPv6 unique-local
-		{"8.8.8.8", false},        // public
-		{"93.184.216.34", false},  // public
+		// Shared and reserved ranges a cloud or carrier network uses internally,
+		// and IPv6 wrappers that reach an IPv4 address the checks above miss.
+		{"100.100.100.200", true},       // carrier-grade NAT; a cloud metadata service lives here
+		{"100.64.0.1", true},            // carrier-grade NAT (RFC 6598)
+		{"0.1.2.3", true},               // "this network"
+		{"198.18.0.1", true},            // benchmarking
+		{"255.255.255.255", true},       // broadcast
+		{"224.0.0.1", true},             // multicast
+		{"64:ff9b::a9fe:a9fe", true},    // NAT64 of 169.254.169.254
+		{"64:ff9b::7f00:1", true},       // NAT64 of 127.0.0.1
+		{"2002:a00:1::1", true},         // 6to4 of 10.0.0.1
+		{"::ffff:10.0.0.1", true},       // IPv4-mapped RFC1918
+		{"2606:4700:4700::1111", false}, // public IPv6
+		{"8.8.8.8", false},              // public
+		{"93.184.216.34", false},        // public
 	}
 	for _, c := range cases {
 		ip := net.ParseIP(c.ip)

@@ -4,30 +4,25 @@ import (
 	"fmt"
 	"net"
 	"syscall"
+
+	"github.com/rest-mail/rest-mail-server/pkg/netguard"
 )
 
 // blockedOutboundIP reports whether outbound delivery must refuse a connection
 // to ip. Unlike the webhook-filter guard (which allows RFC1918 so filters can
 // call sibling containers), outbound mail delivery has no legitimate reason to
-// dial anything but a public internet MX or a public RESTMAIL endpoint, so the
-// guard here is stricter: every non-public class is blocked.
-//
-//   - loopback (127.0.0.0/8, ::1) — the gateway's own admin/API routes;
-//   - link-local (169.254.0.0/16, fe80::/10) — cloud instance-metadata
-//     services (169.254.169.254) that hand out IAM credentials;
-//   - private / unique-local (RFC1918 10/8, 172.16/12, 192.168/16 and IPv6
-//     fc00::/7) — internal relays and admin APIs that trust the gateway's IP;
-//   - unspecified (0.0.0.0, ::).
+// dial anything but a public internet MX or a public RESTMAIL endpoint, and a
+// remote domain chooses both, so every non-public class netguard knows is
+// blocked: loopback (the gateway's own routes), link-local and carrier-grade NAT
+// (cloud instance-metadata services), private and unique-local (internal relays
+// and admin APIs), and the NAT64 and 6to4 prefixes that would reach any of
+// those through an IPv6 address.
 //
 // The block is bypassed only when the worker was explicitly opted in to private
 // destinations (SetAllowPrivateDestinations) for a dev/testbed that delivers
 // between containers on a private bridge network.
 func blockedOutboundIP(ip net.IP) bool {
-	return ip.IsLoopback() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsPrivate() ||
-		ip.IsUnspecified()
+	return netguard.NonPublic(ip)
 }
 
 // outboundDialControl returns a net.Dialer.Control hook that refuses to connect
