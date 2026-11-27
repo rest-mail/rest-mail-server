@@ -160,7 +160,7 @@ func TestSearchOperatorsIDNDiacriticsAndRanking(t *testing.T) {
 	if err := store.PutBatch(ctx, []apitypes.Message{primary, other}, true, 0); err != nil {
 		t.Fatal(err)
 	}
-	cases := map[string]int{"cafe": 2, "resume": 1, "from:jose": 2, "from:jose@bücher.test": 2, "from:jose@xn--bcher-kva.test": 2, "to:reader@example.test": 2, "subject:cafe": 1, "has:attachment": 1, "is:unread": 1, "before:2026-11-21": 2, "before:2026-11-20": 0, "after:2026-11-20": 2, "after:2026-11-21": 0, "in:archive": 1, `subject:"Café planning" has:attachment is:unread in:INBOX`: 1, `"rocket launch"`: 2, "NOT": 0, `subject:' OR 1=1 --`: 0}
+	cases := map[string]int{"cafe": 2, "resume": 1, "from:jose": 2, "from:jose@bücher.test": 2, "from:jose@xn--bcher-kva.test": 2, "to:reader@example.test": 2, "subject:cafe": 1, "has:attachment": 1, "is:unread": 1, "before:2026-11-21": 2, "before:2026-11-20": 0, "after:2026-11-20": 2, "after:2026-11-21": 0, "in:archive": 1, `subject:"Café planning" has:attachment is:unread in:INBOX`: 1, `"rocket launch"`: 2, `"cafe: planning"`: 2, "NOT": 0, `subject:' OR 1=1 --`: 0}
 	for query, want := range cases {
 		t.Run(query, func(t *testing.T) {
 			result, err := store.Search(ctx, query, "", 50, 0)
