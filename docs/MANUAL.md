@@ -829,6 +829,9 @@ Implemented in slices; issue #153 remains open.
 | `TOTP_2FA_ENABLED` | `true` | Lets accounts enroll in TOTP 2FA. The bootstrap admin must enroll, so the API refuses to create one while this is off. |
 | `ENVIRONMENT` | `production` | Development/test runs must explicitly set `development` or `test` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `PIPELINE_FILTER_ERROR_ACTION` | `defer` | What a pipeline does with a filter that is missing, fails, panics or runs out of time: `defer` (temp-fail, the sender retries), `reject`, or `continue` (skip the filter). Any other value is `defer` |
+| `PIPELINE_FILTER_TIMEOUT_SECONDS` | `60` | Longest one filter may run before it is stopped and handled as `PIPELINE_FILTER_ERROR_ACTION` says. Whole seconds; a non-positive or malformed value is the default |
+| `PIPELINE_TOTAL_TIMEOUT_SECONDS` | `120` | Longest one run of a pipeline may take, all its filters together. When it passes, the filter running is stopped and the rest are not started, each handled as a filter that ran out of time (deferred by default). A message whose required checks and content checks run apart has this for each. Whole seconds; a non-positive or malformed value is the default |
 
 #### Audit chain anchors
 

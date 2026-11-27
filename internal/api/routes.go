@@ -333,6 +333,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	filterTimeout := cfg.PipelineFilterTimeout()
 	pipelineEngine.SetFilterTimeout(filterTimeout)
 	previewEngine.SetFilterTimeout(filterTimeout)
+	// One deadline for each run of a pipeline, all its filters together (#2107),
+	// so many slow filters cannot add up past it; an overrun takes the same
+	// policy as one filter's timeout.
+	totalTimeout := cfg.PipelineTotalTimeout()
+	pipelineEngine.SetTotalTimeout(totalTimeout)
+	previewEngine.SetTotalTimeout(totalTimeout)
 
 	// Async per-message trace recorder: durable MessageTrace rows are written off
 	// the hot path by one background goroutine, so a slow/failed DB drops traces

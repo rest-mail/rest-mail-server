@@ -524,6 +524,9 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `MASTER_KEY`        | *(empty)*                      | AES key for encrypting private keys at rest (required in prod) |
 | `ENVIRONMENT`       | `production`                   | Development/test runs must explicitly set `development` or `test` |
 | `LOG_LEVEL`         | `info`                         | Logging level (`debug`, `info`, `warn`, `error`) |
+| `PIPELINE_FILTER_ERROR_ACTION` | `defer`             | A pipeline filter that is missing, fails or runs out of time: `defer` (temp-fail), `reject`, or `continue` (skip it) |
+| `PIPELINE_FILTER_TIMEOUT_SECONDS` | `60`             | Longest one pipeline filter may run before it is stopped and handled as above |
+| `PIPELINE_TOTAL_TIMEOUT_SECONDS` | `120`             | Longest one run of a pipeline may take, all its filters together; past it the filter running is stopped and the rest are not started, handled as a filter that ran out of time |
 
 ### TLS and Certificates
 
