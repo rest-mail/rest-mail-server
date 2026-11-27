@@ -197,6 +197,12 @@ func TestCleanResetEveryTable(t *testing.T) {
 		if len(names) > 0 {
 			statement = "INSERT INTO " + resetIdentifier(table) + " (" + strings.Join(names, ",") + ") VALUES (" + strings.Join(values, ",") + ")"
 		}
+		if table == "message_sources" {
+			// A staged source: its check constraint wants no references and a
+			// cleanup deadline, which the generic probe row cannot give it.
+			statement = `INSERT INTO message_sources (ref, size, checksum, reference_count, state, reap_at)
+				VALUES ('probe', 0, '', 0, 'staged', CURRENT_TIMESTAMP)`
+		}
 		if table == "quota_usage" {
 			// The fixture's own reset gave the admin a row: give it usage to lose.
 			statement += " ON CONFLICT (mailbox_id) DO UPDATE SET message_count = 3, body_bytes = 9"

@@ -31,6 +31,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/greylist"
 	"github.com/rest-mail/rest-mail-server/internal/importsession"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
@@ -161,6 +162,11 @@ func main() {
 	// upgrades are the migrate tool's job (issue #196).
 	if err := db.AutoMigrate(database); err != nil {
 		slog.Error("failed to run database migration", "error", err)
+		os.Exit(1)
+	}
+	messageSources, err := messagestore.NewSources(database, cfg)
+	if err != nil {
+		slog.Error("failed to configure message source storage", "error", err)
 		os.Exit(1)
 	}
 
@@ -417,6 +423,13 @@ func main() {
 		attachmentstore.FilesystemRoot, attachmentstore.DefaultCleanupGrace, 24*time.Hour)
 	attachmentCleaner.Start()
 
+	sourceReaperCtx, stopSourceReaper := context.WithCancel(context.Background())
+	sourceReaperDone := make(chan struct{})
+	go func() {
+		defer close(sourceReaperDone)
+		messageSources.RunReaper(sourceReaperCtx)
+	}()
+
 	// Start the vacation-responses purger (hourly): deletes vacation_responses
 	// rows past their retention horizon so the auto-reply dedup table stays
 	// bounded rather than growing one row per (mailbox, sender) forever.
@@ -508,6 +521,8 @@ func main() {
 	greylistPurger.Shutdown()
 	gatewaySessionSweeper.Shutdown()
 	attachmentCleaner.Stop()
+	stopSourceReaper()
+	<-sourceReaperDone
 	vacationPurger.Shutdown()
 	sendIdempotencyPurger.Shutdown()
 	dkimRotation.Shutdown()

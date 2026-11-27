@@ -26,6 +26,12 @@ func newS3(bucket *attachmentstore.S3, spoolDir string) *S3 {
 
 // Put streams source to a temporary file and uploads it from there.
 func (s *S3) Put(ctx context.Context, source io.Reader, limit int64) (Object, error) {
+	return s.putNamed(ctx, s.newRef(), source, limit)
+}
+
+func (s *S3) newRef() string { return s.bucket.Prefix() + newName(time.Now()) }
+
+func (s *S3) putNamed(ctx context.Context, ref string, source io.Reader, limit int64) (Object, error) {
 	if s.spoolDir != "" {
 		if err := os.MkdirAll(s.spoolDir, 0o750); err != nil {
 			return Object{}, err
@@ -35,10 +41,12 @@ func (s *S3) Put(ctx context.Context, source io.Reader, limit int64) (Object, er
 	if err != nil {
 		return Object{}, err
 	}
-	defer func() {
-		_ = file.Close()
-		_ = os.Remove(file.Name())
-	}()
+	// Unlink the spool as soon as possible so a process crash cannot strand it
+	// on this node. Some filesystems require the handle to be closed first.
+	if err := os.Remove(file.Name()); err != nil {
+		defer func() { _ = os.Remove(file.Name()) }()
+	}
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	size, err := io.Copy(io.MultiWriter(file, hash), limitReader(contextReader{ctx, source}, limit))
 	if err != nil {
@@ -47,7 +55,6 @@ func (s *S3) Put(ctx context.Context, source io.Reader, limit int64) (Object, er
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return Object{}, err
 	}
-	ref := s.bucket.Prefix() + newName(time.Now())
 	if err := s.bucket.PutNamed(ctx, ref, file, size); err != nil {
 		return Object{}, err
 	}

@@ -2,7 +2,6 @@ package messagestore
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -34,6 +33,14 @@ func (f *Filesystem) root() (*os.Root, error) {
 // Put writes source to a temporary file, hashing as it goes, and renames it into place only
 // when it is complete, so a reader never sees part of an object.
 func (f *Filesystem) Put(ctx context.Context, source io.Reader, limit int64) (Object, error) {
+	return f.putNamed(ctx, f.newRef(), source, limit)
+}
+
+func (f *Filesystem) newRef() string { return newName(time.Now()) }
+
+func temporaryName(ref string) string { return ".tmp-" + path.Base(ref) }
+
+func (f *Filesystem) putNamed(ctx context.Context, ref string, source io.Reader, limit int64) (Object, error) {
 	if err := ctx.Err(); err != nil {
 		return Object{}, err
 	}
@@ -42,7 +49,7 @@ func (f *Filesystem) Put(ctx context.Context, source io.Reader, limit int64) (Ob
 		return Object{}, err
 	}
 	defer func() { _ = root.Close() }()
-	temporary := ".tmp-" + rand.Text()
+	temporary := temporaryName(ref)
 	file, err := root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
 	if err != nil {
 		return Object{}, err
@@ -57,8 +64,10 @@ func (f *Filesystem) Put(ctx context.Context, source io.Reader, limit int64) (Ob
 	if closeErr != nil {
 		return Object{}, closeErr
 	}
-	ref := newName(time.Now())
 	if err := root.MkdirAll(path.Dir(ref), 0o750); err != nil {
+		return Object{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return Object{}, err
 	}
 	if err := root.Rename(temporary, ref); err != nil {
@@ -128,6 +137,11 @@ func (f *Filesystem) Delete(ctx context.Context, ref string) error {
 		return err
 	}
 	defer func() { _ = root.Close() }()
+	// Remove the temporary name first. If a stalled rename won the race,
+	// the completed file is removed by the next operation.
+	if err := root.Remove(temporaryName(ref)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if err := root.Remove(ref); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
