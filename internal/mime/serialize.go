@@ -83,7 +83,7 @@ func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		writeHeader(&b, "Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
+		writeHeader(&b, "Content-Type", multipartType(email.Body.ContentType)+`; boundary="`+boundary+`"`)
 		b.WriteString("\r\n")
 		b.Write(body)
 	default:
@@ -101,38 +101,22 @@ func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// writeMixed renders a multipart/mixed body: the message body as the first
-// part, then inline parts, then attachments.
+// writeMixed renders a multipart/mixed body: the message body, then inline parts, then attachments.
+// A multipart/mixed body's own parts are parts of it, as they were in the message; any other body is
+// its first part.
 func writeMixed(b *strings.Builder, email *pipeline.EmailJSON) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 
-	if len(email.Body.Parts) > 0 {
-		alt, boundary, err := renderAlternative(email.Body.Parts)
-		if err != nil {
-			return err
-		}
-		part, err := w.CreatePart(textproto.MIMEHeader{
-			"Content-Type": {`multipart/alternative; boundary="` + boundary + `"`},
-		})
-		if err != nil {
-			return err
-		}
-		if _, err := part.Write(alt); err != nil {
-			return err
-		}
-	} else {
-		part, err := w.CreatePart(textproto.MIMEHeader{
-			"Content-Type": {contentTypeOr(email.Body.ContentType)},
-		})
-		if err != nil {
-			return err
-		}
-		if _, err := io.WriteString(part, email.Body.Content); err != nil {
+	body := []pipeline.Body{email.Body}
+	if len(email.Body.Parts) > 0 && MediaType(email.Body.ContentType) == "multipart/mixed" {
+		body = email.Body.Parts
+	}
+	for _, part := range body {
+		if err := writeBodyPart(w, part); err != nil {
 			return err
 		}
 	}
-
 	for _, att := range email.Inline {
 		if err := writeAttachmentPart(w, att); err != nil {
 			return err
@@ -153,22 +137,13 @@ func writeMixed(b *strings.Builder, email *pipeline.EmailJSON) error {
 	return nil
 }
 
-// renderAlternative renders the body parts as multipart/alternative, returning
-// the rendered parts and the boundary that delimits them.
+// renderAlternative renders the body parts as the parts of a multipart, returning the rendered
+// parts and the boundary that delimits them.
 func renderAlternative(parts []pipeline.Body) (body []byte, boundary string, err error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-
 	for _, part := range parts {
-		header := textproto.MIMEHeader{"Content-Type": {contentTypeOr(part.ContentType)}}
-		if part.TransferEncoding != "" {
-			header.Set("Content-Transfer-Encoding", part.TransferEncoding)
-		}
-		pw, err := w.CreatePart(header)
-		if err != nil {
-			return nil, "", err
-		}
-		if _, err := io.WriteString(pw, part.Content); err != nil {
+		if err := writeBodyPart(w, part); err != nil {
 			return nil, "", err
 		}
 	}
@@ -176,6 +151,31 @@ func renderAlternative(parts []pipeline.Body) (body []byte, boundary string, err
 		return nil, "", err
 	}
 	return buf.Bytes(), w.Boundary(), nil
+}
+
+// writeBodyPart appends one part of the body tree. A part that has parts of its own is written as
+// the multipart it is, with its own boundary, so a body tree of any depth reaches a scanner whole:
+// the texts under multipart/mixed → multipart/alternative are what a mail client reads (#1968).
+func writeBodyPart(w *multipart.Writer, part pipeline.Body) error {
+	header := textproto.MIMEHeader{"Content-Type": {contentTypeOr(part.ContentType)}}
+	content := []byte(part.Content)
+	if len(part.Parts) > 0 {
+		nested, boundary, err := renderAlternative(part.Parts)
+		if err != nil {
+			return err
+		}
+		header.Set("Content-Type", multipartType(part.ContentType)+`; boundary="`+boundary+`"`)
+		content = nested
+	}
+	if part.TransferEncoding != "" {
+		header.Set("Content-Transfer-Encoding", part.TransferEncoding)
+	}
+	pw, err := w.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = pw.Write(content)
+	return err
 }
 
 // writeAttachmentPart appends one attachment or inline part. Content is assumed
@@ -208,6 +208,15 @@ func writeAttachmentPart(w *multipart.Writer, att pipeline.Attachment) error {
 	}
 	_, err = io.WriteString(part, wrapBase64(att.Content))
 	return err
+}
+
+// multipartType is the multipart media type a body with parts is written as: its own, when it names
+// one, or multipart/alternative, which is what a body built here with parts is.
+func multipartType(ct string) string {
+	if mediaType := MediaType(ct); strings.HasPrefix(mediaType, "multipart/") && !strings.ContainsAny(mediaType, "\"\r\n") {
+		return mediaType
+	}
+	return "multipart/alternative"
 }
 
 // contentTypeOr returns ct, or a sensible default when it is empty.
