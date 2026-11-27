@@ -30,7 +30,9 @@ func (r *verifiedSource) Read(p []byte) (int, error) {
 	var err error
 	if len(p) > 0 {
 		n, err = r.reader.Read(p)
-		_, _ = r.hash.Write(p[:n])
+		if r.hash != nil {
+			_, _ = r.hash.Write(p[:n])
+		}
 		r.left -= int64(n)
 	}
 	switch {
@@ -50,7 +52,7 @@ func (r *verifiedSource) Read(p []byte) (int, error) {
 }
 
 func (r *verifiedSource) verifyEnd(readErr error) error {
-	if hex.EncodeToString(r.hash.Sum(nil)) != r.checksum {
+	if r.hash != nil && hex.EncodeToString(r.hash.Sum(nil)) != r.checksum {
 		return ErrCorruptSource
 	}
 	if readErr == nil {

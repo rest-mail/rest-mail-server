@@ -26,7 +26,7 @@ func (s *Sources) CreateMessage(ctx context.Context, tx *gorm.DB, message *model
 	}
 	tx = tx.Session(&gorm.Session{Context: ctx, NewDB: true})
 	open := func() (io.ReadCloser, int64, error) {
-		return s.open(ctx, tx, *message.SourceRef)
+		return s.open(ctx, tx, *message.SourceRef, false)
 	}
 	return message.CreateWithSource(tx, func(m *models.Message) error {
 		reader, size, err := open()
@@ -72,6 +72,24 @@ func CopyMessage(ctx context.Context, tx *gorm.DB, message *models.Message) erro
 // OpenMessage pins the message's ownership until the body closes. In
 // particular, S3 starts its GET lazily, after Open has checked its length.
 func (s *Sources) OpenMessage(ctx context.Context, id uint, ref string) (io.ReadCloser, int64, error) {
+	return s.openMessage(ctx, id, ref, false)
+}
+
+// SealDigest hashes the current contents, including changes that fail the
+// source ledger's checksum, so the caller can compare both receipt digests.
+func (s *Sources) SealDigest(ctx context.Context, message models.Message) (string, error) {
+	if message.SourceRef == nil {
+		return message.SealDigest()
+	}
+	reader, _, err := s.openMessage(ctx, message.ID, *message.SourceRef, true)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+	return message.SealDigestFrom(reader)
+}
+
+func (s *Sources) openMessage(ctx context.Context, id uint, ref string, forSeal bool) (io.ReadCloser, int64, error) {
 	tx := s.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -83,7 +101,7 @@ func (s *Sources) OpenMessage(ctx context.Context, id uint, ref string) (io.Read
 		_ = tx.Rollback().Error
 		return nil, 0, err
 	}
-	reader, size, err := s.open(ctx, tx, ref)
+	reader, size, err := s.open(ctx, tx, ref, forSeal)
 	if err != nil {
 		_ = tx.Rollback().Error
 		return nil, 0, err

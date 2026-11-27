@@ -89,26 +89,31 @@ func TestReferencedRawHeadersAndSeal(t *testing.T) {
 	if rr := f.do(http.MethodGet, path+"/unsubscribe", f.session, ""); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "https://example.test/u") {
 		t.Fatalf("unsubscribe headers: HTTP %d %s", rr.Code, rr.Body)
 	}
-	assertSeal := func(want string) {
+	assertSeal := func(want, computed string) {
 		t.Helper()
 		rr := f.do(http.MethodGet, path+"/seal", f.session, "")
 		var result struct {
 			Data struct {
-				State      string `json:"state"`
-				SealedHash string `json:"sealed_hash"`
+				State        string `json:"state"`
+				SealedHash   string `json:"sealed_hash"`
+				ComputedHash string `json:"computed_hash"`
 			}
 		}
 		if rr.Code != http.StatusOK || json.Unmarshal(rr.Body.Bytes(), &result) != nil ||
-			result.Data.State != want || result.Data.SealedHash != message.SealedHash {
+			result.Data.State != want || result.Data.SealedHash != message.SealedHash || result.Data.ComputedHash != computed {
 			t.Fatalf("want seal %s: HTTP %d %s", want, rr.Code, rr.Body)
 		}
 	}
-	assertSeal("intact")
+	assertSeal("intact", message.SealedHash)
 	changed := strings.Replace(raw, "body with binary", "Body with binary", 1)
 	if err := os.WriteFile(filepath.Join(f.cfg.Messages.Directory, *message.SourceRef), []byte(changed), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	assertSeal("mismatch")
+	recomputed, err := message.SealDigestFrom(strings.NewReader(changed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSeal("mismatch", recomputed)
 }
 
 func TestReferencedMetadataMatchesProtocolOctets(t *testing.T) {

@@ -1,12 +1,29 @@
 package messagestore
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
 
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
+
+func TestSealSourceReadsCurrentOctetsAndRejectsAnIncompleteRead(t *testing.T) {
+	const raw = "Subject: current\r\n\r\nbody"
+	for _, size := range []int64{int64(len(raw)), int64(len(raw)) + 1, int64(len(raw)) - 1} {
+		body := strings.NewReader(raw)
+		reader := &verifiedSource{body: io.NopCloser(body), reader: body, left: size}
+		data, err := io.ReadAll(reader)
+		if size == int64(len(raw)) {
+			if err != nil || string(data) != raw {
+				t.Fatalf("valid source: got %q, error %v", data, err)
+			}
+		} else if !errors.Is(err, ErrCorruptSource) {
+			t.Fatalf("source at %d bytes, reported %d: got %v", len(raw), size, err)
+		}
+	}
+}
 
 func TestReferencedWireSizes(t *testing.T) {
 	s := Sources{spoolDir: t.TempDir()}

@@ -32,9 +32,10 @@ var (
 
 // Sources stores immutable message bytes and tracks which objects have committed owners.
 type Sources struct {
-	db       *gorm.DB
-	store    sourceBackend
-	spoolDir string
+	db          *gorm.DB
+	store       sourceBackend
+	spoolDir    string
+	maxSealSize int64
 }
 
 func NewSources(db *gorm.DB, cfg *config.Config) (*Sources, error) {
@@ -42,7 +43,11 @@ func NewSources(db *gorm.DB, cfg *config.Config) (*Sources, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Sources{db: db, store: backend, spoolDir: cfg.Messages.SpoolDir}, nil
+	maxSealSize := cfg.SMTPMaxMessageSize
+	if maxSealSize <= 0 {
+		maxSealSize = config.DefaultSMTPMaxMessageSize
+	}
+	return &Sources{db: db, store: backend, spoolDir: cfg.Messages.SpoolDir, maxSealSize: int64(maxSealSize)}, nil
 }
 
 // Stage reserves a key before it starts the upload. The caller supplies the size
@@ -169,10 +174,10 @@ func sourceUpdate(result *gorm.DB) error {
 // of a complete read. The caller must hold a committed reference throughout
 // the read. Closing a partial read does not verify the digest.
 func (s *Sources) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
-	return s.open(ctx, s.db, ref)
+	return s.open(ctx, s.db, ref, false)
 }
 
-func (s *Sources) open(ctx context.Context, db *gorm.DB, ref string) (io.ReadCloser, int64, error) {
+func (s *Sources) open(ctx context.Context, db *gorm.DB, ref string, forSeal bool) (io.ReadCloser, int64, error) {
 	var row models.MessageSource
 	err := liveSource(db.WithContext(ctx), ref).Select("size", "checksum").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -185,12 +190,22 @@ func (s *Sources) open(ctx context.Context, db *gorm.DB, ref string) (io.ReadClo
 	if err != nil {
 		return nil, 0, err
 	}
-	if body.Size() != row.Size {
+	size := body.Size()
+	if forSeal {
+		if size > max(row.Size, s.maxSealSize) {
+			_ = body.Close()
+			return nil, 0, ErrTooLarge
+		}
+		// The receipt's own digest compares the current bytes with the
+		// original. A checksum mismatch must not hide those current bytes.
+		return &verifiedSource{body: body, reader: contextReader{ctx, body}, left: size}, size, nil
+	}
+	if size != row.Size {
 		_ = body.Close()
 		return nil, 0, ErrCorruptSource
 	}
 	return &verifiedSource{
 		body: body, reader: contextReader{ctx, body}, hash: sha256.New(),
-		left: row.Size, checksum: row.Checksum,
-	}, row.Size, nil
+		left: size, checksum: row.Checksum,
+	}, size, nil
 }
