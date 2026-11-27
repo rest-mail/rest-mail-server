@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,31 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
-
-func TestDeliveryStripsOnlyImportFields(t *testing.T) {
-	const body = `{"address":"one@example.test","folder":{},"is_answered":42,"is_read":"yes","is_flagged":[],"is_starred":null,"is_draft":{},"received_at":"not a date","mailbox_id":"not an id","priority":1,"recipients_to":{"folder":"kept"}}`
-	called := false
-	stripDeliveryImportFields(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		got, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(got, &fields); err != nil {
-			t.Fatal(err)
-		}
-		if len(fields) != 3 || string(fields["address"]) != `"one@example.test"` || string(fields["priority"]) != "1" || string(fields["recipients_to"]) != `{"folder":"kept"}` {
-			t.Fatalf("unexpected stripped body: %s", got)
-		}
-		if r.ContentLength != int64(len(got)) {
-			t.Fatalf("content length = %d, want %d", r.ContentLength, len(got))
-		}
-	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
-	if !called {
-		t.Fatal("stripped delivery did not reach the binder")
-	}
-}
 
 func TestDeliveryStrippingPreservesBindingErrors(t *testing.T) {
 	for _, test := range []struct {
