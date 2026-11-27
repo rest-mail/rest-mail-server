@@ -114,9 +114,14 @@ assert_contains "file certificate expiry alert" "$tmp/metrics-on.yaml" 'alert: T
 assert_absent "compose-only disk alert" "$tmp/metrics-on.yaml" 'alert: DiskSpaceCritical'
 python3 -B "$CHART_DIR/tests/alerting-rules-test.py" "$tmp/metrics-on.yaml"
 yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/alert-rules.yml"
-cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$CHART_DIR/tests/tls-cert-alerts-test.yml" "$CHART_DIR/tests/queue-alerts-test.yml" "$tmp/"
-promtool check rules "$tmp/alert-rules.yml"
-promtool test rules "$tmp/dkim-alerts-test.yml" "$tmp/tls-cert-alerts-test.yml" "$tmp/queue-alerts-test.yml"
+# Every *-alerts-test.yml runs, so a test file alerting-rules-test.py counts
+# for coverage is one promtool executes. They read the rendered rules
+# (alert-rules.yml), except disk-node-alerts-test.yml: the chart leaves the
+# compose-only disk group out, so it reads the rules file itself.
+cp "$CHART_DIR"/tests/*-alerts-test.yml "$tmp/"
+cp "$CHART_DIR/files/alerting-rules.yml" "$tmp/alerting-rules.yml"
+promtool check rules "$tmp/alert-rules.yml" "$tmp/alerting-rules.yml"
+promtool test rules "$tmp"/*-alerts-test.yml
 
 echo "== render development overlay =="
 helm template restmail "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD" > "$tmp/dev.yaml"

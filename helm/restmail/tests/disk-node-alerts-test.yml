@@ -1,0 +1,51 @@
+# promtool proof for the disk alerts only the compose stack loads
+# (restmail-disk-node, #1579, #2117 AC01). The chart's PrometheusRule leaves
+# this group out, so render-test.sh runs this file against
+# files/alerting-rules.yml itself. The database volume is 85% full for 40
+# minutes, the certificates volume 95% full for 10; the root filesystem is
+# not a REST Mail volume and never fires.
+rule_files:
+  - alerting-rules.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node",instance="host",mountpoint="/volumes/postgres"}'
+        values: '15x40 50x10'
+      - series: 'node_filesystem_size_bytes{job="node",instance="host",mountpoint="/volumes/postgres"}'
+        values: '100x50'
+      - series: 'node_filesystem_avail_bytes{job="node",instance="host",mountpoint="/volumes/certs"}'
+        values: '5x10 50x40'
+      - series: 'node_filesystem_size_bytes{job="node",instance="host",mountpoint="/volumes/certs"}'
+        values: '100x50'
+      - series: 'node_filesystem_avail_bytes{job="node",instance="host",mountpoint="/"}'
+        values: '1x50'
+      - series: 'node_filesystem_size_bytes{job="node",instance="host",mountpoint="/"}'
+        values: '100x50'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: DiskSpaceCritical
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: DiskSpaceCritical
+        exp_alerts:
+          - exp_labels: {job: node, instance: host, mountpoint: /volumes/certs, severity: critical}
+            exp_annotations:
+              summary: "Volume /volumes/certs is over 90% full"
+              description: "Only 5% of the filesystem holding /volumes/certs is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+      - eval_time: 15m
+        alertname: DiskSpaceCritical
+        exp_alerts: []
+      - eval_time: 29m
+        alertname: DiskSpaceLow
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: DiskSpaceLow
+        exp_alerts:
+          - exp_labels: {job: node, instance: host, mountpoint: /volumes/postgres, severity: warning}
+            exp_annotations:
+              summary: "Volume /volumes/postgres is over 80% full"
+              description: "Only 15% of the filesystem holding /volumes/postgres is free. Free space or grow the volume before it fills."
+      - eval_time: 45m
+        alertname: DiskSpaceLow
+        exp_alerts: []

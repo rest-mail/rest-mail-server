@@ -1,0 +1,531 @@
+# promtool proof that every service alert in files/alerting-rules.yml fires on
+# the failure it names and recovers when that failure ends (#1579, #2117 AC01).
+# Each test drives one alert with a failing series and at least one healthy
+# control series that must never fire it. render-test.sh runs this file against
+# the chart's rendered PrometheusRule; the disk alerts only the compose stack
+# loads are in disk-node-alerts-test.yml.
+rule_files:
+  - alert-rules.yml
+evaluation_interval: 1m
+tests:
+  # Database certificate: 13 days left for 70 minutes, then renewed to 30.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_cert_expiry_days{job="api",instance="expiring"}'
+        values: '13x70 30x20'
+      - series: 'restmail_cert_expiry_days{job="api",instance="healthy"}'
+        values: '30x90'
+    alert_rule_test:
+      - eval_time: 59m
+        alertname: CertificateExpiringSoon
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: CertificateExpiringSoon
+        exp_alerts:
+          - exp_labels: {job: api, instance: expiring, severity: critical}
+            exp_annotations:
+              summary: "A certificate expires in 13 days"
+              description: "The soonest-expiring certificate in the database expires in less than 14 days (negative: already expired). The admin health endpoint names its domain. Renew now."
+      - eval_time: 75m
+        alertname: CertificateExpiringSoon
+        exp_alerts: []
+
+  # Handshakes refused for a domain with no certificate from 6m to 16m.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_tls_cert_missing_total{job="smtp-gateway",instance="missing"}'
+        values: '0x5 1+1x10 11x30'
+      - series: 'restmail_tls_cert_missing_total{job="smtp-gateway",instance="healthy"}'
+        values: '0x46'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DomainCertificateMissing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: DomainCertificateMissing
+        exp_alerts:
+          - exp_labels: {job: smtp-gateway, instance: missing, severity: critical}
+            exp_annotations:
+              summary: "Handshakes refused: a domain served here has no usable certificate"
+              description: "7 handshakes in the last 10 minutes were refused because the domain asked for is served here but has no usable certificate (none stored, expired, or the stored pair will not load). Mail for it is being turned away. The gateway logs name the domain."
+      - eval_time: 30m
+        alertname: DomainCertificateMissing
+        exp_alerts: []
+
+  # 30 SMTP failures a minute (150 in 5 minutes) for 20 minutes; IMAP's 10 a
+  # minute (50 in 5 minutes) stays under the limit.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_auth_failures_total{job="smtp-gateway",instance="a",protocol="smtp"}'
+        values: '0+30x20 600x20'
+      - series: 'restmail_auth_failures_total{job="imap-gateway",instance="b",protocol="imap"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AuthFailureRateHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: AuthFailureRateHigh
+        exp_alerts:
+          - exp_labels: {job: smtp-gateway, instance: a, protocol: smtp, severity: warning}
+            exp_annotations:
+              summary: "High authentication failure rate on smtp"
+              description: "More than 100 authentication failures in the last 5 minutes on protocol smtp. Possible brute-force attempt."
+      - eval_time: 30m
+        alertname: AuthFailureRateHigh
+        exp_alerts: []
+
+  # One address crosses the attack threshold at 6m; the alert holds for the
+  # 15 minutes the window remembers it.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_signin_accounts_under_attack_total{job="api",instance="a"}'
+        values: '0x5 1x40'
+      - series: 'restmail_signin_accounts_under_attack_total{job="api",instance="b"}'
+        values: '0x45'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SignInAccountUnderAttack
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: SignInAccountUnderAttack
+        exp_alerts:
+          - exp_labels: {job: api, instance: a, severity: warning}
+            exp_annotations:
+              summary: "An address is taking many failed sign-ins"
+              description: "One address reached 20 recent failed sign-ins. Failures for it now wait up to 3 seconds; the correct password is not slowed. The API log event api_signin_account_under_attack gives the masked address, and the audit log's auth.sign_in entries give the sources."
+      - eval_time: 25m
+        alertname: SignInAccountUnderAttack
+        exp_alerts: []
+
+  # Four failed sign-ins answered without their delay at 6m.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_signin_failures_unslowed_total{job="api",instance="a"}'
+        values: '0x5 4x30'
+      - series: 'restmail_signin_failures_unslowed_total{job="api",instance="b"}'
+        values: '0x35'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: SignInDelayBoundReached
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: SignInDelayBoundReached
+        exp_alerts:
+          - exp_labels: {job: api, instance: a, severity: warning}
+            exp_annotations:
+              summary: "Failed sign-ins are being answered without their delay"
+              description: "4 failed sign-ins in the last 10 minutes were answered at once because 256 were already waiting. Nobody is refused, but guessing is no longer slowed. Look for a large attack."
+      - eval_time: 20m
+        alertname: SignInDelayBoundReached
+        exp_alerts: []
+
+  # 10 server errors to every 100 successes (9%) for 15 minutes, then none.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_http_requests_total{job="api",instance="a",status="200"}'
+        values: '0+100x30'
+      - series: 'restmail_http_requests_total{job="api",instance="a",status="500"}'
+        values: '0+10x15 150x15'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HTTPErrorRateHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: HTTPErrorRateHigh
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "HTTP 5xx error rate exceeds 5%"
+              description: "The API server is returning server errors at a rate of 9.091%."
+      - eval_time: 25m
+        alertname: HTTPErrorRateHigh
+        exp_alerts: []
+
+  # Every request takes 2.5 to 5 seconds for 15 minutes, then under 0.5.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_http_request_duration_seconds_bucket{job="api",instance="a",le="0.5"}'
+        values: '0x15 10+10x14'
+      - series: 'restmail_http_request_duration_seconds_bucket{job="api",instance="a",le="1"}'
+        values: '0x15 10+10x14'
+      - series: 'restmail_http_request_duration_seconds_bucket{job="api",instance="a",le="2.5"}'
+        values: '0x15 10+10x14'
+      - series: 'restmail_http_request_duration_seconds_bucket{job="api",instance="a",le="5"}'
+        values: '0+10x15 160+10x14'
+      - series: 'restmail_http_request_duration_seconds_bucket{job="api",instance="a",le="+Inf"}'
+        values: '0+10x15 160+10x14'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: APIResponseTimeSlow
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: APIResponseTimeSlow
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "API p95 response time exceeds 2 seconds"
+              description: "The 95th percentile API response time is 4.875s, which is above the 2s threshold."
+      - eval_time: 25m
+        alertname: APIResponseTimeSlow
+        exp_alerts: []
+
+  # 12 queue errors a minute (0.2/s) for 15 minutes; the control's 1 a minute
+  # stays under 0.1/s.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_queue_errors_total{job="smtp-gateway",instance="failing"}'
+        values: '0+12x15 180x15'
+      - series: 'restmail_queue_errors_total{job="smtp-gateway",instance="healthy"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: QueueErrorRateHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: QueueErrorRateHigh
+        exp_alerts:
+          - exp_labels: {job: smtp-gateway, instance: failing, severity: warning}
+            exp_annotations:
+              summary: "Queue processing error rate is elevated"
+              description: "Queue errors are occurring at 0.2 per second."
+      - eval_time: 25m
+        alertname: QueueErrorRateHigh
+        exp_alerts: []
+
+  # stalled: 10 rows due and nothing processed until 40m, when the rows are
+  # gone. idle: nothing due and nothing processed, the workers rightly idle.
+  # busy: rows due and being processed.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_queue_processed_total{job="smtp-gateway",instance="stalled"}'
+        values: '5x60'
+      - series: 'restmail_queue_due{job="smtp-gateway",instance="stalled"}'
+        values: '10x40 0x20'
+      - series: 'restmail_queue_processed_total{job="smtp-gateway",instance="idle"}'
+        values: '5x60'
+      - series: 'restmail_queue_due{job="smtp-gateway",instance="idle"}'
+        values: '0x60'
+      - series: 'restmail_queue_processed_total{job="smtp-gateway",instance="busy"}'
+        values: '0+3x60'
+      - series: 'restmail_queue_due{job="smtp-gateway",instance="busy"}'
+        values: '10x60'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: QueueWorkerStalled
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: QueueWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: smtp-gateway, instance: stalled, severity: critical}
+            exp_annotations:
+              summary: "Queue workers appear stalled"
+              description: "No messages have been processed in the last 15 minutes although 10 queued messages are due for an attempt now. Messages waiting for a later retry are not counted."
+      - eval_time: 45m
+        alertname: QueueWorkerStalled
+        exp_alerts: []
+
+  # The oldest message passes 6 hours (21600s) at 11m and is sent at 41m.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_queue_oldest_age_seconds{job="smtp-gateway",instance="old"}'
+        values: '21000+60x40 0x10'
+      - series: 'restmail_queue_oldest_age_seconds{job="smtp-gateway",instance="healthy"}'
+        values: '60x50'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: QueueOldestMessageOld
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: QueueOldestMessageOld
+        exp_alerts:
+          - exp_labels: {job: smtp-gateway, instance: old, severity: warning}
+            exp_annotations:
+              summary: "The oldest queued message is 6h 20m 0s old"
+              description: "A pending or deferred outbound message has waited more than 6 hours. Check the queue in the admin API for the destinations that are deferring."
+      - eval_time: 45m
+        alertname: QueueOldestMessageOld
+        exp_alerts: []
+
+  # The database is unreachable from 6m to 16m.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_db_connection_errors_total{job="api",instance="a"}'
+        values: '0x5 1+1x10 11x20'
+      - series: 'restmail_db_connection_errors_total{job="api",instance="b"}'
+        values: '0x35'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DatabaseConnectionErrors
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: DatabaseConnectionErrors
+        exp_alerts:
+          - exp_labels: {job: api, instance: a, severity: critical}
+            exp_annotations:
+              summary: "api cannot reach the database"
+              description: "5 database operations in the last 5 minutes failed because the database could not be reached. Check the Postgres server, its network and its connection limit."
+      - eval_time: 25m
+        alertname: DatabaseConnectionErrors
+        exp_alerts: []
+
+  # saturated: 19 of 20 connections in use and callers waiting until 30m.
+  # busy: as full, but nobody waits. unset: no pool limit reported.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_db_pool_in_use_connections{job="api",instance="saturated"}'
+        values: '19x30 5x10'
+      - series: 'restmail_db_pool_max_open_connections{job="api",instance="saturated"}'
+        values: '20x40'
+      - series: 'restmail_db_pool_wait_count_total{job="api",instance="saturated"}'
+        values: '0+5x30 150x10'
+      - series: 'restmail_db_pool_in_use_connections{job="api",instance="busy"}'
+        values: '19x40'
+      - series: 'restmail_db_pool_max_open_connections{job="api",instance="busy"}'
+        values: '20x40'
+      - series: 'restmail_db_pool_wait_count_total{job="api",instance="busy"}'
+        values: '7x40'
+      - series: 'restmail_db_pool_in_use_connections{job="api",instance="unset"}'
+        values: '19x40'
+      - series: 'restmail_db_pool_max_open_connections{job="api",instance="unset"}'
+        values: '0x40'
+      - series: 'restmail_db_pool_wait_count_total{job="api",instance="unset"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DatabasePoolSaturated
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: DatabasePoolSaturated
+        exp_alerts:
+          - exp_labels: {job: api, instance: saturated, severity: warning}
+            exp_annotations:
+              summary: "api database pool is nearly exhausted"
+              description: "More than 90% of the pool's connections are in use and callers are waiting for one. Raise DB_MAX_OPEN_CONNS (within Postgres max_connections) or find the slow queries."
+      - eval_time: 38m
+        alertname: DatabasePoolSaturated
+        exp_alerts: []
+
+  # Filter spam errors on 10 of every 110 steps (9%) until 20m; filter dkim on
+  # 1 of every 101 (1%) throughout.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_pipeline_stage_decisions_total{job="smtp-gateway",instance="a",filter="spam",action="accept"}'
+        values: '0+100x40'
+      - series: 'restmail_pipeline_stage_decisions_total{job="smtp-gateway",instance="a",filter="spam",action="error"}'
+        values: '0+10x20 200x20'
+      - series: 'restmail_pipeline_stage_decisions_total{job="smtp-gateway",instance="a",filter="dkim",action="accept"}'
+        values: '0+100x40'
+      - series: 'restmail_pipeline_stage_decisions_total{job="smtp-gateway",instance="a",filter="dkim",action="error"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PipelineFilterErrorRateHigh
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PipelineFilterErrorRateHigh
+        exp_alerts:
+          - exp_labels: {filter: spam, severity: warning}
+            exp_annotations:
+              summary: "Pipeline filter spam is erroring"
+              description: "9.091% of filter spam's steps in the last 10 minutes ended in an error. Its service may be down; the gateway logs name the cause."
+      - eval_time: 38m
+        alertname: PipelineFilterErrorRateHigh
+        exp_alerts: []
+
+  # SMTP connections stop at 60m (the hour is empty from 115m, firing from
+  # 130m) and resume at 185m; IMAP connections never
+  # stop.
+  - interval: 5m
+    input_series:
+      - series: 'restmail_connections_accepted_total{job="smtp-gateway",instance="a",protocol="smtp"}'
+        values: '0+10x12 120x24 130+10x10'
+      - series: 'restmail_connections_accepted_total{job="imap-gateway",instance="b",protocol="imap"}'
+        values: '0+10x46'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: SMTPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 125m
+        alertname: SMTPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 135m
+        alertname: SMTPConnectionsStopped
+        exp_alerts:
+          - exp_labels: {job: smtp-gateway, severity: warning}
+            exp_annotations:
+              summary: "No SMTP connections in the last hour"
+              description: "The SMTP gateway has admitted no connection for an hour. Check the listener, the load balancer, the MX records and the firewall."
+      - eval_time: 190m
+        alertname: SMTPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: IMAPConnectionsStopped
+        exp_alerts: []
+
+  # The mirror: IMAP connections stop and resume, SMTP never stops.
+  - interval: 5m
+    input_series:
+      - series: 'restmail_connections_accepted_total{job="imap-gateway",instance="b",protocol="imap"}'
+        values: '0+10x12 120x24 130+10x10'
+      - series: 'restmail_connections_accepted_total{job="smtp-gateway",instance="a",protocol="smtp"}'
+        values: '0+10x46'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: IMAPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 125m
+        alertname: IMAPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 135m
+        alertname: IMAPConnectionsStopped
+        exp_alerts:
+          - exp_labels: {job: imap-gateway, severity: warning}
+            exp_annotations:
+              summary: "No IMAP connections in the last hour"
+              description: "The IMAP gateway has admitted no connection for an hour. Check the listener, the load balancer and the firewall."
+      - eval_time: 190m
+        alertname: IMAPConnectionsStopped
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: SMTPConnectionsStopped
+        exp_alerts: []
+
+  # zen lists the sending IP from 6m to 10m; spamcop never does.
+  - interval: 1m
+    input_series:
+      - series: 'restmail_dnsbl_listed{job="api",instance="a",ip="192.0.2.10",provider="zen"}'
+        values: '0x5 1x4 0x5'
+      - series: 'restmail_dnsbl_listed{job="api",instance="a",ip="192.0.2.10",provider="spamcop"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DNSBLSendingIPListed
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: DNSBLSendingIPListed
+        exp_alerts:
+          - exp_labels: {job: api, instance: a, ip: 192.0.2.10, provider: zen, severity: critical}
+            exp_annotations:
+              summary: "Sending IP 192.0.2.10 is listed by zen"
+              description: "The last answer from DNSBL provider zen listed 192.0.2.10. Mail sent from it may be refused. The API log line 'dnsbl: sending IP listed' carries the codes and reason."
+      - eval_time: 13m
+        alertname: DNSBLSendingIPListed
+        exp_alerts: []
+
+  # broken: every check errors until 6h, when it answers again. never: it has
+  # errored since the process started, so no answered series exists at all.
+  # healthy: some checks error, but it also answers.
+  - interval: 30m
+    input_series:
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="broken",status="provider_error"}'
+        values: '0+1x20'
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="broken",status="not_listed"}'
+        values: '5x12 6+1x8'
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="never",status="indeterminate"}'
+        values: '0+1x20'
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="healthy",status="provider_error"}'
+        values: '0+1x20'
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="healthy",status="not_listed"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts:
+          - exp_labels: {provider: broken, severity: warning}
+            exp_annotations:
+              summary: "DNSBL provider broken has not answered for 3 hours"
+              description: "Every check against broken in the last 3 hours failed (provider_error or indeterminate). The listing state for it is stale, not clean. Check the zone, its answer codes and the resolver."
+          - exp_labels: {provider: never, severity: warning}
+            exp_annotations:
+              summary: "DNSBL provider never has not answered for 3 hours"
+              description: "Every check against never in the last 3 hours failed (provider_error or indeterminate). The listing state for it is stale, not clean. Check the zone, its answer codes and the resolver."
+      - eval_time: 7h
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts:
+          - exp_labels: {provider: never, severity: warning}
+            exp_annotations:
+              summary: "DNSBL provider never has not answered for 3 hours"
+              description: "Every check against never in the last 3 hours failed (provider_error or indeterminate). The listing state for it is stale, not clean. Check the zone, its answer codes and the resolver."
+
+  # Quiet: a provider that errors now and then but also answers never fires.
+  - interval: 30m
+    input_series:
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="healthy",status="provider_error"}'
+        values: '0+1x20'
+      - series: 'restmail_dnsbl_checks_total{job="api",instance="a",provider="healthy",status="listed"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts: []
+      - eval_time: 9h
+        alertname: DNSBLProviderNotAnswering
+        exp_alerts: []
+
+  # stale: the last answer is from 0h, and a new one arrives at 8h. fresh: an
+  # answer every hour.
+  - interval: 1h
+    input_series:
+      - series: 'restmail_dnsbl_last_answer_timestamp_seconds{job="api",instance="a",ip="192.0.2.10",provider="stale"}'
+        values: '0x8 28800x4'
+      - series: 'restmail_dnsbl_last_answer_timestamp_seconds{job="api",instance="a",ip="192.0.2.10",provider="fresh"}'
+        values: '0+3600x12'
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: DNSBLAnswerStale
+        exp_alerts: []
+      - eval_time: 7h
+        alertname: DNSBLAnswerStale
+        exp_alerts:
+          - exp_labels: {job: api, instance: a, ip: 192.0.2.10, provider: stale, severity: warning}
+            exp_annotations:
+              summary: "No DNSBL answer for 192.0.2.10 from stale in 6 hours"
+              description: "restmail_dnsbl_listed for this pair reflects an answer more than 6 hours old."
+      - eval_time: 9h
+        alertname: DNSBLAnswerStale
+        exp_alerts: []
+
+  # The chart's volumes: the database volume is 85% full for 40 minutes, the
+  # attachments volume 95% full for 10. A PVC outside the chart never fires.
+  - interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_available_bytes{namespace="mail",persistentvolumeclaim="restmail-postgres-data"}'
+        values: '15x40 50x10'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="mail",persistentvolumeclaim="restmail-postgres-data"}'
+        values: '100x50'
+      - series: 'kubelet_volume_stats_available_bytes{namespace="mail",persistentvolumeclaim="restmail-api-attachments"}'
+        values: '5x10 50x40'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="mail",persistentvolumeclaim="restmail-api-attachments"}'
+        values: '100x50'
+      - series: 'kubelet_volume_stats_available_bytes{namespace="mail",persistentvolumeclaim="other-data"}'
+        values: '1x50'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="mail",persistentvolumeclaim="other-data"}'
+        values: '100x50'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PVCSpaceCritical
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PVCSpaceCritical
+        exp_alerts:
+          - exp_labels: {namespace: mail, persistentvolumeclaim: restmail-api-attachments, severity: critical}
+            exp_annotations:
+              summary: "PVC mail/restmail-api-attachments is over 90% full"
+              description: "Only 5% of the volume is free. When it fills, writes to it fail: the database refuses mail, attachments cannot be stored. Act now."
+      - eval_time: 15m
+        alertname: PVCSpaceCritical
+        exp_alerts: []
+      - eval_time: 29m
+        alertname: PVCSpaceLow
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: PVCSpaceLow
+        exp_alerts:
+          - exp_labels: {namespace: mail, persistentvolumeclaim: restmail-postgres-data, severity: warning}
+            exp_annotations:
+              summary: "PVC mail/restmail-postgres-data is over 80% full"
+              description: "Only 15% of the volume is free. Grow the PVC (its storage class must allow expansion) or free space before it fills."
+      - eval_time: 45m
+        alertname: PVCSpaceLow
+        exp_alerts: []
