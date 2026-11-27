@@ -2157,15 +2157,22 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 
 // getRawMessage returns the raw RFC 2822 message content, byte for byte.
 // GET /api/v1/messages/{id}/raw
-func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoint.Document, error) {
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
+// The source is read in bounded chunks as it is written (rawSourceChunk), never loaded whole,
+// so the API holds the same memory for a message of any size (#2107).
+func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoint.Stream, error) {
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, "id", "mailbox_id")
 	if err != nil {
-		return endpoint.Document{}, err
+		return endpoint.Stream{}, err
 	}
-	if len(msg.Source()) == 0 {
-		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Raw message not available")
+	db := h.db.WithContext(r.Context())
+	size, err := rawSourceLength(db, msg.ID)
+	if err != nil {
+		return endpoint.Stream{}, fmt.Errorf("measure message source: %w", err)
 	}
-	return endpoint.Document{ContentType: "message/rfc822", Body: msg.Source()}, nil
+	if size == 0 {
+		return endpoint.Stream{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Raw message not available")
+	}
+	return endpoint.Stream{ContentType: "message/rfc822", Header: rawMessageHeader(size), Send: rawMessageStream(r.Context(), h.db, msg.ID, size)}, nil
 }
 
 // forwardRequest forwards message {id}. from and to are checked in the handler, as they always
