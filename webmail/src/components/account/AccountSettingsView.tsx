@@ -8,6 +8,7 @@ import { VacationView } from '@/components/settings/VacationView';
 import { DangerZone } from '@/components/settings/SettingsView';
 import { User, Palmtree, Trash2 } from 'lucide-react';
 import { ContactReplyTimeSettings } from '@/components/contacts/ContactReplyTimeSettings';
+import { ContactsFileSettings } from '@/components/contacts/ContactsFileSettings';
 import { QuietHoursSettings } from './QuietHoursSettings';
 import { AccountTimeZoneSettings } from './AccountTimeZoneSettings';
 import { mailPlatform } from '@/platform';
@@ -82,6 +83,7 @@ function DetailsTab({ account, isPrimary }: { account: { id: number; address: st
       <QuietHoursSettings key={`quiet-${account.id}`} accountId={account.id} />
       <ContactReplyTimeSettings key={account.id} accountId={account.id} />
       <AccountTimeZoneSettings key={`time-zone-${account.id}`} accountId={account.id} />
+      <ContactsFileSettings key={`contacts-file-${account.id}`} accountId={account.id} />
       <SettingsSection title="Storage quota" description="Quota information is available via the API.">
         <code className="break-all rounded bg-muted px-2 py-1 text-xs">GET /api/v1/mailboxes/:id</code>
       </SettingsSection>
