@@ -86,7 +86,7 @@ A fresh install creates its roles and, from `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD`,
 ### 2026-04-22 — Dev-env hardening
 - Moved docker network `mailnet` subnet from `172.20.0.0/16` to `10.99.0.0/16` across `docker-compose.yml`, `tskfile.yml`, `docker/postfix/conf/main.cf.tmpl`, `docker/dnsmasq/dnsmasq.conf`, all `website/`/`admin/`/`webmail/`/`monitoring/` compose files, e2e test suite, and `docs/proxy-protocol.md` / `docs/dns-providers.md`.
 - Added `run: once` to all 20 `start:*` tasks in `tskfile.yml` to dedupe parallel docker compose invocations (fixes race on `start:postgres-mail3`, `start:api`, etc.).
-- Fixed webmail links on project landing page ([website/index.html:66](../website/index.html#L66), [:514](../website/index.html#L514)) — now use `/webmail` through the reverse proxy instead of raw `localhost:8080`.
+- Fixed webmail links on project landing page ([website/index.html:66](https://github.com/rest-mail/rest-mail-server/blob/d556fe0dc3fe6503ecbd11baca1ab51f7a26be8e/website/index.html#L66), [:514](https://github.com/rest-mail/rest-mail-server/blob/d556fe0dc3fe6503ecbd11baca1ab51f7a26be8e/website/index.html#L514); the site has since moved to [rest-mail/website](https://github.com/rest-mail/website)) — now use `/webmail` through the reverse proxy instead of raw `localhost:8080`.
 
 ### 2026-02-23 — Stage 4: Queue Management UI complete
 - Multi-select with "select all / clear" across filtered results.

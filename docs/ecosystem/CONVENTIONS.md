@@ -141,7 +141,7 @@ MIT. Same across the org. Image attribution to upstream daemon authors goes in `
 
 ## Lessons learned from prior images
 
-A growing list of footguns surfaced while building these images. Each entry is a thing the convention-lint script (deferred per [POST-DECOMPOSE.md](POST-DECOMPOSE.md) item 3) should eventually catch.
+A growing list of footguns surfaced while building these images. Each entry is a thing the convention-lint script (deferred per [POST-DECOMPOSE.md](https://github.com/rest-mail/rest-mail-server/blob/be5ba6381f94798e7a2c7002a594cbf4ab21bee6/docs/upstream/POST-DECOMPOSE.md#3-cirelease-coordination-across-n-image-repos) item 3, removed in #158) should eventually catch.
 
 - **Don't over-specify "listen everywhere" defaults.** When a daemon already listens on all interfaces by default, *don't add a config line trying to make that explicit.* `listen-address=0.0.0.0` in dnsmasq doesn't mean "wildcard" — it tries to bind that as a literal address and silently fails to answer queries. Caught in `reference-dnsmasq`'s first release; the fix was to delete the line entirely and rely on the upstream default. General rule: if the daemon's default behavior is what you want, don't write config for it.
 
