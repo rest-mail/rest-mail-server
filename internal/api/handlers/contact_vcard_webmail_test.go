@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 )
 
 // TestWebmailContactsExportImportsEveryField reads the webmail's contacts export fixture
@@ -27,6 +29,11 @@ func TestWebmailContactsExportImportsEveryField(t *testing.T) {
 	}
 	want := []models.Contact{
 		{Email: "ada@example.com", Name: "Lovelace, Ada", TrustLevel: "trusted", Source: "manual",
+			PhoneNumbers: []vcard.PhoneNumber{
+				{Number: "tel:+15550100;ext=42", Types: []string{"work", "voice"}},
+				{Number: "+1 555 0101", Types: []string{"home"}},
+			},
+			Organization: "Example, Inc;Research", Notes: "Afternoons\nCall, then email.",
 			CreatedAt: at("2026-11-20T10:11:12.123456Z"), UpdatedAt: at("2026-11-21T08:09:10.654321Z")},
 		{Email: "bob@example.com", Name: "bob@example.com", TrustLevel: "blocked", Source: "sent",
 			CreatedAt: at("2026-11-20T10:11:12.5Z"), UpdatedAt: at("2026-11-20T10:11:12.5Z")},
@@ -52,6 +59,7 @@ func TestWebmailContactsExportImportsEveryField(t *testing.T) {
 	for i, contact := range got {
 		expected := want[i]
 		if contact.Email != expected.Email || contact.Name != expected.Name || contact.TrustLevel != expected.TrustLevel ||
+			!reflect.DeepEqual(contact.PhoneNumbers, expected.PhoneNumbers) || contact.Organization != expected.Organization || contact.Notes != expected.Notes ||
 			contact.Source != expected.Source || !contact.CreatedAt.Equal(expected.CreatedAt) || !contact.UpdatedAt.Equal(expected.UpdatedAt) {
 			t.Errorf("contact %d is %+v, want %+v", i, contact, expected)
 		}

@@ -96,6 +96,8 @@ test('address-book files are recognised by name or type', () => {
 // format on one side fails on the other.
 const fixtureContacts: VCardContact[] = [
   { id: 7, email: 'ada@example.com', name: 'Lovelace, Ada', trust_level: 'trusted', source: 'manual',
+    phone_numbers: [{ number: 'tel:+15550100;ext=42', types: ['work', 'voice'] }, { number: '+1 555 0101', types: ['home'] }],
+    organization: 'Example, Inc;Research', notes: 'Afternoons\nCall, then email.',
     created_at: '2026-11-20T10:11:12.123456Z', updated_at: '2026-11-21T08:09:10.654321Z' },
   { id: 8, email: 'bob@example.com', name: 'bob@example.com', trust_level: 'blocked', source: 'sent',
     created_at: '2026-11-20T10:11:12.5Z', updated_at: '2026-11-20T10:11:12.5Z' },

@@ -1,9 +1,11 @@
 // Contacts as an address-book file (vCard 4.0, RFC 6350), written the way the
 // console's `export-data contacts` writes them, so a file saved here imports
 // back through importContacts with every stored field: name, address, trust
-// level, source and both timestamps.
+// level, source, timestamps, phone numbers, organization and notes.
 
-export interface VCardContact {
+import type { components } from '../api/types';
+
+export interface VCardContact extends Pick<components['schemas']['Contact'], 'phone_numbers' | 'organization' | 'notes'> {
   id: number;
   email: string;
   name: string;
@@ -96,6 +98,20 @@ export function contactVCard(contact: VCardContact, base: string, accountId: num
     `${nameProperty}:${vcardText(name)}`,
     `EMAIL:${vcardText(contact.email)}`,
   ];
+  for (const { number, types } of contact.phone_numbers ?? []) {
+    let property = 'TEL';
+    if (types?.length) {
+      if (types.some(type => !/^[A-Za-z0-9-]{1,32}$/.test(type))) {
+        throw new Error('the server returned an invalid phone type');
+      }
+      property += `;TYPE=${types.join(',')}`;
+    }
+    lines.push(!/[ \t\r\n\\]/.test(number) && URL.canParse(number)
+      ? `${property};VALUE=uri:${number}`
+      : `${property}:${vcardText(number)}`);
+  }
+  if (contact.organization) lines.push(`ORG:${vcardText(contact.organization)}`);
+  if (contact.notes) lines.push(`NOTE:${vcardText(contact.notes)}`);
   if (contact.trust_level) lines.push(`X-RESTMAIL-TRUST-LEVEL:${vcardText(contact.trust_level)}`);
   if (contact.source) lines.push(`X-RESTMAIL-SOURCE:${vcardText(contact.source)}`);
   // The server's own timestamps are written as it sent them, so their full

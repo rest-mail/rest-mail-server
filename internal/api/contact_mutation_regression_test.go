@@ -57,7 +57,10 @@ func (c *contactMutationConnection) QueryContext(ctx context.Context, q string, 
 			id = args[0].Value.(int64)
 			mailbox = args[1].Value.(int64)
 		}
-		r := &authReadSnapshotRows{columns: []string{"id", "mailbox_id", "email", "name", "trust_level", "source", "created_at", "updated_at"}}
+		r := &authReadSnapshotRows{columns: []string{
+			"id", "mailbox_id", "email", "name", "trust_level", "source", "created_at", "updated_at",
+			"phone_numbers", "organization", "notes",
+		}}
 		if c.phase == 1 {
 			if id == 3 || email == "lookup-failure@example.com" {
 				return nil, errors.New("private contact lookup detail")
@@ -66,6 +69,11 @@ func (c *contactMutationConnection) QueryContext(ctx context.Context, q string, 
 				return r, nil
 			}
 			c.current = map[string]driver.Value{"id": id, "mailbox_id": mailbox, "email": email, "name": "Before", "trust_level": "auto", "source": "sent", "created_at": sieveInstallationTime, "updated_at": sieveInstallationTime}
+			if id == 41 {
+				c.current["phone_numbers"] = `[{"number":"+1 555 0100","types":["work","voice"]}]`
+				c.current["organization"] = "Example Studio"
+				c.current["notes"] = "Prefers a call in the afternoon."
+			}
 		} else {
 			if id == 5 || c.current["email"] == "reload-failure@example.com" {
 				return nil, errors.New("private contact reload detail")
@@ -77,7 +85,11 @@ func (c *contactMutationConnection) QueryContext(ctx context.Context, q string, 
 		if c.current == nil {
 			return nil, errors.New("contact reload had no selected row")
 		}
-		r.rows = [][]driver.Value{{c.current["id"], c.current["mailbox_id"], c.current["email"], c.current["name"], c.current["trust_level"], c.current["source"], c.current["created_at"], c.current["updated_at"]}}
+		row := make([]driver.Value, len(r.columns))
+		for i, column := range r.columns {
+			row[i] = c.current[column]
+		}
+		r.rows = [][]driver.Value{row}
 		return r, nil
 	}
 	c.phase = 0
@@ -101,10 +113,12 @@ func (c *contactMutationConnection) ExecContext(_ context.Context, q string, arg
 		return nil, errors.New("private contact update detail")
 	}
 	for k, v := range fields {
-		if k != "id" && k != "name" && k != "trust_level" && k != "source" && k != "updated_at" {
+		switch k {
+		case "id", "name", "trust_level", "source", "updated_at", "phone_numbers", "organization", "notes":
+			c.current[k] = v
+		default:
 			return nil, fmt.Errorf("unexpected contact field:%s", k)
 		}
-		c.current[k] = v
 	}
 	return driver.RowsAffected(1), nil
 }

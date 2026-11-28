@@ -433,7 +433,7 @@ export interface paths {
         };
         /**
          * Download an account's contacts as vCard
-         * @description Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address. An empty address book returns an empty file.
+         * @description Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address, including typed phone numbers (TEL), organization (ORG), and notes (NOTE). An empty address book returns an empty file.
          */
         get: operations["exportContacts"];
         put?: never;
@@ -455,7 +455,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk import contacts
-         * @description As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. Every imported contact's trust level is auto unless restore_trust_level is true. On a vCard file, each EMAIL is one contact named by the card's first FN, or by its first N when it has no FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored, and its X-RESTMAIL-TRUST-LEVEL, restored only when restore_trust_level is true. A quoted-printable name or address is decoded and must be UTF-8; one in base64 or a character set other than UTF-8 is refused.
+         * @description As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. Every imported contact's trust level is auto unless restore_trust_level is true. Each vCard EMAIL becomes one contact named by the card's first FN, or first N when it has no FN. It also gets all TEL entries with their TYPE tokens, the first ORG (components joined by semicolons), and the first NOTE, subject to the contact field limits. Cards without EMAIL are skipped. REST Mail restores X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT, and X-RESTMAIL-TRUST-LEVEL when requested. Quoted-printable values must decode to UTF-8. Base64 and other character sets are refused for imported fields.
          */
         post: operations["importContacts"];
         delete?: never;
@@ -491,14 +491,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get a contact */
+        get: operations["getContact"];
         put?: never;
         post?: never;
         /** Delete a contact */
         delete: operations["deleteContact"];
         options?: never;
         head?: never;
-        /** Update a contact */
+        /**
+         * Update a contact
+         * @description Omitted or null fields leave the contact unchanged. An empty array clears phone_numbers. An empty string clears organization or notes.
+         */
         patch: operations["updateContact"];
         trace?: never;
     };
@@ -3909,6 +3913,11 @@ export interface components {
             id: number;
             mailbox_id: number;
             name: string;
+            /** @example Prefers a call in the afternoon. */
+            notes?: string;
+            /** @example Example Studio */
+            organization?: string;
+            phone_numbers?: components["schemas"]["PhoneNumber"][];
             /** @enum {string} */
             source: "sent" | "manual" | "import";
             /** @enum {string} */
@@ -5001,6 +5010,11 @@ export interface components {
             /** Format: int64 */
             total?: number;
         };
+        PhoneNumber: {
+            /** @example +1 555 0100 */
+            number: string;
+            types?: string[];
+        };
         Pipeline: {
             active: boolean;
             /** Format: date-time */
@@ -6082,6 +6096,11 @@ export interface components {
             /** Format: email */
             email: string;
             name?: string;
+            /** @example Prefers a call in the afternoon. */
+            notes?: string;
+            /** @example Example Studio */
+            organization?: string;
+            phone_numbers?: components["schemas"]["PhoneNumber"][];
             /** @enum {string|null} */
             trust_level?: "auto" | "trusted" | "blocked" | null;
         };
@@ -6683,6 +6702,11 @@ export interface components {
         };
         updateContactBody: {
             name?: string | null;
+            /** @example Prefers a call in the afternoon. */
+            notes?: string | null;
+            /** @example Example Studio */
+            organization?: string | null;
+            phone_numbers?: components["schemas"]["PhoneNumber"][] | null;
             /** @enum {string|null} */
             trust_level?: "auto" | "trusted" | "blocked" | null;
         };
@@ -11667,6 +11691,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["List-Contact"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                cid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Contact"];
                 };
             };
             /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */

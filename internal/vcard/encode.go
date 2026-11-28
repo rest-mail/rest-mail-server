@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/mail"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -12,14 +14,31 @@ import (
 
 // Contact holds the stored fields that the contacts API returns and vCard preserves.
 type Contact struct {
-	ID         uint      `json:"id"`
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	TrustLevel string    `json:"trust_level"`
-	Source     string    `json:"source"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID           uint          `json:"id"`
+	Email        string        `json:"email"`
+	Name         string        `json:"name"`
+	PhoneNumbers []PhoneNumber `json:"phone_numbers,omitempty"`
+	Organization string        `json:"organization,omitempty"`
+	Notes        string        `json:"notes,omitempty"`
+	TrustLevel   string        `json:"trust_level"`
+	Source       string        `json:"source"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 }
+
+// MaxPhoneNumbers bounds both a contact's API payload and the TELs kept while reading a card.
+const MaxPhoneNumbers = 20
+
+// PhoneNumber holds a telephone number as text or a URI and its vCard TYPE tokens.
+type PhoneNumber struct {
+	Number string   `json:"number" minLength:"1" maxLength:"128" pattern:"^[^\\x00-\\x1F\\x7F]+$" example:"+1 555 0100"`
+	Types  []string `json:"types,omitempty" maxItems:"8" description:"vCard TYPE tokens such as work, home, voice or cell. Each token contains 1 to 32 ASCII letters, digits or hyphens."`
+}
+
+var phoneTypePattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,32}$`)
+
+// ValidPhoneType reports whether a token is bounded and safe in a TEL parameter.
+func ValidPhoneType(kind string) bool { return phoneTypePattern.MatchString(kind) }
 
 // WriteContact writes a single contact, with uid identifying it as a URI.
 func WriteContact(writer io.Writer, uid string, contact Contact) error {
@@ -36,7 +55,24 @@ func WriteContact(writer io.Writer, uid string, contact Contact) error {
 	}
 	lines := []string{"BEGIN:VCARD", "VERSION:4.0", "UID:" + uid,
 		nameProperty + ":" + escapeText(name), "EMAIL:" + escapeText(contact.Email)}
+	for _, phone := range contact.PhoneNumbers {
+		property := "TEL"
+		if len(phone.Types) > 0 {
+			for _, kind := range phone.Types {
+				if !ValidPhoneType(kind) {
+					return errors.New("the server returned an invalid phone type")
+				}
+			}
+			property += ";TYPE=" + strings.Join(phone.Types, ",")
+		}
+		if uri, err := url.Parse(phone.Number); err == nil && uri.IsAbs() && !strings.ContainsAny(phone.Number, " \t\r\n\\") {
+			lines = append(lines, property+";VALUE=uri:"+phone.Number)
+		} else {
+			lines = append(lines, property+":"+escapeText(phone.Number))
+		}
+	}
 	for _, field := range []struct{ name, value string }{
+		{"ORG", contact.Organization}, {"NOTE", contact.Notes},
 		{"X-RESTMAIL-TRUST-LEVEL", contact.TrustLevel}, {"X-RESTMAIL-SOURCE", contact.Source},
 	} {
 		if field.value != "" {

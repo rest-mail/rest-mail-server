@@ -13121,6 +13121,11 @@ paths:
                   email: someone@example.com
                   name: Someone
                   trust_level: trusted
+                  phone_numbers:
+                    - number: "+1 555 0100"
+                      types: [work, voice]
+                  organization: Example Studio
+                  notes: Prefers a call in the afternoon.
               email_missing:
                 value:
                   name: Someone
@@ -13158,6 +13163,11 @@ paths:
                       email: someone@example.com
                       name: Someone
                       trust_level: trusted
+                      phone_numbers:
+                        - number: "+1 555 0100"
+                          types: [work, voice]
+                      organization: Example Studio
+                      notes: Prefers a call in the afternoon.
                       source: manual
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
@@ -13239,6 +13249,41 @@ paths:
           minimum: 1
         description: Contact ID
         example: 1
+    get:
+      operationId: getContact
+      tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
+      summary: Get a contact
+      responses:
+        "200":
+          description: Contact details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
+          "headers":
+            "Content-Security-Policy":
+              "$ref": "#/components/headers/Content-Security-Policy"
+            "Referrer-Policy":
+              "$ref": "#/components/headers/Referrer-Policy"
+            "Strict-Transport-Security":
+              "$ref": "#/components/headers/Strict-Transport-Security"
+            "X-Content-Type-Options":
+              "$ref": "#/components/headers/X-Content-Type-Options"
+            "X-Frame-Options":
+              "$ref": "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitedAPICredentials"
     patch:
       operationId: updateContact
       tags: [Contacts]
@@ -13248,6 +13293,7 @@ paths:
         - APIKeyAuth: [mail:write]
         - GatewaySessionAuth: [mail:write]
       summary: Update a contact
+      description: Omitted or null fields leave the contact unchanged. An empty array clears phone_numbers. An empty string clears organization or notes.
       requestBody:
         required: true
         content:
@@ -13411,7 +13457,7 @@ paths:
         - APIKeyAuth: [mail:read]
         - GatewaySessionAuth: [mail:read]
       summary: Download an account's contacts as vCard
-      description: Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address. An empty address book returns an empty file.
+      description: Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address, including typed phone numbers (TEL), organization (ORG), and notes (NOTE). An empty address book returns an empty file.
       responses:
         "200":
           description: An address book in vCard 4.0 format, with Content-Type `text/vcard; charset=utf-8`.
@@ -13507,14 +13553,14 @@ paths:
         Every entry is checked first, nothing is imported if one is refused, and
         contacts the account already has are skipped and left as they are. Every
         imported contact's trust level is auto unless restore_trust_level is
-        true. On a vCard file, each EMAIL is one contact named by the card's
-        first FN, or by its first N when it has no FN; a card with no EMAIL is
-        counted as skipped; other properties are ignored, except the
-        X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that
-        REST Mail's own export writes, which are restored, and its
-        X-RESTMAIL-TRUST-LEVEL, restored only when restore_trust_level is true.
-        A quoted-printable name or address is decoded and must be UTF-8; one in
-        base64 or a character set other than UTF-8 is refused.
+        true. Each vCard EMAIL becomes one contact named by the card's first FN,
+        or first N when it has no FN. It also gets all TEL entries with their TYPE
+        tokens, the first ORG (components joined by semicolons), and the first
+        NOTE, subject to the contact field limits. Cards without EMAIL are skipped.
+        REST Mail restores X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and
+        X-RESTMAIL-UPDATED-AT, and X-RESTMAIL-TRUST-LEVEL when requested.
+        Quoted-printable values must decode to UTF-8. Base64 and other character
+        sets are refused for imported fields.
       parameters:
         - name: restore_trust_level
           in: query
@@ -33139,6 +33185,28 @@ components:
       example: INBOX
 
   responses:
+    RateLimitedAPICredentials:
+      description: "rate_limited: refused API keys, throttled at login's rate"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      headers:
+        Retry-After:
+          description: Seconds until a request may be made again
+          required: true
+          schema:
+            type: integer
+        Content-Security-Policy:
+          $ref: "#/components/headers/Content-Security-Policy"
+        Referrer-Policy:
+          $ref: "#/components/headers/Referrer-Policy"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/Strict-Transport-Security"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/X-Content-Type-Options"
+        X-Frame-Options:
+          $ref: "#/components/headers/X-Frame-Options"
     SendIdempotencyConflict:
       description: Idempotency-Key was already used for a different send request
       content:
@@ -35861,6 +35929,25 @@ components:
         enabled:
           type: boolean
 
+    PhoneNumber:
+      type: object
+      additionalProperties: false
+      required: [number]
+      properties:
+        number:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[^\x00-\x1F\x7F]+$'
+          example: "+1 555 0100"
+        types:
+          type: array
+          maxItems: 8
+          description: vCard TYPE tokens such as work, home, voice or cell. Each token contains 1 to 32 ASCII letters, digits or hyphens.
+          items:
+            type: string
+          example: [work, voice]
+
     Contact:
       type: object
       required: [id, mailbox_id, email, name, trust_level, source, created_at, updated_at]
@@ -35877,9 +35964,23 @@ components:
           type: integer
         email:
           type: string
-          format: email
         name:
           type: string
+        phone_numbers:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/PhoneNumber"
+        organization:
+          type: string
+          maxLength: 255
+          pattern: '^[^\x00-\x08\x0B-\x1F\x7F]*$'
+          example: Example Studio
+        notes:
+          type: string
+          maxLength: 4096
+          pattern: '^[^\x00-\x08\x0B-\x1F\x7F]*$'
+          example: Prefers a call in the afternoon.
         trust_level:
           type: string
           enum: [auto, trusted, blocked]
@@ -35904,6 +36005,21 @@ components:
         name:
           type: string
           maxLength: 255
+        phone_numbers:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/PhoneNumber"
+        organization:
+          type: string
+          maxLength: 255
+          pattern: '^[^\x00-\x08\x0B-\x1F\x7F]*$'
+          example: Example Studio
+        notes:
+          type: string
+          maxLength: 4096
+          pattern: '^[^\x00-\x08\x0B-\x1F\x7F]*$'
+          example: Prefers a call in the afternoon.
         trust_level:
           type: string
           enum: [auto, trusted, blocked]
@@ -35914,6 +36030,21 @@ components:
         name:
           type: string
           maxLength: 255
+        phone_numbers:
+          type: [array, "null"]
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/PhoneNumber"
+        organization:
+          type: [string, "null"]
+          maxLength: 255
+          pattern: '^[^\x00-\x08\x0B-\x1F\x7F]*$'
+          example: Example Studio
+        notes:
+          type: [string, "null"]
+          maxLength: 4096
+          pattern: '^[^\x00-\x08\x0B-\x1F\x7F]*$'
+          example: Prefers a call in the afternoon.
         trust_level:
           type: string
           enum: [auto, trusted, blocked]

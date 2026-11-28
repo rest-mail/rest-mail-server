@@ -4715,6 +4715,7 @@ def a_contact_operation_from_a_clean_start(transaction):
 OWN_CONTACT = {"email": "contract-own-contact@example.test"}
 
 
+@hooks.before("getContact")
 @hooks.before("updateContact")
 @hooks.before("deleteContact")
 def on_a_contact_of_its_own(transaction):

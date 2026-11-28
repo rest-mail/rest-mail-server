@@ -79,10 +79,9 @@ MOVED = (
     "listBlocklist",
     "addToBlocklist",
     "removeFromBlocklist",
-    # The contact operations. createContact's link reaches only the update and
-    # the delete, and no other link starts from or reaches any of them: all
-    # moved.
+    # The contact operations, including createContact's update and delete links.
     "createContact",
+    "getContact",
     "updateContact",
     "deleteContact",
     "listContacts",

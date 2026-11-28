@@ -3,6 +3,10 @@ VERSION:4.0
 UID:https://mail.example/api/v1/accounts/3/contacts/7
 FN:Lovelace\, Ada
 EMAIL:ada@example.com
+TEL;TYPE=work,voice;VALUE=uri:tel:+15550100;ext=42
+TEL;TYPE=home:+1 555 0101
+ORG:Example\, Inc\;Research
+NOTE:Afternoons\nCall\, then email.
 X-RESTMAIL-TRUST-LEVEL:trusted
 X-RESTMAIL-SOURCE:manual
 X-RESTMAIL-CREATED-AT:2026-11-20T10:11:12.123456Z

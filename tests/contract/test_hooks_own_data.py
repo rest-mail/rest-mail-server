@@ -263,6 +263,7 @@ class OwnDataHooks(unittest.TestCase):
             "removeFromAllowlist": "on_a_sender_rule_of_its_own",
             "removeFromBlocklist": "on_a_sender_rule_of_its_own",
             "createContact": "remove_a_previous_contact_probe",
+            "getContact": "on_a_contact_of_its_own",
             "updateContact": "on_a_contact_of_its_own",
             "deleteContact": "on_a_contact_of_its_own",
             "blockSender": "block_a_new_and_an_existing_sender",

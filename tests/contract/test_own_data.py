@@ -83,6 +83,7 @@ SENDER_RULES = (
 # carries its own account id, which its hook sends to the seeded account.
 CONTACTS = (
     "createContact",
+    "getContact",
     "updateContact",
     "deleteContact",
     "listContacts",

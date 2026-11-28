@@ -1287,36 +1287,6 @@
 - operation: blockSender
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
-- operation: listContacts
-  difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A contact holds the address as it was given or seen: blocking never checked it is one, so
-    the answer cannot promise the format.
-- operation: suggestContacts
-  difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A contact holds the address as it was given or seen: blocking never checked it is one, so
-    the answer cannot promise the format.
-- operation: createContact
-  difference: "response 201 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A contact holds the address as it was given or seen: blocking never checked it is one, so
-    the answer cannot promise the format.
-- operation: updateContact
-  difference: "response 200 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A contact holds the address as it was given or seen: blocking never checked it is one, so
-    the answer cannot promise the format.
-- operation: blockSender
-  difference: "response 200 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A contact holds the address as it was given or seen: blocking never checked it is one, so
-    the answer cannot promise the format.
-- operation: blockSender
-  difference: "response 201 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    A contact holds the address as it was given or seen: blocking never checked it is one, so
-    the answer cannot promise the format.
 - operation: createContact
   difference: "request body application/json.properties.trust_level.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-

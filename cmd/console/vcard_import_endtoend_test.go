@@ -14,17 +14,85 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 )
 
 // roundTripContact is every field the API gives for a stored contact, apart from the ids
 // that belong to the account holding it.
 type roundTripContact struct {
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	TrustLevel string    `json:"trust_level"`
-	Source     string    `json:"source"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Email        string              `json:"email"`
+	Name         string              `json:"name"`
+	PhoneNumbers []vcard.PhoneNumber `json:"phone_numbers"`
+	Organization string              `json:"organization"`
+	Notes        string              `json:"notes"`
+	TrustLevel   string              `json:"trust_level"`
+	Source       string              `json:"source"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
+}
+
+func TestVCardContactDetailsPersistenceRoundTrip(t *testing.T) {
+	if os.Getenv("DB_HOST") == "" {
+		t.Skip("set DB_HOST to test vCard persistence")
+	}
+	server := newMigrationServer(t)
+	from := server.newAccount(t, "vcard-details-from@"+migrationDomain)
+	to := server.newAccount(t, "vcard-details-to@"+migrationDomain)
+	key := server.exportKey(t)
+	apiExport := func(account uint) string {
+		t.Helper()
+		request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/accounts/%d/contacts/export.vcf", server.apiURL, account), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", "Bearer "+key)
+		response, err := server.client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = response.Body.Close() }()
+		body, err := io.ReadAll(response.Body)
+		if err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("export: HTTP %d: %s (%v)", response.StatusCode, body, err)
+		}
+		if response.Header.Get("Content-Type") != "text/vcard; charset=utf-8" ||
+			response.Header.Get("Content-Disposition") != "attachment; filename=contacts.vcf" ||
+			response.Header.Get("Cache-Control") != "no-store" {
+			t.Fatalf("export headers: %v", response.Header)
+		}
+		return string(body)
+	}
+	if got := apiExport(to); got != "" {
+		t.Fatalf("export of the empty account contains %q", got)
+	}
+	source := "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Example\r\nEMAIL:example@example.test\r\n" +
+		"TEL;TYPE=work,voice;VALUE=uri:tel:+15550100;ext=42\r\n" +
+		"TEL;TYPE=home:+1 555 0101\r\nTEL;TYPE=cell:+1 555 0102\r\n" +
+		"ORG:Example\\, Inc;Research\r\nNOTE:Afternoons\\nCall\\, then email.\r\nEND:VCARD\r\n"
+	if got := importVCard(t, server, from, server.session, "", source, http.StatusOK); got != `{"imported":1,"skipped":0}` {
+		t.Fatalf("import: %s", got)
+	}
+	export := apiExport(from)
+	if console := exportContactsOf(t, server, from); cardsWithoutUID(console) != cardsWithoutUID(export) {
+		t.Fatalf("console and API exports differ:\nconsole %q\nAPI %q", console, export)
+	}
+	if got := importVCard(t, server, to, server.session, "", export, http.StatusOK); got != `{"imported":1,"skipped":0}` {
+		t.Fatalf("re-import: %s", got)
+	}
+	want := listRoundTripContacts(t, server, from)
+	phones := []vcard.PhoneNumber{
+		{Number: "tel:+15550100;ext=42", Types: []string{"work", "voice"}},
+		{Number: "+1 555 0101", Types: []string{"home"}},
+		{Number: "+1 555 0102", Types: []string{"cell"}},
+	}
+	if len(want) != 1 || !reflect.DeepEqual(want[0].PhoneNumbers, phones) ||
+		want[0].Organization != "Example, Inc;Research" || want[0].Notes != "Afternoons\nCall, then email." {
+		t.Fatalf("source import did not store its fields: %+v", want)
+	}
+	got := listRoundTripContacts(t, server, to)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("re-imported contacts = %+v, want %+v", got, want)
+	}
 }
 
 // A file from export-contacts, imported into another server through the public API with

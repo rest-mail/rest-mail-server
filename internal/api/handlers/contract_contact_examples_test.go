@@ -69,13 +69,18 @@ func TestCreateContact_ExamplePairs(t *testing.T) {
 		"email":       "someone@example.com",
 		"name":        "Someone",
 		"trust_level": "trusted",
+		"phone_numbers": []interface{}{map[string]interface{}{
+			"number": "+1 555 0100", "types": []interface{}{"work", "voice"},
+		}},
+		"organization": "Example Studio",
+		"notes":        "Prefers a call in the afternoon.",
 	}
 	if !reflect.DeepEqual(requests["created"], created) {
 		t.Errorf("created is %s, want the valid contact %s", mustJSON(requests["created"]), mustJSON(created))
 	}
 	data := responses["201"]["created"].(map[string]interface{})["data"].(map[string]interface{})
 	for field, value := range created {
-		if data[field] != value {
+		if !reflect.DeepEqual(data[field], value) {
 			t.Errorf("the 201's %s is %v, want the created request's %v", field, data[field], value)
 		}
 	}

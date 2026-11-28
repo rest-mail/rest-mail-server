@@ -56,13 +56,18 @@ func (h *ContactHandler) exportContacts(r *http.Request, in contactExportRequest
 
 func writeContactRows(w io.Writer, db *gorm.DB, rows *sql.Rows, mailboxAddress string) error {
 	for rows.Next() {
-		var contact vcard.Contact
+		var contact models.Contact
 		if err := db.ScanRows(rows, &contact); err != nil {
 			return fmt.Errorf("read contact for export: %w", err)
 		}
 		// Derive a stable UID without depending on the request's Host header.
 		uid := uuid.NewSHA1(uuid.NameSpaceURL, fmt.Appendf(nil, "mailto:%s?restmail-contact=%d", mailboxAddress, contact.ID)).URN()
-		if err := vcard.WriteContact(w, uid, contact); err != nil {
+		if err := vcard.WriteContact(w, uid, vcard.Contact{
+			ID: contact.ID, Email: contact.Email, Name: contact.Name,
+			PhoneNumbers: contact.PhoneNumbers, Organization: contact.Organization, Notes: contact.Notes,
+			TrustLevel: contact.TrustLevel, Source: contact.Source,
+			CreatedAt: contact.CreatedAt, UpdatedAt: contact.UpdatedAt,
+		}); err != nil {
 			return err
 		}
 	}

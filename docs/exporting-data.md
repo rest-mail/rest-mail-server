@@ -24,6 +24,15 @@ The result is a UTF-8 vCard 4.0 file with CRLF line endings and folded lines.
 Each contact has an `EMAIL`, an `FN` (the email address when its stored name is
 empty), and a `UID` naming its original server, account and contact ID.
 
+The same vCard format is available from
+`GET /api/v1/accounts/{id}/contacts/export.vcf` as a `text/vcard` download.
+This route requires `mail:read` on the account.
+
+Phone numbers are written as `TEL` with their `TYPE` tokens, organization as
+`ORG`, and notes as `NOTE`. Each contact can hold up to 20 phone numbers with
+up to 128 characters and eight 32-character type tokens per number.
+Organization and notes can hold up to 255 and 4096 characters, respectively.
+
 Additional stored information is retained in extension properties:
 
 | Property | Stored field |
@@ -45,8 +54,9 @@ produces an empty file.
 
 `POST /api/v1/accounts/{id}/contacts/import` takes this file with
 `Content-Type: text/vcard`, on this server or another, and restores the name,
-source and both timestamps for addresses the account does not already have. A
-contact it already has is skipped and left unchanged.
+phone numbers and their types, organization, notes, source and both timestamps
+for addresses the account does not already have. A contact it already has is
+skipped and left unchanged.
 
 The trust level is restored only when the request asks for it with
 `?restore_trust_level=true`, and only for a caller holding `mail:write` on the
@@ -64,11 +74,12 @@ curl -X POST -H "Authorization: Bearer $RESTMAIL_API_KEY" \
 The same route reads vCard 2.1, 3.0 and 4.0 files from other address books:
 each `EMAIL` becomes a contact named by the card's first `FN`, or by its first
 `N` (prefixes, given, additional and family names, then suffixes) when the card
-has no `FN`. A card with no `EMAIL` is counted as skipped. A quoted-printable
-name or address, as vCard 2.1 exporters write for text that is not ASCII, is
-decoded and must then be UTF-8. A name or address in base64 or a character set
-other than UTF-8 is refused, and nothing from that file is imported. CardDAV is
-unrelated to the file format and remains an owner question on #1570.
+has no `FN`. Each imported contact gets the card's `TEL` values, first `ORG`
+(joining its components with semicolons) and first `NOTE`. A card with no
+`EMAIL` is counted as skipped. Quoted-printable text, as vCard 2.1 exporters
+write for text that is not ASCII, is decoded and must then be UTF-8. Imported
+fields in base64 or a character set other than UTF-8 cause the file to be
+refused. CardDAV remains an owner question on #1570.
 
 ## Calendar invitations
 
