@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -126,6 +127,10 @@ func bigEmail(size int) *pipeline.EmailJSON {
 // least is the cost of the copies the code makes itself.
 func leastAlloc(fn func()) uint64 {
 	runtime.GC()
+	// A collection during the runs empties that pool again, and an 8 MiB request
+	// on a busy CI runner can trigger one every run: hold collections off while
+	// measuring so the least run is the warm one.
+	defer debug.SetGCPercent(debug.SetGCPercent(-1))
 	least := ^uint64(0)
 	for i := 0; i < 8; i++ {
 		var before, after runtime.MemStats
