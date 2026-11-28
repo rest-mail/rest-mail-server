@@ -36,7 +36,7 @@ type CleanupResult struct {
 	Failed  int
 }
 
-// Cleaner removes stored attachment objects no attachment row refers to (#1388).
+// Cleaner removes stored attachment objects no attachment row or held send refers to (#1388).
 // Identical attachments share one S3 object, so a row's deletion can't remove its
 // object: only finding no row at all can. It sweeps the S3 store and the filesystem
 // tree both, because files stay behind after a migration to S3.
@@ -59,7 +59,12 @@ type Cleaner struct {
 func NewCleaner(db *gorm.DB, store *S3, root string, grace, interval time.Duration) *Cleaner {
 	held := func(ctx context.Context, refs []string) ([]string, error) {
 		var held []string
-		err := db.WithContext(ctx).Table("attachments").Where("storage_ref IN ?", refs).Distinct().Pluck("storage_ref", &held).Error
+		// A send held by a send limit keeps its parts' own copies until it is released
+		// (#2107): the message they came from may be gone by then.
+		err := db.WithContext(ctx).Raw(`SELECT storage_ref FROM attachments WHERE storage_ref IN ?
+			UNION SELECT part->>'ref' FROM scheduled_sends CROSS JOIN LATERAL jsonb_array_elements(
+				CASE WHEN jsonb_typeof(forward_parts) = 'array' THEN forward_parts ELSE '[]'::jsonb END) AS part
+			WHERE part->>'ref' IN ?`, refs, refs).Scan(&held).Error
 		return held, err
 	}
 	return &Cleaner{held: held, store: store, root: root, grace: grace, interval: interval, now: time.Now,

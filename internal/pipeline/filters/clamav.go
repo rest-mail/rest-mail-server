@@ -1,7 +1,6 @@
 package filters
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
-	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -117,19 +115,19 @@ func (a *clamavAdapter) Healthy(ctx context.Context) bool {
 
 // Scan sends the email to the ClamAV REST scan endpoint and parses the result.
 func (a *clamavAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.AdapterResult, error) {
-	// Serialize the email to raw RFC 2822 format for scanning.
-	rawMsg, err := rmime.Serialize(email)
+	// The email as RFC 5322, streamed: it is not held whole while it is scanned.
+	rawMsg, err := newMIMERequest(ctx, email, a.maxRequestBytes)
 	if err != nil {
 		return nil, fmt.Errorf("clamav: serialize email: %w", err)
 	}
-	if int64(len(rawMsg)) > a.maxRequestBytes {
-		return nil, fmt.Errorf("clamav: request of %d bytes is over the limit of %d bytes", len(rawMsg), a.maxRequestBytes)
-	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.url+"/scan", bytes.NewReader(rawMsg))
+	requestBody := rawMsg.body()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.url+"/scan", requestBody)
 	if err != nil {
+		_ = requestBody.Close()
 		return nil, fmt.Errorf("clamav: create request: %w", err)
 	}
+	req.ContentLength = rawMsg.length
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	resp, err := a.client.Do(req)

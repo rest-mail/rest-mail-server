@@ -136,7 +136,7 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - `aliases` — domain_id, source_address, destination_address, active
 - `messages` — mailbox_id, folder, message_id, subject, body_text, body_html, sender, recipients_to/cc (JSONB), size_bytes, is_read / is_flagged / is_starred / is_draft / is_deleted, received_at, date_header, thread_id, in_reply_to, references
 - `quota_usage` — mailbox_id, subject_bytes, body_bytes, attachment_bytes, total_bytes (GENERATED), message_count
-- `attachments` — message_id, filename, content_type, size, checksum (indexed for dedup), storage_type, storage_ref, is_inline
+- `attachments` — message_id, filename, content_type, size, checksum (indexed for dedup), storage_type, storage_ref, disposition, content_id
 - `outbound_queue` — sender, recipient, domain, raw_message, status, attempts, last_error, expires_at (72 h default), max_retries (30 default)
 - `message_sources` — object key, byte length, SHA-256 digest, up to 64 KiB of header metadata, state, owner count and cleanup deadline.
 - `vacation_configs` — mailbox_id (unique), enabled, subject, body, start_date, end_date

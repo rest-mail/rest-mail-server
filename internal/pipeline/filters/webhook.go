@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -73,7 +74,14 @@ func (f *webhookFilter) failed(err error) *pipeline.FilterResult {
 }
 
 func (f *webhookFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
-	// Build the payload
+	// Build the payload: a part handed in by reference is sent as content, as it always was.
+	email, err := withReferencedContent(ctx, email, f.maxRequestBytes)
+	if errors.Is(err, errOverRequestLimit) {
+		return f.failed(fmt.Errorf("request body is over the limit of %d bytes", f.maxRequestBytes)), nil
+	}
+	if err != nil {
+		return f.failed(err), nil
+	}
 	payload, err := json.Marshal(email)
 	if err != nil {
 		return nil, fmt.Errorf("marshal email: %w", err)

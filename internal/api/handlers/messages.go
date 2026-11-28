@@ -904,6 +904,11 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		}
 
 		outPipelineCtx := pipeline.WithDB(r.Context(), h.db)
+		if parts != nil {
+			// The parts go in by reference; the filters that send the message on read
+			// them from where they are stored as they send them (#2107).
+			outPipelineCtx = pipeline.WithAttachmentOpener(outPipelineCtx, h.referencedParts(parts))
+		}
 		if releasing, _ := r.Context().Value(releaseSendKey{}).(bool); releasing {
 			outPipelineCtx = sendlimits.WithHumanRelease(outPipelineCtx)
 		}
@@ -2937,6 +2942,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				attachmentRows = append(attachmentRows, models.Attachment{
 					Filename: att.Filename, ContentType: att.ContentType, SizeBytes: att.Size,
 					StorageType: att.Storage, StorageRef: att.Ref, Checksum: att.Checksum,
+					Disposition: att.Disposition, ContentID: att.ContentID,
 				})
 				totalAttBytes += att.Size
 			}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -82,6 +83,16 @@ func (f *duplicateFilter) Name() string              { return "duplicate" }
 func (f *duplicateFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	// A part handed in by reference is copied as content, as it always was (#2107).
+	email, err := withReferencedContent(ctx, email, f.maxRequestBytes)
+	if err != nil {
+		detail := fmt.Sprintf("duplicate not sent: %v", err)
+		if errors.Is(err, errOverRequestLimit) {
+			detail = fmt.Sprintf("duplicate not sent: request body is over the limit of %d bytes", f.maxRequestBytes)
+		}
+		return &pipeline.FilterResult{Type: pipeline.FilterTypeAction, Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{Filter: "duplicate", Result: "error", Detail: detail}}, nil
+	}
 	// Fire-and-forget webhook delivery in a goroutine
 	payload, err := json.Marshal(email)
 	if err != nil {

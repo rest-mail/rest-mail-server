@@ -71,39 +71,18 @@ func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	extracted := 0
 	db := pipeline.DBFromContext(ctx)
 
-	// Process attachments
-	newAttachments := make([]pipeline.Attachment, len(email.Attachments))
-	for i, att := range email.Attachments {
-		if att.Content != "" && att.Storage == "" {
+	extract := func(parts []pipeline.Attachment, what string) ([]pipeline.Attachment, error) {
+		out := make([]pipeline.Attachment, len(parts))
+		for i, att := range parts {
+			if !extractable(att) {
+				out[i] = att
+				continue
+			}
 			ref, checksum, err := f.store(ctx, att, db)
 			if err != nil {
-				return nil, fmt.Errorf("store attachment: %w", err)
+				return nil, fmt.Errorf("store %s: %w", what, err)
 			}
-			newAttachments[i] = pipeline.Attachment{
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				Size:        att.Size,
-				Disposition: att.Disposition,
-				Storage:     f.cfg.StorageType,
-				Ref:         ref,
-				Checksum:    checksum,
-			}
-			extracted++
-		} else {
-			newAttachments[i] = att
-		}
-	}
-	modified.Attachments = newAttachments
-
-	// Process inline images
-	newInline := make([]pipeline.Attachment, len(email.Inline))
-	for i, att := range email.Inline {
-		if att.Content != "" && att.Storage == "" {
-			ref, checksum, err := f.store(ctx, att, db)
-			if err != nil {
-				return nil, fmt.Errorf("store inline attachment: %w", err)
-			}
-			newInline[i] = pipeline.Attachment{
+			out[i] = pipeline.Attachment{
 				Filename:    att.Filename,
 				ContentType: att.ContentType,
 				Size:        att.Size,
@@ -114,11 +93,16 @@ func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 				Checksum:    checksum,
 			}
 			extracted++
-		} else {
-			newInline[i] = att
 		}
+		return out, nil
 	}
-	modified.Inline = newInline
+	var err error
+	if modified.Attachments, err = extract(email.Attachments, "attachment"); err != nil {
+		return nil, err
+	}
+	if modified.Inline, err = extract(email.Inline, "inline attachment"); err != nil {
+		return nil, err
+	}
 
 	return &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
@@ -130,6 +114,13 @@ func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 			Detail: fmt.Sprintf("%d attachments extracted to %s", extracted, f.cfg.StorageType),
 		},
 	}, nil
+}
+
+// extractable says whether a part's bytes are here to be stored: content not stored yet, or a
+// part with none at all. An empty part is stored as the empty object it is, so the message's
+// part list keeps it and a forward sends it on (#2107).
+func extractable(att pipeline.Attachment) bool {
+	return att.Storage == "" && (att.Content != "" || att.Size == 0)
 }
 
 func (f *extractAttFilter) store(ctx context.Context, att pipeline.Attachment, db *gorm.DB) (string, string, error) {
