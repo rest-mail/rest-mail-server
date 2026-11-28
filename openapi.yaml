@@ -13399,6 +13399,96 @@ paths:
             "X-Frame-Options":
               "$ref": "#/components/headers/X-Frame-Options"
 
+  /api/v1/accounts/{id}/contacts/export.vcf:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: exportContacts
+      tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - GatewaySessionAuth: [mail:read]
+      summary: Download an account's contacts as vCard
+      description: Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address. An empty address book returns an empty file.
+      responses:
+        "200":
+          description: An address book in vCard 4.0 format, with Content-Type `text/vcard; charset=utf-8`.
+          headers:
+            Content-Disposition:
+              description: Download as contacts.vcf.
+              required: true
+              schema:
+                type: string
+            Cache-Control:
+              description: Prevents storage of the exported address book.
+              required: true
+              schema:
+                type: string
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
+          content:
+            text/vcard:
+              schema:
+                type: string
+              examples:
+                downloaded:
+                  value: "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:urn:uuid:d6e9dd45-d18d-59a1-9412-1b5e3611ce75\r\nFN:Elodie Example\r\nEMAIL:elodie@example.test\r\nEND:VCARD\r\n"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller lacks mail:read on a visible account or has not finished setup.
+          content: &contactExportErrorContent
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          headers: &contactExportErrorHeaders
+            Content-Security-Policy:
+              $ref: "#/components/headers/Content-Security-Policy"
+            Referrer-Policy:
+              $ref: "#/components/headers/Referrer-Policy"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/Strict-Transport-Security"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+            X-Frame-Options:
+              $ref: "#/components/headers/X-Frame-Options"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: The request body exceeds the API size limit.
+          content: *contactExportErrorContent
+          headers: *contactExportErrorHeaders
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many refused API-key requests.
+          content: *contactExportErrorContent
+          headers:
+            <<: *contactExportErrorHeaders
+            Retry-After:
+              description: Seconds until a request may be made again.
+              required: true
+              schema:
+                type: integer
+        "500":
+          description: The contact export could not start.
+          content: *contactExportErrorContent
+          headers: *contactExportErrorHeaders
+        "503":
+          description: The credential or session check could not be made.
+          content: *contactExportErrorContent
+          headers: *contactExportErrorHeaders
+
   /api/v1/accounts/{id}/contacts/import:
     parameters:
       - $ref: "#/components/parameters/AccountId"

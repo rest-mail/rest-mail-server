@@ -424,6 +424,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/contacts/export.vcf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an account's contacts as vCard
+         * @description Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address. An empty address book returns an empty file.
+         */
+        get: operations["exportContacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/contacts/import": {
         parameters: {
             query?: never;
@@ -11116,6 +11136,196 @@ export interface operations {
                 };
             };
             /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    exportContacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description Prevents storage of the exported address book. */
+                    "Cache-Control": string;
+                    /** @description Download as contacts.vcf. */
+                    "Content-Disposition": string;
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/vcard": string;
+                };
+            };
+            /** @description unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended */
+            401: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */
+                    "Content-Security-Policy": string;
+                    /** @description no-referrer */
+                    "Referrer-Policy": string;
+                    /** @description max-age=63072000; includeSubDomains */
+                    "Strict-Transport-Security": string;
+                    /** @description nosniff */
+                    "X-Content-Type-Options": string;
+                    /** @description DENY */
+                    "X-Frame-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
                     /** @description default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none' */

@@ -126,6 +126,7 @@
     "blockSender",
     "createContact",
     "deleteContact",
+    "exportContacts",
     "getContactReplyTimeSetting",
     "importContacts",
     "listContacts",
