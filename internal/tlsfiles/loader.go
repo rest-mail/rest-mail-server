@@ -66,39 +66,44 @@ func (l *Loader) GetClientCertificate(*tls.CertificateRequestInfo) (*tls.Certifi
 func (l *Loader) load() (*tls.Certificate, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.checkReload()
+	return l.cert, l.loadErr
+}
+
+// checkedExpiry returns the expiry of the pair a new handshake would get. It
+// checks for renewals even on an idle listener. Only tracked loaders are
+// called, and those hold a pair.
+func (l *Loader) checkedExpiry() time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.checkReload()
+	return l.notAfter
+}
+
+// checkReload runs under mu and accounts for failures and recovery regardless
+// of whether a handshake or a scrape prompted the check.
+func (l *Loader) checkReload() {
 	now := l.now()
 	if now.Before(l.nextCheck) {
-		return l.cert, l.loadErr
+		return
 	}
 	l.nextCheck = now.Add(l.interval)
 	l.loadErr = l.reload()
+	if l.loadErr == nil {
+		if l.warned {
+			reloadFailing.Dec()
+			l.warned = false
+		}
+		return
+	}
 	// Initial errors belong to the caller: an SNI name may simply not be ours.
 	// Once a pair has loaded, a failed renewal is always an operator error.
-	if l.loadErr != nil && l.cert != nil && !l.warned {
+	if l.cert != nil && !l.warned {
 		slog.Error("tls: certificate reload failed; retaining last usable pair", "cert", l.certPath, "key", l.keyPath, "error", l.loadErr)
 		reloadFailures.Inc()
 		reloadFailing.Inc()
 		l.warned = true
 	}
-	return l.cert, l.loadErr
-}
-
-// checkedExpiry returns the expiry of the pair a new handshake would get. It
-// checks the files first, under the same interval as handshakes, because a
-// listener without traffic would otherwise report a certificate that has already
-// been renewed on disk. A failed check changes nothing here: the pair keeps
-// serving, and the next handshake's check logs and counts the failure.
-// Only tracked loaders are called, and those hold a pair.
-func (l *Loader) checkedExpiry() time.Time {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if now := l.now(); !now.Before(l.nextCheck) {
-		l.nextCheck = now.Add(l.interval)
-		if l.reload() == nil {
-			l.loadErr = nil
-		}
-	}
-	return l.notAfter
 }
 
 // reload runs under mu. Failed reads never update the cached pair or metadata.
@@ -112,7 +117,6 @@ func (l *Loader) reload() error {
 		return fmt.Errorf("stat TLS private key: %w", err)
 	}
 	if l.cert != nil && sameFileVersion(certInfo, l.certInfo) && sameFileVersion(keyInfo, l.keyInfo) {
-		l.recovered()
 		return nil
 	}
 	cert, err := tls.LoadX509KeyPair(l.certPath, l.keyPath)
@@ -133,17 +137,8 @@ func (l *Loader) reload() error {
 		l.expiry.track(l)
 	}
 	l.cert, l.notAfter, l.certInfo, l.keyInfo = &cert, leaf.NotAfter, newCertInfo, newKeyInfo
-	l.recovered()
 	slog.Info("tls: reloaded certificate", "cert", l.certPath)
 	return nil
-}
-
-// recovered runs under mu and clears a reported failure once the files load again.
-func (l *Loader) recovered() {
-	if l.warned {
-		reloadFailing.Dec()
-		l.warned = false
-	}
 }
 
 func sameFileVersion(a, b os.FileInfo) bool {

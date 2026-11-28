@@ -135,9 +135,8 @@ func TestExpiryFollowsARenewalWithoutAHandshake(t *testing.T) {
 }
 
 // A renewal that failed leaves the old certificate serving, so the series keeps
-// that certificate's expiry and the alert keeps counting down to it. A scrape
-// does not count the failure: the reload metrics still mean what a handshake
-// found. The series recovers when good files arrive.
+// that certificate's expiry. Scrapes detect and clear the failure even when
+// the listener is idle, and checks during the same failure count it only once.
 func TestExpiryStaysOnTheServedPairWhenARenewalBreaks(t *testing.T) {
 	c := newExpiryCollector()
 	certPath, keyPath := pairPaths(t)
@@ -152,26 +151,32 @@ func TestExpiryStaysOnTheServedPairWhenARenewalBreaks(t *testing.T) {
 
 	replace(t, certPath, []byte("broken renewal"))
 	wantExpiry(t, c, served)
-	if got := testutil.ToFloat64(reloadFailures) - failures; got != 0 {
-		t.Fatalf("a scrape counted %v reload failures, want 0", got)
+	if got := testutil.ToFloat64(reloadFailing) - failing; got != 1 {
+		t.Fatalf("a scrape moved the failing gauge by %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(reloadFailing) - failing; got != 0 {
-		t.Fatalf("a scrape moved the failing gauge by %v, want 0", got)
+	if got := testutil.ToFloat64(reloadFailures) - failures; got != 1 {
+		t.Fatalf("a scrape counted %v reload failures, want 1", got)
 	}
 
 	if l.Current() == nil {
 		t.Fatal("the broken renewal displaced the served pair")
 	}
-	if got := testutil.ToFloat64(reloadFailing) - failing; got != 1 {
-		t.Fatalf("the handshake path moved the failing gauge by %v, want 1", got)
-	}
 	wantExpiry(t, c, served)
+	if got := testutil.ToFloat64(reloadFailing) - failing; got != 1 {
+		t.Fatalf("repeated checks moved the failing gauge by %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(reloadFailures) - failures; got != 1 {
+		t.Fatalf("repeated checks counted %v reload failures, want 1", got)
+	}
 
 	repaired := served.Add(80 * 24 * time.Hour)
 	publishPair(t, certPath, keyPath, repaired)
 	wantExpiry(t, c, repaired)
 	if got := testutil.ToFloat64(reloadFailing) - failing; got != 0 {
 		t.Fatalf("the failing gauge stayed %v above its baseline after the repair", got)
+	}
+	if got := testutil.ToFloat64(reloadFailures) - failures; got != 1 {
+		t.Fatalf("recovery changed the failure count to %v, want 1", got)
 	}
 }
 
