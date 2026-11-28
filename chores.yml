@@ -1478,14 +1478,16 @@ tasks:
                       "imap mailref-'"$ref"'-dovecot 143 *"; do
             (
             set -- $spec; name=$1; host=$2; port=$3; expect=$4
-            ready=""; i=0
-            while [ $i -lt 180 ]; do
+            # A deadline, not a count: each try takes about three seconds, so 180 tries
+            # waited about nine minutes while the message below said 180s.
+            ready=""; deadline=$(( $(date +%s) + 180 ))
+            while [ "$(date +%s)" -lt "$deadline" ]; do
               # See gateways:wait — </dev/null makes nc exit before the greeting.
               line=$( (sleep 2) | nc -w4 "$host" "$port" 2>/dev/null | head -1)
               case "$line" in
                 "$expect"*) ready=1; break ;;
               esac
-              sleep 1; i=$((i+1))
+              sleep 1
             done
             if [ -n "$ready" ]; then
               echo "  '"$ref"' $name ready"
