@@ -15,6 +15,7 @@ if os.environ.get("CONTRACT_AUTHORIZATION") == "1":
 # Only a reset and the path, and only with a reset asked for (own_data.py):
 # generated bodies stay whole.
 vertrag_hooks.before("setDomainRelay")(shared["a_domain_setting_of_its_own"])
+vertrag_hooks.before("setDomainRelay")(shared["clear_stored_relay_credentials"])
 alias = runpy.run_path(str(directory / "alias_refusal_hooks.py"))
 alias["register_alias_refusal_hooks"](shared["admin_token"])
 targets = runpy.run_path(str(directory / "coverage_target_hooks.py"))

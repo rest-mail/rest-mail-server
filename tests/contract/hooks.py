@@ -812,8 +812,7 @@ def a_domain_setting_of_its_own(transaction):
     # not-an-integer and missing's 2147483647 need nothing to exist, and the
     # relay's 422s name the seeded restmail.test, which the reset keeps as id 1.
     # A run with no reset changes nothing here.
-    # entrypoint.py registers this for setDomainRelay as well: this file holds that
-    # operation to having no hook of its own that could change a probe's body.
+    # entrypoint.py registers this for setDomainRelay as well.
     if not asked_for_a_clean_start():
         return
     start_clean(transaction)
@@ -825,6 +824,19 @@ def a_domain_setting_of_its_own(transaction):
         and parts[5] != "2147483647"
     ):
         to_domain(transaction, a_domain_of_its_own(transaction))
+
+
+def clear_stored_relay_credentials(transaction):
+    if os.environ.get("CONTRACT_FUZZ") != "1":
+        return
+    path = transaction["fullPath"].partition("?")[0]
+    match = re.fullmatch(r"/api/v1/admin/domains/0*([1-9][0-9]{0,9})/relay", path)
+    if match is None or int(match[1]) > 0xFFFFFFFF:
+        return
+    # A relay update that omits its password otherwise inherits an earlier
+    # probe's password (#2051). Direct transport clears it via a setup call.
+    # A missing domain stays missing and the generated request goes out whole.
+    fixture_call(transaction, "PUT", path, {"transport": "direct", "password": ""}, expect=(404,))
 
 
 def a_signing_key(transaction, domain_id):
