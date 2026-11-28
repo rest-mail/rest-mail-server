@@ -1776,7 +1776,14 @@ export interface paths {
         };
         /** Get the domain’s outbound transport */
         get: operations["getDomainRelay"];
-        /** Set the domain’s outbound transport */
+        /**
+         * Set the domain’s outbound transport
+         * @description Replaces the domain's outbound transport. Requires domains:write at *. Relay transport requires TLS (starttls or implicit) and sends credentials only after a verified handshake.
+         *
+         *     An omitted or null password keeps the stored password. For relay transport, the resulting username and password must both be set or both be empty. When the password is omitted or null, an empty or omitted username with a stored password returns 422 on the password field. A nonempty username without a supplied or stored password also returns 422. Use GET on this resource to check password_set. To remove relay authentication, send an empty password and omit or empty the username.
+         *
+         *     Passwords are encrypted at rest. Setting a nonempty relay password requires MASTER_KEY and returns 409 without it. Direct transport drops the relay settings and credentials.
+         */
         put: operations["setDomainRelay"];
         post?: never;
         delete?: never;
