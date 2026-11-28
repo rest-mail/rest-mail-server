@@ -1,0 +1,19 @@
+{{- if eq .Values.api.attachments.storageType "filesystem" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "restmail.componentName" (list . "messages") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "api") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.api.attachments.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.api.attachments.persistence.size }}
+  {{- with .Values.api.attachments.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

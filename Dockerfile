@@ -65,12 +65,12 @@ CMD ["air", "-c", ".air.toml"]
 FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS prod
 # Create an unprivileged runtime user (OSI-17). The entrypoint trusts the
 # project CA at runtime via update-ca-certificates, so the CA anchor dirs are
-# chowned to that user; /attachments is pre-created + owned so the named
-# volume inherits non-root ownership on first mount. Binds :8080 (unprivileged).
+# chowned to that user. The storage directories are pre-created so Docker named
+# volumes inherit non-root ownership on first mount. Binds :8080 (unprivileged).
 RUN apk add --no-cache ca-certificates curl \
  && addgroup -S restmail && adduser -S -u 10001 -G restmail restmail \
- && mkdir -p /attachments \
- && chown -R restmail:restmail /attachments /usr/local/share/ca-certificates /etc/ssl
+ && mkdir -p /attachments /messages \
+ && chown -R restmail:restmail /attachments /messages /usr/local/share/ca-certificates /etc/ssl
 COPY --from=builder /bin/restmail-api /usr/local/bin/restmail-api
 # The master key rotation runs while the API is stopped, from this image with
 # the API's settings (helm/restmail/README.md). It does nothing without both keys.
