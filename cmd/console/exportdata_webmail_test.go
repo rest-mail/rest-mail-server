@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 )
 
 // webmailContactsFixture is what the webmail's contacts export writes for the contacts in
@@ -28,6 +30,11 @@ func TestWebmailContactsExportMatchesTheConsole(t *testing.T) {
 	exporter := &mailExporter{base: base, account: 3}
 	contacts := []exportedContact{
 		{ID: 7, Email: "ada@example.com", Name: "Lovelace, Ada", TrustLevel: "trusted", Source: "manual",
+			PhoneNumbers: []vcard.PhoneNumber{
+				{Number: "tel:+15550100;ext=42", Types: []string{"work", "voice"}},
+				{Number: "+1 555 0101", Types: []string{"home"}},
+			},
+			Organization: "Example, Inc;Research", Notes: "Afternoons\nCall, then email.",
 			CreatedAt: at("2026-11-20T10:11:12.123456Z"), UpdatedAt: at("2026-11-21T08:09:10.654321Z")},
 		{ID: 8, Email: "bob@example.com", Name: "bob@example.com", TrustLevel: "blocked", Source: "sent",
 			CreatedAt: at("2026-11-20T10:11:12.5Z"), UpdatedAt: at("2026-11-20T10:11:12.5Z")},

@@ -14,6 +14,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 )
 
 // contactVCardMedia is the media type of an address-book file (RFC 6350 section 10.1).
@@ -23,10 +24,9 @@ const (
 	// vcardReadBuffer is how much of one physical line is looked at in one read. A longer
 	// line, such as an unfolded photo, is read past without being held.
 	vcardReadBuffer = 64 << 10
-	// maxVCardProperty is the most of one property kept. It is well past what a stored
-	// name or address can be once escaped, so only a value that could not be stored, or
-	// one nobody reads here, is cut.
-	maxVCardProperty = 16 << 10
+	// maxVCardProperty keeps even a 4096-character note using four-byte UTF-8
+	// characters in quoted-printable, with room for escapes and its header.
+	maxVCardProperty = 64 << 10
 	// maxVCardAddresses is how many addresses one card may give, so that a card's
 	// addresses, the only thing held until its end, stay small.
 	maxVCardAddresses = 100
@@ -47,10 +47,12 @@ type vcardCard struct {
 	explicitName bool
 	// structuredName is the name the card's first N gives, kept for a card with no FN,
 	// which vCard 2.1 allows.
-	structuredName string
-	addresses      []string
-	contact        models.Contact
-	problems       map[string]string
+	structuredName  string
+	hasOrganization bool
+	hasNotes        bool
+	addresses       []string
+	contact         models.Contact
+	problems        map[string]string
 	// restoreTrust says whether X-RESTMAIL-TRUST-LEVEL is read; otherwise it is ignored
 	// like any other property REST Mail does not take from a file.
 	restoreTrust bool
@@ -160,6 +162,32 @@ func (c *vcardCard) read(property vcardProperty) {
 		default:
 			c.addresses = append(c.addresses, value)
 		}
+	case "TEL":
+		if len(c.contact.PhoneNumbers) == vcard.MaxPhoneNumbers {
+			c.problems[field("phone_numbers")] = fmt.Sprintf("must have at most %d items", vcard.MaxPhoneNumbers)
+			break
+		}
+		index := fmt.Sprintf("phone_numbers[%d].number", len(c.contact.PhoneNumbers))
+		phone, problem := vcardPhoneNumber(property)
+		if problem != "" {
+			c.problems[field(index)] = problem
+			break
+		}
+		c.contact.PhoneNumbers = append(c.contact.PhoneNumbers, phone)
+	case "ORG":
+		if !c.hasOrganization {
+			c.hasOrganization = true
+			value, problem := vcardOrganization(property)
+			if problem != "" {
+				c.problems[field("organization")] = problem
+			}
+			c.contact.Organization = value
+		}
+	case "NOTE":
+		if !c.hasNotes {
+			c.hasNotes = true
+			c.contact.Notes, _ = text("notes")
+		}
 	case "X-RESTMAIL-TRUST-LEVEL":
 		if !c.restoreTrust {
 			break
@@ -205,6 +233,16 @@ func (c *vcardCard) readTime(value, field string, into *time.Time) {
 
 // finish gives the card's contacts and answers how many it counts for.
 func (c *vcardCard) finish(each func(models.Contact, map[string]string) error) (int, error) {
+	prefix := fmt.Sprintf("cards[%d]", c.index)
+	details := ContactDetails{PhoneNumbers: c.contact.PhoneNumbers, Organization: c.contact.Organization, Notes: c.contact.Notes}
+	raw, err := json.Marshal(details)
+	if err != nil {
+		return 0, err
+	}
+	for field, problem := range bindImportFields(&ContactDetails{}, raw, prefix) {
+		c.problems[field] = problem
+	}
+	checkPhoneTypes(details.PhoneNumbers, c.problems, prefix+".")
 	if len(c.addresses) == 0 {
 		// Nothing can be stored for a card without an address, such as one with only a
 		// telephone number. It is counted as skipped, unless it was also wrong.
@@ -213,7 +251,6 @@ func (c *vcardCard) finish(each func(models.Contact, map[string]string) error) (
 		}
 		return 1, nil
 	}
-	prefix := fmt.Sprintf("cards[%d]", c.index)
 	name := c.name
 	if name == "" {
 		name = c.structuredName
@@ -243,6 +280,52 @@ func (c *vcardCard) finish(each func(models.Contact, map[string]string) error) (
 		}
 	}
 	return len(c.addresses), nil
+}
+
+func vcardPhoneNumber(property vcardProperty) (vcard.PhoneNumber, string) {
+	var phone vcard.PhoneNumber
+	isURI := false
+	for _, param := range property.params {
+		key, value, named := strings.Cut(param, "=")
+		switch {
+		case strings.EqualFold(key, "VALUE"):
+			isURI = strings.EqualFold(strings.Trim(value, `"`), "uri")
+		case strings.EqualFold(key, "TYPE"):
+			for kind := range strings.SplitSeq(value, ",") {
+				phone.Types = append(phone.Types, strings.Trim(strings.TrimSpace(kind), `"`))
+			}
+		case !named:
+			// vCard 2.1 also uses bare tokens, such as TEL;WORK;VOICE.
+			switch strings.ToUpper(key) {
+			case "QUOTED-PRINTABLE", "7BIT", "8BIT":
+			default:
+				phone.Types = append(phone.Types, key)
+			}
+		}
+	}
+	var problem string
+	if isURI {
+		phone.Number, problem = vcardPropertyRaw(property)
+	} else {
+		phone.Number, problem = vcardPropertyText(property)
+	}
+	return phone, problem
+}
+
+func vcardOrganization(property vcardProperty) (string, string) {
+	raw, problem := vcardPropertyRaw(property)
+	if problem != "" {
+		return "", problem
+	}
+	components := splitVCardValue(raw, ';')
+	for i, component := range components {
+		value, problem := vcardText(component)
+		if problem != "" {
+			return "", problem
+		}
+		components[i] = value
+	}
+	return strings.Join(components, ";"), ""
 }
 
 // vcardPropertyText is a property's value as text, or what stops it being read as text.

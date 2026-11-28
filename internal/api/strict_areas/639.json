@@ -3,6 +3,8 @@
     "blockSender",
     "createContact",
     "deleteContact",
+    "exportContacts",
+    "getContact",
     "getContactReplyTimeSetting",
     "importContacts",
     "listContacts",

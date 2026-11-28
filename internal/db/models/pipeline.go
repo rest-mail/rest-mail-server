@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 	"gorm.io/gorm"
 )
 
@@ -108,14 +109,17 @@ func (MessageTrace) TableName() string { return "message_traces" }
 
 // Contact represents a known sender in a recipient's contact list.
 type Contact struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	MailboxID  uint      `gorm:"not null;index" json:"mailbox_id"`
-	Email      string    `gorm:"size:255;not null" json:"email"`
-	Name       string    `gorm:"size:255" json:"name"`
-	TrustLevel string    `gorm:"size:20;default:auto" json:"trust_level"` // "auto", "trusted", "blocked"
-	Source     string    `gorm:"size:20;default:sent" json:"source"`      // "sent", "manual", "import"
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID           uint                `gorm:"primaryKey" json:"id"`
+	MailboxID    uint                `gorm:"not null;index" json:"mailbox_id"`
+	Email        string              `gorm:"size:255;not null" json:"email"`
+	Name         string              `gorm:"size:255" json:"name"`
+	PhoneNumbers []vcard.PhoneNumber `gorm:"serializer:json;type:jsonb" json:"phone_numbers,omitempty"`
+	Organization string              `gorm:"size:255" json:"organization,omitempty"`
+	Notes        string              `gorm:"size:4096" json:"notes,omitempty"`
+	TrustLevel   string              `gorm:"size:20;default:auto" json:"trust_level"` // "auto", "trusted", "blocked"
+	Source       string              `gorm:"size:20;default:sent" json:"source"`      // "sent", "manual", "import"
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
 
 	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"-"`
 }

@@ -77,17 +77,18 @@ SENDER_RULES = (
     "removeFromBlocklist",
 )
 
-# Every contact operation of the area map. createContact's link reaches only the
-# update and the delete. listAccounts' link reaches the others but the
-# reply-time setting, and listAccounts is not selected: each of those exchanges
-# carries its own account id, which its hook sends to the seeded account.
+# Every contact operation of the area map. The create and block responses link
+# to the individual contact. The hooks send account-scoped exchanges to the
+# seeded account even when listAccounts is not selected.
 CONTACTS = (
     "createContact",
+    "getContact",
     "updateContact",
     "deleteContact",
     "listContacts",
     "blockSender",
     "importContacts",
+    "exportContacts",
     "suggestContacts",
     "getContactReplyTimeSetting",
     "setContactReplyTimeSetting",
@@ -702,11 +703,10 @@ class Selection(unittest.TestCase):
             (ROOT / "tests/contract/api-areas.json").read_text()
         )
         self.assertEqual(set(areas["639"]), set(CONTACTS))
-        # Main's 550f750b0 (#1780) added blockSender's contact lifecycle links.
         for operation in ("createContact", "blockSender"):
             self.assertEqual(
                 link_followers(description, operation),
-                {"updateContact", "deleteContact"},
+                {"getContact", "updateContact", "deleteContact"},
                 operation,
             )
         linking = {

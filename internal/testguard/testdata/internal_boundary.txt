@@ -43,4 +43,5 @@ internal/testreset cmd/api,cmd/smtp-gateway
 internal/timezone cmd/api,cmd/imap-gateway
 internal/tlsfiles cmd/api,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
 internal/tracing cmd/api,cmd/console,cmd/imap-gateway,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
+internal/vcard cmd/api,cmd/console,cmd/imap-gateway,cmd/instance,cmd/migrate,cmd/pop3-gateway,cmd/rotate-key,cmd/seed,cmd/sieve-migrate,cmd/smtp-gateway
 internal/version cmd/api,cmd/imap-gateway

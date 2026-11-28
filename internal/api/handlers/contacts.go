@@ -17,6 +17,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -32,10 +33,11 @@ func NewContactHandler(db *gorm.DB) *ContactHandler {
 // Contact is an address an account's mail is filtered by: trusted, blocked, or learned from
 // what it sent.
 type Contact struct {
-	ID                uint      `json:"id"`
-	MailboxID         uint      `json:"mailbox_id"`
-	Email             string    `json:"email"`
-	Name              string    `json:"name"`
+	ID        uint   `json:"id"`
+	MailboxID uint   `json:"mailbox_id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	ContactDetails
 	TrustLevel        string    `json:"trust_level" enums:"auto,trusted,blocked"`
 	Source            string    `json:"source" enums:"sent,manual,import"`
 	CreatedAt         time.Time `json:"created_at"`
@@ -45,10 +47,13 @@ type Contact struct {
 
 func contactOf(m models.Contact) Contact {
 	return Contact{
-		ID:         m.ID,
-		MailboxID:  m.MailboxID,
-		Email:      m.Email,
-		Name:       m.Name,
+		ID:        m.ID,
+		MailboxID: m.MailboxID,
+		Email:     m.Email,
+		Name:      m.Name,
+		ContactDetails: ContactDetails{
+			PhoneNumbers: m.PhoneNumbers, Organization: m.Organization, Notes: m.Notes,
+		},
 		TrustLevel: m.TrustLevel,
 		Source:     m.Source,
 		CreatedAt:  m.CreatedAt,
@@ -81,7 +86,7 @@ type contactPath struct {
 
 // RegisterContacts mounts the account's contacts. Their routes take what the mail routes take;
 // the handler checks the account is reachable with mail:read to read and mail:write to change,
-// and answers 403 forbidden when it is not.
+// and refuses the request if it is not.
 func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	h.registerQuietHours(rs)
 	h.registerAccountTimeZone(rs)
@@ -100,12 +105,21 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "listContacts", Summary: "List contacts for an account", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/export.vcf",
+		OperationID: "exportContacts", Summary: "Download an account's contacts as vCard", Tags: tags,
+		Description: "Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address, including typed phone numbers (TEL), organization (ORG), and notes (NOTE). An empty address book returns an empty file.",
+		MediaType:   contactVCardMedia, Headers: contactExportHeaders,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.exportContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "createContact", Summary: "Create a new contact", Tags: tags, Status: http.StatusCreated,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.create)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/{cid}",
+		OperationID: "getContact", Summary: "Get a contact", Tags: tags,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/contacts/{cid}",
 		OperationID: "updateContact", Summary: "Update a contact", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.update)
+		Description: "Omitted or null fields leave the contact unchanged. An empty array clears phone_numbers. An empty string clears organization or notes.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/contacts/{cid}",
 		OperationID: "deleteContact", Summary: "Delete a contact", Tags: tags, Status: http.StatusNoContent,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.delete)
@@ -116,7 +130,7 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.block)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
 		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags, DescribedRequest: importContactsRequest{},
-		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. Every imported contact's trust level is auto unless restore_trust_level is true. On a vCard file, each EMAIL is one contact named by the card's first FN, or by its first N when it has no FN; a card with no EMAIL is counted as skipped; other properties are ignored, except the X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT that REST Mail's own export writes, which are restored, and its X-RESTMAIL-TRUST-LEVEL, restored only when restore_trust_level is true. A quoted-printable name or address is decoded and must be UTF-8; one in base64 or a character set other than UTF-8 is refused.",
+		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it, as JSON or as a vCard file (text/vcard). Every entry is checked first, nothing is imported if one is refused, and contacts the account already has are skipped and left as they are. Every imported contact's trust level is auto unless restore_trust_level is true. Each vCard EMAIL becomes one contact named by the card's first FN, or first N when it has no FN. It also gets all TEL entries with their TYPE tokens, the first ORG (components joined by semicolons), and the first NOTE, subject to the contact field limits. Cards without EMAIL are skipped. REST Mail restores X-RESTMAIL-SOURCE, X-RESTMAIL-CREATED-AT and X-RESTMAIL-UPDATED-AT, and X-RESTMAIL-TRUST-LEVEL when requested. Quoted-printable values must decode to UTF-8. Base64 and other character sets are refused for imported fields.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
 		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
@@ -215,6 +229,24 @@ type createContactBody struct {
 	Email      string  `json:"email" format:"email" maxLength:"255" formatMessage:"must be an email address"`
 	Name       string  `json:"name,omitempty" maxLength:"255"`
 	TrustLevel *string `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
+	ContactDetails
+}
+
+// ContactDetails are the optional address-book fields shared by create and vCard import.
+type ContactDetails struct {
+	PhoneNumbers []vcard.PhoneNumber `json:"phone_numbers,omitempty" maxItems:"20"`
+	Organization string              `json:"organization,omitempty" maxLength:"255" pattern:"^[^\\x00-\\x08\\x0B-\\x1F\\x7F]*$" example:"Example Studio"`
+	Notes        string              `json:"notes,omitempty" maxLength:"4096" pattern:"^[^\\x00-\\x08\\x0B-\\x1F\\x7F]*$" example:"Prefers a call in the afternoon."`
+}
+
+func checkPhoneTypes(phones []vcard.PhoneNumber, problems map[string]string, prefix string) {
+	for i, phone := range phones {
+		for j, kind := range phone.Types {
+			if !vcard.ValidPhoneType(kind) {
+				problems[fmt.Sprintf("%sphone_numbers[%d].types[%d]", prefix, i, j)] = "must contain 1 to 32 ASCII letters, digits or hyphens"
+			}
+		}
+	}
 }
 
 // create adds a new contact to a mailbox.
@@ -227,6 +259,7 @@ func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Conta
 
 	req := in.Body
 	errors := map[string]string{}
+	checkPhoneTypes(req.PhoneNumbers, errors, "")
 	if req.Email == "" {
 		errors["email"] = "required"
 	}
@@ -247,11 +280,14 @@ func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Conta
 	}
 
 	contact := models.Contact{
-		MailboxID:  mailboxID,
-		Email:      req.Email,
-		Name:       req.Name,
-		TrustLevel: trustLevel,
-		Source:     "manual",
+		MailboxID:    mailboxID,
+		Email:        req.Email,
+		Name:         req.Name,
+		PhoneNumbers: req.PhoneNumbers,
+		Organization: req.Organization,
+		Notes:        req.Notes,
+		TrustLevel:   trustLevel,
+		Source:       "manual",
 	}
 
 	if err := h.db.WithContext(r.Context()).Create(&contact).Error; err != nil {
@@ -272,8 +308,27 @@ type updateContactRequest struct {
 }
 
 type updateContactBody struct {
-	Name       *string `json:"name,omitempty" maxLength:"255"`
-	TrustLevel *string `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
+	Name         *string              `json:"name,omitempty" maxLength:"255"`
+	TrustLevel   *string              `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
+	PhoneNumbers *[]vcard.PhoneNumber `json:"phone_numbers,omitempty" maxItems:"20"`
+	Organization *string              `json:"organization,omitempty" maxLength:"255" pattern:"^[^\\x00-\\x08\\x0B-\\x1F\\x7F]*$" example:"Example Studio"`
+	Notes        *string              `json:"notes,omitempty" maxLength:"4096" pattern:"^[^\\x00-\\x08\\x0B-\\x1F\\x7F]*$" example:"Prefers a call in the afternoon."`
+}
+
+// get reads a contact belonging to the requested mailbox.
+func (h *ContactHandler) get(r *http.Request, in contactPath) (Contact, error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailRead)
+	if err != nil {
+		return Contact{}, err
+	}
+	var contact models.Contact
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Contact{}, errContactNotFound
+		}
+		return Contact{}, fmt.Errorf("find contact: %w", err)
+	}
+	return contactOf(contact), nil
 }
 
 // update updates an existing contact's fields.
@@ -291,6 +346,24 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 	}
 	if req.TrustLevel != nil {
 		updates["trust_level"] = *req.TrustLevel
+	}
+	if req.PhoneNumbers != nil {
+		problems := map[string]string{}
+		checkPhoneTypes(*req.PhoneNumbers, problems, "")
+		if len(problems) > 0 {
+			return Contact{}, endpoint.Invalid(problems)
+		}
+		phones, err := json.Marshal(*req.PhoneNumbers)
+		if err != nil {
+			return Contact{}, err
+		}
+		updates["phone_numbers"] = models.JSONB(phones)
+	}
+	if req.Organization != nil {
+		updates["organization"] = *req.Organization
+	}
+	if req.Notes != nil {
+		updates["notes"] = *req.Notes
 	}
 
 	var contact models.Contact
@@ -716,8 +789,18 @@ func readImportEntry(raw json.RawMessage, index int) (importContactEntry, map[st
 // checkImportEntry reads one entry, naming what is wrong with it under prefix.
 func checkImportEntry(raw json.RawMessage, prefix string) (importContactEntry, map[string]string) {
 	var entry importContactEntry
+	if problems := bindImportFields(&entry, raw, prefix); len(problems) > 0 {
+		return entry, problems
+	}
+	if address, err := mail.ParseAddress(entry.Email); err != nil || address.Address != entry.Email {
+		return entry, map[string]string{prefix + ".email": "must be an email address"}
+	}
+	return entry, nil
+}
+
+func bindImportFields(target any, raw json.RawMessage, prefix string) map[string]string {
 	var refusal *endpoint.Error
-	if err := endpoint.BindBody(&entry, raw); errors.As(err, &refusal) {
+	if err := endpoint.BindBody(target, raw); errors.As(err, &refusal) {
 		problems := map[string]string{}
 		for field, problem := range refusal.Fields {
 			if field == "body" {
@@ -729,12 +812,9 @@ func checkImportEntry(raw json.RawMessage, prefix string) (importContactEntry, m
 		if len(problems) == 0 {
 			problems[prefix] = refusal.Message
 		}
-		return entry, problems
+		return problems
 	} else if err != nil {
-		return entry, map[string]string{prefix: "could not be read"}
+		return map[string]string{prefix: "could not be read"}
 	}
-	if address, err := mail.ParseAddress(entry.Email); err != nil || address.Address != entry.Email {
-		return entry, map[string]string{prefix + ".email": "must be an email address"}
-	}
-	return entry, nil
+	return nil
 }

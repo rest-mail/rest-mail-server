@@ -398,11 +398,11 @@ func TestLifecycleGuardCatchesAMissingLinkOrReason(t *testing.T) {
 		for id, each := range exceptions.CreateLifecycle {
 			reasons[id] = each
 		}
-		delete(reasons, "createContact")
+		delete(reasons, "createAPIKey")
 		stripped := exceptions
 		stripped.CreateLifecycle = reasons
 		findings, _ := lifecycleFindings(baseline(), stripped)
-		if len(findings) != 1 || !strings.Contains(findings[0], "createContact has no read route") {
+		if len(findings) != 1 || !strings.Contains(findings[0], "createAPIKey has no read route") {
 			t.Fatalf("got %v", findings)
 		}
 	})
@@ -411,11 +411,11 @@ func TestLifecycleGuardCatchesAMissingLinkOrReason(t *testing.T) {
 		for id, each := range exceptions.CreateLifecycle {
 			reasons[id] = each
 		}
-		reasons["createContact"] = map[string]string{"read": "none"}
+		reasons["createAPIKey"] = map[string]string{"read": "none"}
 		stripped := exceptions
 		stripped.CreateLifecycle = reasons
 		findings, _ := lifecycleFindings(baseline(), stripped)
-		if len(findings) != 1 || !strings.Contains(findings[0], "createContact: the reason for no read link is not a reason") {
+		if len(findings) != 1 || !strings.Contains(findings[0], "createAPIKey: the reason for no read link is not a reason") {
 			t.Fatalf("got %v", findings)
 		}
 	})

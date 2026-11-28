@@ -42,9 +42,6 @@
       "read": "No route reads one entry: listBlocklist is the read of a domain's entries.",
       "update": "An entry is only a pattern; changing one is removing it and adding another."
     },
-    "blockSender": {
-      "read": "No route reads one contact: listContacts is the read of a mailbox's contacts."
-    },
     "createAPIKey": {
       "read": "No route reads one key, and its secret is shown once: listAPIKeys is the read of an account's keys."
     },
@@ -62,9 +59,6 @@
     "createClientSecret": {
       "read": "No route reads one client secret, and its secret is shown once: listClientSecrets is the read.",
       "update": "A client secret has nothing to change: it is revoked and another is made."
-    },
-    "createContact": {
-      "read": "No route reads one contact: listContacts is the read of a mailbox's contacts."
     },
     "createFolder": {
       "read": "No route reads one folder: listFolders reads a mailbox's folders and listMessages a folder's contents."

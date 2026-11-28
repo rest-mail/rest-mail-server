@@ -110,6 +110,22 @@ func TestContactMutationExamples(t *testing.T) {
 								t.Fatalf("stored %s=%v differs from response", key, value)
 							}
 						}
+						for _, key := range []string{"organization", "notes"} {
+							if want, ok := input[key]; ok && fields[key] != want {
+								t.Fatalf("stored %s=%v, want %v", key, fields[key], want)
+							}
+						}
+						if want, ok := input["phone_numbers"]; ok {
+							wire, ok := fields["phone_numbers"].(string)
+							if !ok {
+								t.Fatalf("stored phone_numbers = %T, want JSON text", fields["phone_numbers"])
+							}
+							wantJSON, err := json.Marshal(want)
+							if err != nil {
+								t.Fatal(err)
+							}
+							assertPublicExampleBody(t, wantJSON, []byte(wire))
+						}
 					}
 				}
 				wantWrite := rr.Code < 300 || name == "duplicate" || name == "write_unavailable" || name == "create_unavailable" || name == "reload_unavailable" || name == "reload_missing"

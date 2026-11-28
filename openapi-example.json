@@ -7335,7 +7335,18 @@
           "id": 1
         },
         "body": {
-          "email": "created@example.com"
+          "email": "created@example.com",
+          "phone_numbers": [
+            {
+              "number": "+1 555 0100",
+              "types": [
+                "work",
+                "voice"
+              ]
+            }
+          ],
+          "organization": "Example Studio",
+          "notes": "Prefers a call in the afternoon."
         }
       },
       "response": {
@@ -7349,7 +7360,18 @@
             "trust_level": "trusted",
             "source": "manual",
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "phone_numbers": [
+              {
+                "number": "+1 555 0100",
+                "types": [
+                  "work",
+                  "voice"
+                ]
+              }
+            ],
+            "organization": "Example Studio",
+            "notes": "Prefers a call in the afternoon."
           }
         },
         "mediaType": "application/json"
@@ -15800,6 +15822,186 @@
       }
     }
   },
+  "exportContacts": {
+    "downloaded": {
+      "requires": {
+        "state": "existing_contact"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:urn:uuid:d6e9dd45-d18d-59a1-9412-1b5e3611ce75\r\nFN:Elodie Example\r\nEMAIL:elodie@example.test\r\nEND:VCARD\r\n",
+        "mediaType": "text/vcard"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "query_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "forwardMessage": {
     "attachment_write_failed": {
       "requires": {
@@ -17598,6 +17800,236 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "getContact": {
+    "found": {
+      "summary": "Read a stored contact with its phone numbers, organization and notes",
+      "requires": {
+        "state": "existing_contact"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Before",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "phone_numbers": [
+              {
+                "number": "+1 555 0100",
+                "types": [
+                  "work",
+                  "voice"
+                ]
+              }
+            ],
+            "organization": "Example Studio",
+            "notes": "Prefers a call in the afternoon."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "lookup_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "cid": 3,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "cid": 2147483647,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Contact not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_grants": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -52073,7 +52505,18 @@
           "id": 1
         },
         "body": {
-          "name": "Changed"
+          "name": "Changed",
+          "phone_numbers": [
+            {
+              "number": "+1 555 0100",
+              "types": [
+                "work",
+                "voice"
+              ]
+            }
+          ],
+          "organization": "Example Studio",
+          "notes": "Prefers a call in the afternoon."
         }
       },
       "response": {
@@ -52087,7 +52530,18 @@
             "trust_level": "auto",
             "source": "sent",
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "phone_numbers": [
+              {
+                "number": "+1 555 0100",
+                "types": [
+                  "work",
+                  "voice"
+                ]
+              }
+            ],
+            "organization": "Example Studio",
+            "notes": "Prefers a call in the afternoon."
           }
         },
         "mediaType": "application/json"

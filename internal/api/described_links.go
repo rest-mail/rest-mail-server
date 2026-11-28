@@ -35,10 +35,12 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	"blockSender": {
 		"200": {
 			"deleteContact": {OperationID: "deleteContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+			"getContact":    {OperationID: "getContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
 			"updateContact": {OperationID: "updateContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 		"201": {
 			"deleteContact": {OperationID: "deleteContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+			"getContact":    {OperationID: "getContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
 			"updateContact": {OperationID: "updateContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 	},
@@ -91,6 +93,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	"createContact": {
 		"201": {
 			"deleteContact": {OperationID: "deleteContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
+			"getContact":    {OperationID: "getContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
 			"updateContact": {OperationID: "updateContact", Parameters: map[string]string{"cid": "$response.body#/data/id", "id": "$request.path.id"}},
 		},
 	},
