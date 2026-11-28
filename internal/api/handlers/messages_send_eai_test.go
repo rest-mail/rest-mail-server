@@ -57,7 +57,7 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 
 	to := "MÜNCHEN@" + unicodeDomain
 	cc := "café@" + unicodeDomain
-	h := NewMessageHandler(tx, nil, nil, "", nil)
+	h := testMessageHandler(t, tx)
 	body := `{"from":"` + sender.Address + `","to":["` + to + `"],"cc":["` + cc + `"],"bcc":["` + inactive.Address + `"],"subject":"Grüße","body_text":"hallo"}`
 	rr := sendAs(h, &auth.Claims{AccountID: sender.ID, CredentialKind: "app_password"}, body)
 	if rr.Code != http.StatusCreated {

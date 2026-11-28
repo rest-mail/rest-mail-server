@@ -119,12 +119,13 @@ func TestUnsubscribeTargetExamplesWithVertrag(t *testing.T) {
 				}
 				if name == "sent" {
 					stored, data := sent[0], got["data"]
+					raw := f.sentSource(stored)
 					if data["id"] != float64(stored.ID) || data["mailbox_id"] != float64(f.mailboxID) || data["message_id"] != stored.MsgID ||
-						data["thread_id"] != stored.ThreadID || data["mod_seq"] != float64(stored.ModSeq) || data["raw_size"] != float64(stored.RawSize) || stored.RawSize != len(stored.RawMessage) ||
+						data["thread_id"] != stored.ThreadID || data["mod_seq"] != float64(stored.ModSeq) || data["raw_size"] != float64(stored.RawSize) || stored.RawSize != len(raw) ||
 						data["downgraded_size"] != float64(stored.DowngradedSize) || stored.DowngradedSize == 0 {
 						t.Fatalf("response and stored message differ: %s", response.Body.String())
 					}
-					assertExampleReceipt(t, data, stored.RawMessage, stored.SealedHash)
+					assertExampleReceipt(t, data, raw, stored.SealedHash)
 					for field, size := range map[string]int{"imap_size": stored.IMAPSize, "imap_utf8_size": stored.IMAPUTF8Size, "pop3_utf8_size": stored.POP3UTF8Size} {
 						if data[field] != float64(size) {
 							t.Fatalf("%s = %v, stored %d", field, data[field], size)
@@ -133,7 +134,7 @@ func TestUnsubscribeTargetExamplesWithVertrag(t *testing.T) {
 					}
 					var delivery models.OutboundQueue
 					if err := f.db.First(&delivery).Error; err != nil || delivery.MessageID == nil || *delivery.MessageID != stored.ID || delivery.Recipient != "leave@news.example.com" ||
-						delivery.Sender != f.address || delivery.RawMessage != stored.RawMessage || !strings.Contains(delivery.RawMessage, "Subject: unsubscribe weekly news") {
+						delivery.Sender != f.address || !sameSourceRef(delivery.SourceRef, stored.SourceRef) || !strings.Contains(raw, "Subject: unsubscribe weekly news") {
 						t.Fatalf("unexpected delivery: %+v, %v", delivery, err)
 					}
 					for _, field := range []string{"received_at", "created_at", "updated_at"} {

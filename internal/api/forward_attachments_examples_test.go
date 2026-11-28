@@ -19,6 +19,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/driver/postgres"
@@ -34,6 +35,7 @@ var forwardActorSequence atomic.Uint64
 type forwardConnection struct {
 	actorID uint
 	importConnection
+	testSourceLedger
 	original    map[string]any
 	sources     []map[string]any
 	attachments []map[string]any
@@ -48,6 +50,7 @@ type forwardTransaction struct {
 	c                  *forwardConnection
 	state              importLedger
 	attachments, queue []map[string]any
+	stage              map[string]any
 }
 
 func (t forwardTransaction) Commit() error { return nil }
@@ -55,12 +58,13 @@ func (t forwardTransaction) Rollback() error {
 	t.c.state = t.state
 	t.c.attachments = t.attachments
 	t.c.queue = t.queue
+	t.c.stage = t.stage
 	return nil
 }
 func (c *forwardConnection) Begin() (driver.Tx, error) {
 	s := c.state
 	s.messages = append([]map[string]any(nil), s.messages...)
-	return forwardTransaction{c, s, append([]map[string]any(nil), c.attachments...), append([]map[string]any(nil), c.queue...)}, nil
+	return forwardTransaction{c, s, append([]map[string]any(nil), c.attachments...), append([]map[string]any(nil), c.queue...), c.stage}, nil
 }
 func (c *forwardConnection) BeginTx(ctx context.Context, _ driver.TxOptions) (driver.Tx, error) {
 	if err := ctx.Err(); err != nil {
@@ -74,6 +78,9 @@ func (c *forwardConnection) QueryContext(ctx context.Context, q string, args []d
 	}
 	c.queries = append(c.queries, q)
 	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
+	if rows, ok := c.testSourceLedger.query(q); ok {
 		return rows, nil
 	}
 	if strings.HasPrefix(q, "WITH RECURSIVE owned(id, quota_used_bytes)") {
@@ -199,18 +206,26 @@ func (c *forwardConnection) QueryContext(ctx context.Context, q string, args []d
 	return c.importConnection.QueryContext(ctx, q, args)
 }
 
+func (c *forwardConnection) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if c.testSourceLedger.exec(q, args) {
+		return driver.RowsAffected(1), nil
+	}
+	return c.importConnection.ExecContext(ctx, q, args)
+}
+
 type forwardFixture struct {
 	c      *forwardConnection
 	router http.Handler
 	token  string
 	store  *attachmentstore.S3
 	parts  []pipeline.Attachment
+	source *messagestore.Sources
 }
 
 func newForwardFixture(t *testing.T, mode string) *forwardFixture {
 	t.Helper()
 	fake := s3test.New(t)
-	cfg := config.Config{Attachments: fake.Config, Environment: "test", SMTPMaxMessageSize: 8192, APIMaxBodyBytes: 70000}
+	cfg := config.Config{Attachments: fake.Config, Messages: config.MessageStorageConfig{S3Prefix: "messages/"}, Environment: "test", SMTPMaxMessageSize: 8192, APIMaxBodyBytes: 70000}
 	if mode == "size" {
 		cfg.SMTPMaxMessageSize = 512
 	}
@@ -253,7 +268,11 @@ func newForwardFixture(t *testing.T, mode string) *forwardFixture {
 	}
 	routers := NewRouters(db, jwt, &cfg, nil)
 	t.Cleanup(routers.Close)
-	return &forwardFixture{c, routers.Public, session.AccessToken, store, parts}
+	source, err := messagestore.NewSources(db, &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &forwardFixture{c, routers.Public, session.AccessToken, store, parts, source}
 }
 func (f *forwardFixture) request(t *testing.T) *httptest.ResponseRecorder {
 	t.Helper()
@@ -277,8 +296,8 @@ func TestForwardAttachmentsRealRoutePreservesPartsAndIndependentStorage(t *testi
 		t.Fatalf("partial forward: sent=%d parts=%d queued=%d quota=%d", len(f.c.state.messages), len(f.c.attachments), len(f.c.queue), f.c.state.quota)
 	}
 	sent := f.c.state.messages[0]
-	raw, ok := sent["raw_message"].(string)
-	if !ok || raw != f.c.queue[0]["raw_message"] || sent["has_attachments"] != true {
+	raw := readTestSource(t, f.source, sent["source_ref"].(string))
+	if sent["source_ref"] != f.c.queue[0]["source_ref"] || sent["has_attachments"] != true {
 		t.Fatal("Sent/queue source or attachment marker differs")
 	}
 	parsed, err := rmime.Parse([]byte(raw))
@@ -345,7 +364,7 @@ func TestForwardAttachmentsLocalAndEmptyPartsRemainReadable(t *testing.T) {
 				t.Fatalf("partial local/legacy forward: sent=%d parts=%d queue=%d", len(f.c.state.messages), len(f.c.attachments), len(f.c.queue))
 			}
 			for _, message := range f.c.state.messages {
-				parsed, err := rmime.Parse([]byte(message["raw_message"].(string)))
+				parsed, err := rmime.Parse([]byte(readTestSource(t, f.source, message["source_ref"].(string))))
 				if err != nil || len(parsed.Attachments) != 2 || len(parsed.Inline) != 1 || parsed.Inline[0].ContentID != "original-image" {
 					t.Fatalf("transformed MIME parts lost: parsed=%+v err=%v", parsed, err)
 				}

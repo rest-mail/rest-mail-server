@@ -26,6 +26,7 @@ type draftSendState struct {
 // and a surviving draft is the duplicate-send bug, even when it was logged.
 type draftSendDB struct {
 	serviceProbeTestDB
+	testSourceLedger
 	stored, pending                         draftSendState
 	inTx, failDelete, failQueue, failCommit bool
 	failRaw                                 bool
@@ -47,6 +48,9 @@ func (d *draftSendDB) QueryContext(_ context.Context, q string, args []driver.Na
 	}
 	s := d.state()
 	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
+	}
+	if rows, ok := d.testSourceLedger.query(q, args); ok {
 		return rows, nil
 	}
 	switch {
@@ -82,7 +86,8 @@ func (d *draftSendDB) QueryContext(_ context.Context, q string, args []driver.Na
 	}
 	return &deliveryReadRows{}, nil
 }
-func (d *draftSendDB) ExecContext(_ context.Context, q string, _ []driver.NamedValue) (driver.Result, error) {
+func (d *draftSendDB) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	d.testSourceLedger.exec(q, args)
 	if strings.HasPrefix(q, `DELETE FROM "messages"`) {
 		if d.failDelete {
 			return nil, errors.New("private draft deletion failure")
@@ -118,7 +123,7 @@ func draftSendHandler(t *testing.T, d *draftSendDB) *MessageHandler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewMessageHandler(db, nil, nil, "", nil)
+	return testMessageHandler(t, db)
 }
 
 func sendAtomicDraft(h *MessageHandler) *httptest.ResponseRecorder {

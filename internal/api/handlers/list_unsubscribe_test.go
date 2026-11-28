@@ -317,7 +317,7 @@ func sendAndReadQueued(t *testing.T, h *MessageHandler, sender models.Mailbox, l
 	if err := h.db.Where("message_id = ?", sent.ID).First(&q).Error; err != nil {
 		t.Fatalf("find the queued message: %v", err)
 	}
-	return q.RawMessage
+	return composedRaw(t, h, q.SourceRef)
 }
 
 func sendBody(from, listUnsub string) string {

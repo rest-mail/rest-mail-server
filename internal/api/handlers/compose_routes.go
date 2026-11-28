@@ -119,7 +119,7 @@ type ForwardRefusalBody struct {
 // quarantine (403), the sender domain's policy or a bad scheduled_at (422), the account's send
 // rate (429, with Retry-After) and a deferral (503).
 var sendRefusals = []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
-	http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusNotFound}
+	http.StatusRequestEntityTooLarge, http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusNotFound}
 
 // idempotentSendRefusals add 409 idempotency_conflict for the routes that take an Idempotency-Key
 // (send, send-draft and forward); unsubscribeMailto takes none, so it keeps sendRefusals.
@@ -242,7 +242,7 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/calendar-reply",
 		OperationID: "respondToCalendar", Summary: "Reply to a calendar invitation", Tags: []string{"Calendar"},
 		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send). The 200 means the reply is durably queued for the organizer, on this server or elsewhere, not that it has arrived: a later permanent refusal bounces to the sender as a DSN.",
-		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
+		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusServiceUnavailable},
 		Security:    readAndSend}, h.respondToCalendar)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/send",
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},

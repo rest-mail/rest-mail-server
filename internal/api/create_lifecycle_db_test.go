@@ -50,10 +50,14 @@ func TestCreatesPersistAndEndAt404(t *testing.T) {
 	f := newGrantsFixture(t)
 	// As accessRouter makes it, and able to take a recovery address, which is refused until the
 	// server knows the origin of the links it emails.
-	f.router = NewRouter(f.db, auth.NewJWTService("grants-access-secret", 15*time.Minute, 24*time.Hour), &config.Config{
+	cfg := &config.Config{
 		CORSAllowedOrigins: []string{"http://localhost:3000"}, Environment: "test", TOTP2FAEnabled: true,
 		MasterKey: accessMasterKey, RecoveryEmailBaseURL: "https://mail.access.test",
-	}, nil)
+	}
+	setTestMessageStorage(t, cfg)
+	routers := NewRouters(f.db, auth.NewJWTService("grants-access-secret", 15*time.Minute, 24*time.Hour), cfg, nil)
+	t.Cleanup(routers.Close)
+	f.router = routers.Public
 	owner := f.admins["owner"]
 	token := f.token(t, "owner")
 	account := strconv.FormatUint(uint64(owner.user.ID), 10)

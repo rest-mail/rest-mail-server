@@ -127,7 +127,7 @@ func TestListAccountAddresses(t *testing.T) {
 
 	// Each mailbox in this domain is sent from as the route says: a listed mode
 	// passes sendMessage's sender check and an unlisted one is refused.
-	mh := NewMessageHandler(db, nil, nil, "", nil)
+	mh := testMessageHandler(t, db)
 	send := func(from string, onBehalf bool) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(map[string]any{"from": from, "on_behalf": onBehalf, "to": []string{fx.user.Address}, "subject": "hi", "body_text": "hi"})
 		rr := httptest.NewRecorder()

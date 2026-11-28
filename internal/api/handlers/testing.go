@@ -18,6 +18,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
@@ -28,14 +29,20 @@ import (
 // TestHandler provides endpoints for testing and debugging the mail system.
 // These endpoints are only available in non-production environments.
 type TestHandler struct {
-	db         *gorm.DB
-	cfg        *config.Config
-	resolver   *net.Resolver
-	resetState []func()
+	db             *gorm.DB
+	cfg            *config.Config
+	resolver       *net.Resolver
+	resetState     []func()
+	messageSources *messagestore.Sources
 }
 
 func NewTestHandler(db *gorm.DB, cfg *config.Config) *TestHandler {
 	return &TestHandler{db: db, cfg: cfg, resolver: &net.Resolver{}}
+}
+
+// SetMessageSources supplies the store whose objects a test reset removes.
+func (h *TestHandler) SetMessageSources(sources *messagestore.Sources) {
+	h.messageSources = sources
 }
 
 // productionLocked reports whether the destructive/abusable test endpoints
@@ -252,8 +259,13 @@ func (h *TestHandler) resetTestData(r *http.Request, _ endpoint.Empty) (TestData
 	ctx, cancel := context.WithTimeout(r.Context(), testreset.DrainTimeout)
 	defer cancel()
 	if err := testreset.Reset(ctx, h.db, func(conn *gorm.DB) error {
+		var refs []string
+		var keptSources *[]string
+		if h.messageSources != nil {
+			keptSources = &refs
+		}
 		if err := conn.Transaction(func(tx *gorm.DB) error {
-			if err := cleanResetData(tx); err != nil {
+			if err := cleanResetDataWithSources(tx, keptSources); err != nil {
 				return err
 			}
 			return seedTestData(tx)
@@ -262,6 +274,11 @@ func (h *TestHandler) resetTestData(r *http.Request, _ endpoint.Empty) (TestData
 		}
 		for _, reset := range h.resetState {
 			reset()
+		}
+		// Keep the object ledger until removal succeeds. A failed seed rolls back
+		// without losing any objects, and a failed deletion can be retried.
+		if len(refs) > 0 {
+			return h.messageSources.DeleteResetSources(ctx, conn, refs)
 		}
 		return nil
 	}); err != nil {

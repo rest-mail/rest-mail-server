@@ -71,10 +71,11 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 				if err := f.db.Where("mailbox_id = ? AND folder = ?", f.mailboxID, "Sent").First(&sent).Error; err != nil {
 					t.Fatal(err)
 				}
-				if data["id"] != float64(sent.ID) || data["mailbox_id"] != float64(f.mailboxID) || data["message_id"] != sent.MsgID || data["thread_id"] != sent.ThreadID || data["raw_size"] != float64(len(sent.RawMessage)) || sent.RawSize != len(sent.RawMessage) {
+				raw := f.sentSource(sent)
+				if data["id"] != float64(sent.ID) || data["mailbox_id"] != float64(f.mailboxID) || data["message_id"] != sent.MsgID || data["thread_id"] != sent.ThreadID || data["raw_size"] != float64(len(raw)) || sent.RawSize != len(raw) {
 					t.Fatal("Sent identity/source and response differ")
 				}
-				assertExampleReceipt(t, data, sent.RawMessage, sent.SealedHash)
+				assertExampleReceipt(t, data, raw, sent.SealedHash)
 				data["sealed_hash"] = want["data"]["sealed_hash"]
 				var queued []models.OutboundQueue
 				if err := f.db.Where("message_id = ?", sent.ID).Order("id").Find(&queued).Error; err != nil {
@@ -82,7 +83,7 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 				}
 				// The example's two recipients, the one on this server too, wait on
 				// the queue with the bytes that were sent (#1564).
-				if len(queued) != 2 || queued[0].Recipient != "admin@restmail.test" || queued[1].Recipient != "someone@imap.restmail.test" || queued[0].RawMessage != sent.RawMessage || queued[1].RawMessage != sent.RawMessage {
+				if len(queued) != 2 || queued[0].Recipient != "admin@restmail.test" || queued[1].Recipient != "someone@imap.restmail.test" || !sameSourceRef(queued[0].SourceRef, sent.SourceRef) || !sameSourceRef(queued[1].SourceRef, sent.SourceRef) {
 					t.Fatalf("unexpected queued work: %d entries", len(queued))
 				}
 				var delivered int64

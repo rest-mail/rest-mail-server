@@ -40,6 +40,10 @@ vars:
   SMTP_GATEWAY_LOGS_VOLUME: '{{.SMTP_GATEWAY_PROJECT}}-gateway-logs'
   SMTP_GATEWAY_OWN_CERTS_VOLUME: '{{.SMTP_GATEWAY_CONTAINER_NAME}}-certs'
   SMTP_GATEWAY_API_BASE_URL: '{{.SMTP_GATEWAY_API_BASE_URL | default "http://10.99.0.20:8080"}}'
+  SMTP_GATEWAY_GARAGE_ENDPOINT: '{{.SMTP_GATEWAY_GARAGE_ENDPOINT | default "http://10.99.0.44:3900"}}'
+  SMTP_GATEWAY_GARAGE_BUCKET: '{{.SMTP_GATEWAY_GARAGE_BUCKET | default "restmail"}}'
+  SMTP_GATEWAY_GARAGE_ACCESS_KEY: '{{.SMTP_GATEWAY_GARAGE_ACCESS_KEY | default "GK0123456789abcdef01234567"}}'
+  SMTP_GATEWAY_GARAGE_SECRET_KEY: '{{.SMTP_GATEWAY_GARAGE_SECRET_KEY | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}'
   SMTP_GATEWAY_DB_HOST: '{{.SMTP_GATEWAY_DB_HOST | default "10.99.0.43"}}'
   SMTP_GATEWAY_DB_PORT: '{{.SMTP_GATEWAY_DB_PORT | default "5432"}}'
   SMTP_GATEWAY_DB_NAME: '{{.SMTP_GATEWAY_DB_NAME | default "restmail"}}'
@@ -180,7 +184,7 @@ tasks:
         "{{.TASKFILE_DIR}}/stage-certs.sh" {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}} 10001:10001 \
           "{{.SMTP_GATEWAY_CERTS_VOLUME}}:$(basename {{.SMTP_GATEWAY_TLS_CERT_PATH}}),$(basename {{.SMTP_GATEWAY_TLS_KEY_PATH}}),ca.crt?" \
           $INTERNAL || exit 1
-        # Secrets (DB_PASS/MASTER_KEY/SRS_SECRET) go through a 0600 env-file rather
+        # Database, signing and object-store secrets go through a 0600 env-file rather
         # than -e flags, so they never sit on the `docker run` command line (host
         # process list, shell history, CI logs). MASTER_KEY decrypts at-rest DKIM keys
         # so the queue worker can DKIM-sign SMTP-submitted outbound mail (#171).
@@ -196,6 +200,8 @@ tasks:
         printf 'MASTER_KEY=%s\n' "{{.SMTP_GATEWAY_MASTER_KEY}}" >> "$SECRETS_ENV"
         printf 'SRS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_SECRET}}" >> "$SECRETS_ENV"
         printf 'SRS_PREVIOUS_SECRET=%s\n' "{{.SMTP_GATEWAY_SRS_PREVIOUS_SECRET}}" >> "$SECRETS_ENV"
+        printf 'ATTACHMENT_S3_ACCESS_KEY_ID=%s\n' "{{.SMTP_GATEWAY_GARAGE_ACCESS_KEY}}" >> "$SECRETS_ENV"
+        printf 'ATTACHMENT_S3_SECRET_ACCESS_KEY=%s\n' "{{.SMTP_GATEWAY_GARAGE_SECRET_KEY}}" >> "$SECRETS_ENV"
         LOAD_LIMITS=""
         if [ "{{.SMTP_GATEWAY_LOAD_LIMITS_OFF}}" = "true" ]; then
           LOAD_LIMITS="-e API_SEND_RATE_LIMIT_PER_MINUTE=0 -e API_SEND_RATE_LIMIT_PER_HOUR=0 -e SEND_LIMIT_MESSAGES_PER_DAY=0 -e SEND_LIMIT_RECIPIENTS_PER_HOUR=0 -e SEND_LIMIT_RECIPIENTS_PER_DAY=0 -e QUEUE_MAX_PER_DESTINATION=0"
@@ -218,6 +224,10 @@ tasks:
           --health-retries 3 \
           -e GATEWAY_HOSTNAME={{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \
           -e API_BASE_URL={{.SMTP_GATEWAY_API_BASE_URL}} \
+          -e ATTACHMENT_STORAGE_TYPE=s3 \
+          -e ATTACHMENT_S3_ENDPOINT={{.SMTP_GATEWAY_GARAGE_ENDPOINT}} \
+          -e ATTACHMENT_S3_REGION=garage \
+          -e ATTACHMENT_S3_BUCKET={{.SMTP_GATEWAY_GARAGE_BUCKET}} \
           -e DB_HOST={{.SMTP_GATEWAY_DB_HOST}} \
           -e DB_PORT={{.SMTP_GATEWAY_DB_PORT}} \
           -e DB_NAME={{.SMTP_GATEWAY_DB_NAME}} \

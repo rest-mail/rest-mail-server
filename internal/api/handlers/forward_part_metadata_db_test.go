@@ -53,6 +53,7 @@ func TestDeliveredPartsKeepTheirMetadataThroughAForward(t *testing.T) {
 	registry := withQuietVacation(pipeline.NewRegistry())
 	registry.Register("extract_attachments", filters.NewExtractAttachmentsWithS3(store))
 	h := NewMessageHandler(tx, nil, pipeline.NewEngine(registry, nil), "", nil)
+	setTestMessageSources(t, h)
 	h.SetForwardStorage(1<<20, store)
 	raw := "From: sender@remote.test\r\nTo: owner@delq.test\r\nSubject: parts\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=part\r\n\r\n" +
 		"--part\r\nContent-Type: text/html\r\n\r\n<p><img src=\"cid:logo@remote.test\"></p>\r\n" +
@@ -104,10 +105,10 @@ func TestDeliveredPartsKeepTheirMetadataThroughAForward(t *testing.T) {
 	}
 	req := sendMessageRequest{From: fx.mailbox.Address, To: []string{"target@remote.test"}, Subject: "Fwd: parts", BodyText: "fwd"}
 	sent := &models.Message{MailboxID: fx.mailbox.ID, Folder: "Sent", MsgID: "<fwd-parts@delq.test>", Sender: fx.mailbox.Address, Subject: req.Subject, BodyText: req.BodyText, SizeBytes: len(req.Subject) + len(req.BodyText), IsRead: true, ReceivedAt: time.Now()}
-	if out, err := h.commitForward(r, req, &fx.mailbox, sent, parts, nil, nil); err != nil || out.Code != 201 {
-		t.Fatalf("forward: %+v %v", out, err)
+	if err := spoolForwardForTest(h, r, req, sent, parts); err != nil {
+		t.Fatalf("forward: %v", err)
 	}
-	parsed, err := rmime.Parse([]byte(sent.RawMessage))
+	parsed, err := rmime.Parse([]byte(composedRaw(t, h, sent.SourceRef)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +384,7 @@ func TestHeldForwardReleasedAfterTheOriginalIsDeleted(t *testing.T) {
 	if err := db.First(&sent, *stored.SentMessageID).Error; err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := rmime.Parse([]byte(sent.RawMessage))
+	parsed, err := rmime.Parse([]byte(composedRaw(t, h, sent.SourceRef)))
 	if err != nil {
 		t.Fatal(err)
 	}

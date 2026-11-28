@@ -1,12 +1,10 @@
 package handlers
 
 import (
-	"encoding/base64"
 	"strings"
 	"time"
 
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
-	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -44,8 +42,8 @@ type outboundMessage struct {
 	CalendarReply string
 }
 
-// buildOutboundRaw renders the message as the bytes handed to the outbound
-// delivery queue and signed by DKIM.
+// outboundEmail shapes the message for the same MIME serializer the pipeline
+// uses.
 //
 // The rendering is done by internal/mime, the same serializer the pipeline
 // filters use: it RFC 2047-encodes header values that need it, folds long
@@ -53,7 +51,7 @@ type outboundMessage struct {
 // line of its own, and takes its multipart boundary from a random source rather
 // than from the send time — which this message publishes in its own Date header
 // (issue #146).
-func buildOutboundRaw(m outboundMessage) (string, error) {
+func outboundEmail(m outboundMessage) *pipeline.EmailJSON {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
 			From:      pipeline.Addresses([]pipeline.Address{{Name: m.FromName, Address: m.From}}...),
@@ -97,7 +95,6 @@ func buildOutboundRaw(m outboundMessage) (string, error) {
 			ContentType: "text/calendar; charset=utf-8; method=" + method,
 			Disposition: "attachment",
 			Size:        int64(len(m.ICS)),
-			Content:     base64.StdEncoding.EncodeToString(m.ICS),
 		})
 	}
 	if m.CalendarReply != "" {
@@ -110,11 +107,7 @@ func buildOutboundRaw(m outboundMessage) (string, error) {
 		}
 	}
 
-	raw, err := rmime.Serialize(email)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
+	return email
 }
 
 // outboundBody shapes the body tree from the composed text and HTML parts.
@@ -153,16 +146,20 @@ func bareAddressList(addrs []string) []pipeline.Address {
 // DKIM-Signature and ARC-* are dropped deliberately: a transform (a custom
 // javascript or webhook filter) sees a parsed EmailJSON, not these bytes, so a
 // signature it supplied could never verify. DKIM is signed over the finished
-// message by the caller (signOutboundDKIM), so it carries exactly one signature.
+// message by the caller, so it carries exactly one signature. Hidden recipient
+// fields are also excluded before signing, as on the SMTP submission path.
 func transformHeaders(extra map[string]string) map[string]string {
 	if len(extra) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(extra))
 	for name, value := range extra {
-		switch {
-		case strings.EqualFold(name, "Sender"), strings.EqualFold(name, "DKIM-Signature"),
-			strings.HasPrefix(strings.ToLower(name), "arc-"):
+		field := strings.ToLower(strings.TrimSpace(name))
+		switch field {
+		case "sender", "dkim-signature", "bcc", "resent-bcc":
+			continue
+		}
+		if strings.HasPrefix(field, "arc-") {
 			continue
 		}
 		out[name] = value

@@ -37,7 +37,7 @@ func threadRootFixture(t *testing.T) (*gorm.DB, authzFixture, *MessageHandler) {
 	if err := tx.Create(&[]models.QuotaUsage{{MailboxID: fixture.ownerMailbox.ID}, {MailboxID: fixture.attackerMailbox.ID}}).Error; err != nil {
 		t.Fatal(err)
 	}
-	return tx, fixture, NewMessageHandler(tx, nil, nil, "", nil)
+	return tx, fixture, testMessageHandler(t, tx)
 }
 
 func TestThreadRootDeliveryAndDraftRoutes(t *testing.T) {
@@ -182,10 +182,14 @@ func TestThreadRootConversationThroughSendRoutes(t *testing.T) {
 			}
 		}
 		var queued models.OutboundQueue
-		if err := tx.Where("message_id = ?", sent.ID).First(&queued).Error; err != nil {
+		// The terminal queue row for the local recipient has released its source.
+		if err := tx.Where("message_id = ? AND status = ?", sent.ID, "pending").First(&queued).Error; err != nil {
 			t.Fatal(err)
 		}
-		parsed, err := rmime.Parse([]byte(queued.RawMessage))
+		if queued.SourceRef == nil || sent.SourceRef == nil || *queued.SourceRef != *sent.SourceRef {
+			t.Fatalf("turn %d pending delivery and Sent copy do not share a stored source", turn)
+		}
+		parsed, err := rmime.Parse([]byte(composedRaw(t, handler, queued.SourceRef)))
 		if err != nil {
 			t.Fatal(err)
 		}

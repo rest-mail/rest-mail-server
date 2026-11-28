@@ -121,19 +121,17 @@ func TestDraftAttachmentSendPersistsMIMEAndQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	var queued models.OutboundQueue
-	if err := f.db.First(&queued).Error; err != nil || queued.RawMessage != sent.RawMessage {
+	if err := f.db.First(&queued).Error; err != nil || !sameSourceRef(queued.SourceRef, sent.SourceRef) {
 		t.Fatalf("queue does not hold exact Sent MIME: %v", err)
 	}
-	for _, raw := range []string{sent.RawMessage, queued.RawMessage} {
-		parsed, err := rmime.Parse([]byte(raw))
-		if err != nil || len(parsed.Attachments) != 1 {
-			t.Fatalf("MIME attachment missing: %v", err)
-		}
-		part := parsed.Attachments[0]
-		decoded, err := base64.StdEncoding.DecodeString(part.Content)
-		if err != nil || !bytes.Equal(decoded, data) || part.Filename != row.Filename || part.ContentType != row.ContentType {
-			t.Fatalf("MIME attachment changed: %+v %v", part, err)
-		}
+	parsed, err := rmime.Parse([]byte(f.sentSource(sent)))
+	if err != nil || len(parsed.Attachments) != 1 {
+		t.Fatalf("MIME attachment missing: %v", err)
+	}
+	part := parsed.Attachments[0]
+	decoded, err := base64.StdEncoding.DecodeString(part.Content)
+	if err != nil || !bytes.Equal(decoded, data) || part.Filename != row.Filename || part.ContentType != row.ContentType {
+		t.Fatalf("MIME attachment changed: %+v %v", part, err)
 	}
 	var count int64
 	if err := f.db.Model(&models.Attachment{}).Where("message_id = ?", f.draft.ID).Count(&count).Error; err != nil || count != 0 {

@@ -789,12 +789,19 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/garage.yaml"
 assert_contains "Garage runs by default" "$tmp/garage.yaml" 'name: restmail-garage'
 assert_contains "the API uses Garage" "$tmp/garage.yaml" 'ATTACHMENT_S3_ENDPOINT: "http://restmail-garage:3900"'
 assert_contains "the bucket is made before the API starts" "$tmp/garage.yaml" 'name: garage-bootstrap'
+yq 'select(.kind == "Deployment" and .metadata.name == "restmail-smtp-gateway") | .spec.template.spec.containers[] | .env[] | select(.name | test("^ATTACHMENT_"))' "$tmp/garage.yaml" > "$tmp/smtp-storage-env.yaml"
+assert_contains "the SMTP queue uses the API's S3 endpoint" "$tmp/smtp-storage-env.yaml" 'value: "http://restmail-garage:3900"'
+assert_contains "the SMTP queue uses Garage credentials" "$tmp/smtp-storage-env.yaml" 'name: restmail-garage'
 yq 'select(.kind == "ConfigMap")' "$tmp/garage.yaml" > "$tmp/garage-configmaps.yaml"
 assert_absent "Garage's keys never enter a ConfigMap" "$tmp/garage-configmaps.yaml" 'rpc_secret'
 yq 'select(.kind == "Secret" and .metadata.name == "restmail-garage") | .metadata.annotations' "$tmp/garage.yaml" > "$tmp/garage-keep.yaml"
 assert_contains "Garage's keys outlive an uninstall" "$tmp/garage-keep.yaml" 'keep'
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set garage.enabled=false --set api.attachments.storageType=filesystem > "$tmp/nogarage.yaml"
 assert_absent "no Garage when turned off" "$tmp/nogarage.yaml" 'restmail-garage'
+for workload in api smtp-gateway; do
+  yq "select(.kind == \"Deployment\" and .metadata.name == \"restmail-$workload\") | .spec.template.spec.volumes[]" "$tmp/nogarage.yaml" > "$tmp/$workload-volumes.yaml"
+  assert_contains "$workload uses the shared message claim" "$tmp/$workload-volumes.yaml" 'claimName: restmail-messages'
+done
 if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=filesystem > /dev/null 2>&1; then
   echo "FAIL: the filesystem was taken with Garage on"; exit 1
 fi
@@ -828,9 +835,11 @@ assert_contains "S3 credentials use a Secret" "$tmp/s3.yaml" 'name: restmail-api
 yq 'select(.kind == "ConfigMap")' "$tmp/s3.yaml" > "$tmp/s3-configmaps.yaml"
 assert_absent "S3 credential never enters a ConfigMap" "$tmp/s3-configmaps.yaml" 'fixture-private-secret'
 assert_contains "old attachment PVC remains during migration" "$tmp/s3.yaml" 'mountPath: /attachments'
-yq 'select(.kind == "NetworkPolicy" and .metadata.name == "restmail-api") | .spec.egress[] | select(.ports[0].port == 3900) | .to' "$tmp/s3.yaml" > "$tmp/s3-egress.yaml"
-assert_contains "Garage egress selects its namespace" "$tmp/s3-egress.yaml" 'kubernetes.io/metadata.name: garage'
-assert_contains "Garage egress selects its pods" "$tmp/s3-egress.yaml" 'app: garage'
+for workload in api smtp-gateway; do
+  yq "select(.kind == \"NetworkPolicy\" and .metadata.name == \"restmail-$workload\") | .spec.egress[] | select(.ports[0].port == 3900) | .to" "$tmp/s3.yaml" > "$tmp/s3-egress.yaml"
+  assert_contains "$workload S3 egress selects its namespace" "$tmp/s3-egress.yaml" 'kubernetes.io/metadata.name: garage'
+  assert_contains "$workload S3 egress selects its pods" "$tmp/s3-egress.yaml" 'app: garage'
+done
 
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
   --set api.attachments.persistence.enabled=false \

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	stdmime "mime"
@@ -8,7 +10,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
+
+func buildOutboundRaw(m outboundMessage) (string, error) {
+	var raw bytes.Buffer
+	err := (&MessageHandler{}).renderComposed(context.Background(), &raw, m)
+	return raw.String(), err
+}
+
+func (h *MessageHandler) signOutboundDKIM(ctx context.Context, domain, raw string) (string, error) {
+	signature, err := outbound.DKIMSignature(ctx, h.db, h.masterKey, domain, strings.NewReader(raw))
+	return signature + raw, err
+}
 
 func testOutboundDate() time.Time {
 	return time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)

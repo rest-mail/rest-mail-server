@@ -38,14 +38,14 @@ func normalizeForwardExample(t *testing.T, f *forwardFixture, status int, raw []
 			t.Fatal("success omitted stored work")
 		}
 		sent := f.c.state.messages[0]
-		source := sent["raw_message"].(string)
+		source := readTestSource(t, f.source, sent["source_ref"].(string))
 		assertExampleReceipt(t, data, source, sent["sealed_hash"])
 		data["sealed_hash"] = normalizedReceiptHash
 		parsed, err := rmime.Parse([]byte(source))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if data["message_id"] != sent["message_id"] || data["message_id"] != parsed.Headers.MessageID || f.c.queue[0]["raw_message"] != source || data["raw_size"] != float64(len(source)) || data["has_attachments"] != true {
+		if data["message_id"] != sent["message_id"] || data["message_id"] != parsed.Headers.MessageID || f.c.queue[0]["source_ref"] != sent["source_ref"] || data["raw_size"] != float64(len(source)) || data["has_attachments"] != true {
 			t.Fatal("response, Sent and queue identity/source disagree")
 		}
 		for _, field := range []string{"received_at", "created_at", "updated_at"} {

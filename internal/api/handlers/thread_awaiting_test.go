@@ -46,7 +46,7 @@ func newAwaitingFixture(t *testing.T) *awaitingFixture {
 	seeded := seedAuthzFixture(t, tx)
 	seedReceiveFixture(t, tx, seeded.ownerMailbox, seeded.attackerMailbox)
 	return &awaitingFixture{
-		t: t, tx: tx, handler: NewMessageHandler(tx, nil, nil, "", nil),
+		t: t, tx: tx, handler: testMessageHandler(t, tx),
 		owner: seeded.ownerMailbox, other: seeded.attackerMailbox,
 		start: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
 	}

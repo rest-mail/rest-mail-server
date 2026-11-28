@@ -231,7 +231,8 @@ func (h *MessageHandler) releaseHeldSend(r *http.Request, in scheduledPath) (end
 		return out, err
 	}
 	effects := &draftSendEffects{handler: h}
-	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+	err = h.sendTransaction(r.Context(), func(sender *MessageHandler) error {
+		tx := sender.db
 		var held models.ScheduledSend
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&held, in.ID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -259,8 +260,6 @@ func (h *MessageHandler) releaseHeldSend(r *http.Request, in scheduledPath) (end
 				return err
 			}
 		}
-		sender := *h
-		sender.db = tx
 		if h.broker != nil {
 			sender.broker = effects
 		}

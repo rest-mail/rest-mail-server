@@ -35,6 +35,7 @@ const organizerAddress = "organizer@remote.example"
 
 type messageStorageDB struct {
 	serviceProbeTestDB
+	testSourceLedger
 	failUpdate, failReload bool
 	failOrganizer          bool
 	failQueue              bool
@@ -71,6 +72,9 @@ func (d *messageStorageDB) QueryContext(ctx context.Context, q string, args []dr
 	if rows, ok := defaultGrantRows(q); ok {
 		return rows, nil
 	}
+	if rows, ok := d.testSourceLedger.query(q, args); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.HasPrefix(q, "INSERT"):
 		d.writes = append(d.writes, q)
@@ -100,11 +104,12 @@ func (d *messageStorageDB) QueryContext(ctx context.Context, q string, args []dr
 	return &deliveryReadRows{}, nil
 }
 
-func (d *messageStorageDB) ExecContext(ctx context.Context, q string, _ []driver.NamedValue) (driver.Result, error) {
+func (d *messageStorageDB) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.observe(ctx, q)
 	d.writes = append(d.writes, q)
+	d.testSourceLedger.exec(q, args)
 	if d.failUpdate && strings.HasPrefix(q, `UPDATE "messages"`) {
 		return nil, errMessageStore
 	}
@@ -144,7 +149,7 @@ func serveMessage(t *testing.T, d *messageStorageDB, method, path, body string) 
 	}
 	router := chi.NewRouter()
 	rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
-	h := NewMessageHandler(db, nil, nil, "", nil)
+	h := testMessageHandler(t, db)
 	h.RegisterMessages(rs)
 	h.RegisterCompose(rs)
 

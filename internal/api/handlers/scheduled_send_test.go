@@ -140,7 +140,7 @@ func TestRunScheduledSends_SendsWhenDue(t *testing.T) {
 	t.Cleanup(func() { tx.Rollback() })
 
 	fx := seedMsgDeleteFixture(t, tx, 0)
-	h := NewMessageHandler(tx, nil, nil, "", nil)
+	h := testMessageHandler(t, tx)
 
 	at := time.Now().Add(-time.Minute)
 	request, _ := json.Marshal(map[string]any{

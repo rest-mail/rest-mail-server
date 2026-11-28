@@ -192,6 +192,7 @@ includes:
       SMTP_GATEWAY_MODE: '{{.RESTMAIL_SERVICE_MODE | default "dev"}}'
       SMTP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_TOPOLOGY_IMAGE_TAG | default .RESTMAIL_IMAGE_TAG}}'
       SMTP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      SMTP_GATEWAY_GARAGE_ENDPOINT: 'http://{{.RESTMAIL_GARAGE_IP | default "10.99.0.44"}}:3900'
       SMTP_GATEWAY_DB_HOST: '{{.RESTMAIL_POSTGRES_IP}}'
       # API_BASE_URL always targets the PUBLIC listener (token/credential + user
       # routes). With internal mTLS on, only the two machine routes use the

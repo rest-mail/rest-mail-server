@@ -88,7 +88,7 @@ func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 	if err := h.db.Where("message_id = ?", sent.ID).First(&queued).Error; err != nil {
 		t.Fatal(err)
 	}
-	if got := headerFields(queued.RawMessage)["list-unsubscribe"]; len(got) != 1 || got[0] != "<mailto:unsub@"+domain+">" {
+	if got := headerFields(composedRaw(t, h, queued.SourceRef))["list-unsubscribe"]; len(got) != 1 || got[0] != "<mailto:unsub@"+domain+">" {
 		t.Fatalf("List-Unsubscribe = %q", got)
 	}
 }

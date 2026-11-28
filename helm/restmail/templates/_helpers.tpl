@@ -533,7 +533,7 @@ smtp-submission's as submission.* (the SMTP gateway is both services). Usage:
 {{- end -}}
 
 {{/*
-The API's S3 settings: the bundled Garage's, or those given in api.attachments.s3.
+The shared S3 settings: the bundled Garage's, or those given in api.attachments.s3.
 */}}
 {{- define "restmail.attachments.endpoint" -}}
 {{- if .Values.garage.enabled -}}
@@ -551,12 +551,34 @@ http://{{ include "restmail.componentName" (list . "garage") }}:3900
 {{- if .Values.garage.enabled -}}{{- .Values.garage.bucket -}}{{- else -}}{{- .Values.api.attachments.s3.bucket -}}{{- end -}}
 {{- end -}}
 
+{{- define "restmail.attachments.s3Config" -}}
+ATTACHMENT_S3_ENDPOINT: {{ include "restmail.attachments.endpoint" . | quote }}
+ATTACHMENT_S3_REGION: {{ include "restmail.attachments.region" . | quote }}
+ATTACHMENT_S3_BUCKET: {{ include "restmail.attachments.bucket" . | quote }}
+ATTACHMENT_S3_PREFIX: {{ .Values.api.attachments.s3.prefix | quote }}
+ATTACHMENT_S3_FORCE_PATH_STYLE: {{ .Values.api.attachments.s3.forcePathStyle | quote }}
+{{- end -}}
+
 {{- define "restmail.attachments.secretName" -}}
 {{- if .Values.garage.enabled -}}
 {{- include "restmail.componentName" (list . "garage") -}}
 {{- else -}}
 {{- .Values.api.attachments.s3.existingSecret | default (include "restmail.componentName" (list . "api-attachments-s3")) -}}
 {{- end -}}
+{{- end -}}
+
+{{- define "restmail.attachments.credentialsEnv" -}}
+{{- $secret := include "restmail.attachments.secretName" . -}}
+- name: ATTACHMENT_S3_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret }}
+      key: ACCESS_KEY_ID
+- name: ATTACHMENT_S3_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret }}
+      key: SECRET_ACCESS_KEY
 {{- end -}}
 
 {{/*

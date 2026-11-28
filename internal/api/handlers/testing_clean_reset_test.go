@@ -20,6 +20,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -255,6 +256,71 @@ func TestCleanResetEveryTable(t *testing.T) {
 		var count int64
 		if err := db.Table(table).Count(&count).Error; err != nil || count != expected {
 			t.Errorf("retained %s rows = %d, want %d: %v", table, count, expected, err)
+		}
+	}
+	t.Run("ComposedSources", func(t *testing.T) {
+		testCleanResetComposedSources(t, db, handler, admin)
+	})
+}
+
+func testCleanResetComposedSources(t *testing.T, db *gorm.DB, handler *TestHandler, admin models.Mailbox) {
+	t.Helper()
+	dir := t.TempDir()
+	sources, err := messagestore.NewSources(db, &config.Config{
+		Attachments: config.AttachmentStorageConfig{Type: "filesystem"},
+		Messages:    config.MessageStorageConfig{Directory: dir},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.SetMessageSources(sources)
+	sender := NewMessageHandler(db, nil, nil, "", nil)
+	sender.SetMessageSources(sources)
+	message := testOutboundMessage()
+	message.From = admin.Address
+	sent := models.Message{MailboxID: admin.ID, Folder: "Sent", Sender: message.From, MsgID: message.MessageID, ReceivedAt: message.Date}
+	if err := sender.spoolComposed(t.Context(), message, &sent, [][]string{message.To}, false, false); err != nil {
+		t.Fatal(err)
+	}
+	var queued models.OutboundQueue
+	if err := db.Where("message_id = ?", sent.ID).Take(&queued).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sent.SourceRef == nil || queued.SourceRef == nil || *sent.SourceRef != *queued.SourceRef {
+		t.Fatal("Sent and queue rows must share the composed source")
+	}
+	// A crashed queue attempt can leave a pin as well as the queue owner.
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		_, err := sources.PinAttempt(t.Context(), tx, *queued.SourceRef)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// An uploaded stage can still be leased when reset starts.
+	raw := strings.NewReader("pending upload")
+	stage, err := sources.Stage(t.Context(), raw, int64(raw.Len()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/test/reset", nil)
+	if status, err := handler.resetTestData(request, endpoint.Empty{}); err != nil || status.Status != "reset_complete" {
+		t.Fatalf("reset status %q: %v", status.Status, err)
+	}
+	for _, table := range []string{"messages", "outbound_queue", "message_source_attempts", "message_sources"} {
+		var count int64
+		if err := db.Table(table).Count(&count).Error; err != nil || count != 0 {
+			t.Errorf("reset left %d rows in %s: %v", count, table, err)
+		}
+	}
+	store := messagestore.NewFilesystem(dir)
+	for _, ref := range []string{*sent.SourceRef, stage.Ref} {
+		reader, err := store.Open(t.Context(), ref)
+		if err == nil {
+			_ = reader.Close()
+		}
+		if !errors.Is(err, messagestore.ErrNotFound) {
+			t.Errorf("open reset message object %s: got %v, want ErrNotFound", ref, err)
 		}
 	}
 }

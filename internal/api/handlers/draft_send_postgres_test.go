@@ -19,7 +19,7 @@ import (
 func draftSendPostgres(t *testing.T, extraModels ...any) *gorm.DB {
 	t.Helper()
 	setup := append([]any{withForeignKeys}, accountModels...)
-	setup = append(setup, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})
+	setup = append(setup, &models.MessageSource{}, &models.Message{}, &models.OutboundQueue{}, &models.Contact{}, &models.Attachment{}, &models.Pipeline{}, &models.SieveScript{})
 	setup = append(setup, extraModels...)
 	db := openScratchDB(t, "draftsend", setup)
 	db.Logger = logger.Default.LogMode(logger.Silent)
@@ -83,7 +83,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 		must(t, db.Model(model).Where(where, args...).Count(&n).Error)
 		return n
 	}
-	assertState := func(t *testing.T, draft models.Message, committed bool) {
+	assertState := func(t *testing.T, h *MessageHandler, draft models.Message, committed bool) {
 		t.Helper()
 		wantDraft, wantSent := int64(1), int64(0)
 		if committed {
@@ -100,15 +100,25 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 		if n := count(t, &models.Message{}, "subject = ? AND folder = ?", draft.Subject, "INBOX"); n != 0 {
 			t.Fatalf("INBOX copies=%d want=0", n)
 		}
-		if n := count(t, &models.OutboundQueue{}, "raw_message LIKE ?", "%Subject: "+draft.Subject+"\r\n%"); n != 2*wantSent {
-			t.Fatalf("queued copies=%d want=%d", n, 2*wantSent)
+		var queued []models.OutboundQueue
+		sentIDs := db.Model(&models.Message{}).Select("id").Where("subject = ? AND folder = ?", draft.Subject, "Sent")
+		err := db.Where("message_id IN (?) OR (sender = ? AND message_id NOT IN (?))",
+			sentIDs, sender.Address, db.Model(&models.Message{}).Select("id")).Find(&queued).Error
+		if err != nil || int64(len(queued)) != 2*wantSent {
+			t.Fatalf("queued copies=%d want=%d, error %v", len(queued), 2*wantSent, err)
+		}
+		for _, row := range queued {
+			if !strings.Contains(composedRaw(t, h, row.SourceRef), "Subject: "+draft.Subject+"\r\n") {
+				t.Fatalf("queue row %d no longer carries the sent draft", row.ID)
+			}
 		}
 	}
 	for _, stage := range []string{"delete", "queue", "local", "cancel", "delete_once", "success"} {
 		t.Run(stage, func(t *testing.T) {
 			draft := seed(t, stage)
-			observer := &draftSendObserver{check: func() { assertState(t, draft, true) }}
-			h := NewMessageHandler(db, nil, engine, "", observer)
+			observer := &draftSendObserver{}
+			h := setTestMessageSources(t, NewMessageHandler(db, nil, engine, "", observer))
+			observer.check = func() { assertState(t, h, draft, true) }
 			h.broker, h.newMail = observer, observer
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
@@ -146,7 +156,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 				if rr.Code < 500 || strings.Contains(rr.Body.String(), "private") {
 					t.Fatalf("failure status=%d body=%s", rr.Code, rr.Body)
 				}
-				assertState(t, draft, false)
+				assertState(t, h, draft, false)
 				if observer.events != 0 || observer.pushes != 0 || observer.traces != 0 {
 					t.Fatalf("uncommitted send notified clients: %+v", observer)
 				}
@@ -155,7 +165,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 			if rr.Code != http.StatusCreated {
 				t.Fatalf("send status=%d body=%s", rr.Code, rr.Body)
 			}
-			assertState(t, draft, true)
+			assertState(t, h, draft, true)
 			// Only the sender's own event and the queued trace: the recipient's copy,
 			// and the notice of it, come when the worker delivers.
 			if observer.events != 1 || observer.pushes != 0 || observer.traces != 1 {
@@ -165,7 +175,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 	}
 	t.Run("concurrent", func(t *testing.T) {
 		draft := seed(t, "concurrent")
-		h := NewMessageHandler(db, nil, engine, "", nil)
+		h := setTestMessageSources(t, NewMessageHandler(db, nil, engine, "", nil))
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
 		start, results := make(chan struct{}), make(chan *httptest.ResponseRecorder, 2)
@@ -181,6 +191,6 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 		if statuses[http.StatusCreated] != 1 || statuses[http.StatusNotFound] != 1 {
 			t.Fatalf("concurrent send statuses=%v", statuses)
 		}
-		assertState(t, draft, true)
+		assertState(t, h, draft, true)
 	})
 }

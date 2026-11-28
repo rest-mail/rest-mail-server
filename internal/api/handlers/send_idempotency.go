@@ -42,7 +42,8 @@ func (h *MessageHandler) withSendIdempotency(r *http.Request, request any, send 
 	lockHash := sha256.Sum256([]byte(fmt.Sprintf("restmail/send/%d/%s", claims.AccountID, keyHash)))
 	var result endpoint.Status[any]
 	effects := &draftSendEffects{handler: h}
-	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+	err = h.sendTransaction(r.Context(), func(sender *MessageHandler) error {
+		tx := sender.db
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(binary.BigEndian.Uint64(lockHash[:8]))).Error; err != nil {
 			return err
 		}
@@ -56,8 +57,6 @@ func (h *MessageHandler) withSendIdempotency(r *http.Request, request any, send 
 			if receipt.RequestHash != requestHash {
 				return endpoint.Refuse(http.StatusConflict, "idempotency_conflict", "Idempotency-Key was already used for a different send request")
 			}
-			sender := *h
-			sender.db = tx
 			if err := sender.authorizeSendReplay(r, &receipt); err != nil {
 				return err
 			}
@@ -70,8 +69,7 @@ func (h *MessageHandler) withSendIdempotency(r *http.Request, request any, send 
 			}
 		}
 		receipt = models.SendIdempotency{AccountID: claims.AccountID, KeyHash: keyHash, RequestHash: requestHash}
-		sender := *h
-		sender.db, sender.sendReceipt = tx, &receipt
+		sender.sendReceipt = &receipt
 		if h.broker != nil {
 			sender.broker = effects
 		}
@@ -81,7 +79,7 @@ func (h *MessageHandler) withSendIdempotency(r *http.Request, request any, send 
 		if h.recorder != nil {
 			sender.recorder = effects
 		}
-		result, err = send(&sender)
+		result, err = send(sender)
 		if err != nil {
 			return err
 		}

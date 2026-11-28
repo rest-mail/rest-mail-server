@@ -47,7 +47,7 @@ func newSendIdempotencyFixture(t *testing.T) sendIdempotencyFixture {
 		}
 	}
 	seedReceiveFixture(t, db, accounts...)
-	handler := NewMessageHandler(db, nil, nil, "", nil)
+	handler := testMessageHandler(t, db)
 	return sendIdempotencyFixture{db: db, route: composeRoute(handler), accounts: accounts, handler: handler}
 }
 
@@ -443,6 +443,7 @@ func TestSendIdempotencyReplaysAfterARestart(t *testing.T) {
 			})
 			restarted := sendIdempotencyFixture{db: pool, accounts: f.accounts,
 				handler: NewMessageHandler(pool, nil, nil, "", nil)}
+			restarted.handler.SetMessageSources(f.handler.messageSources.WithDB(pool))
 			restarted.route = composeRoute(restarted.handler)
 
 			replay := restarted.request(0, path, body, "restart-key")

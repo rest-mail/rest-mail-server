@@ -71,34 +71,73 @@ func (s *Sources) Stage(ctx context.Context, source io.Reader, limit int64, head
 	}
 	ctx, cancel := context.WithTimeout(ctx, stageUploadTimeout)
 	defer cancel()
-	db := s.db.WithContext(ctx)
-	ref := s.store.newRef()
-	err := db.Model(&models.MessageSource{}).Create(map[string]any{
-		"ref": ref, "size": 0, "checksum": "", "reference_count": 0,
-		"state": models.MessageSourceStaged, "header_metadata": headerMetadata,
-		"reap_at": gorm.Expr("clock_timestamp() + interval '1 hour'"),
-	}).Error
+	ref, err := s.ReserveStage(ctx)
 	if err != nil {
 		return Object{}, err
 	}
 	var object Object
-	err = db.Transaction(func(tx *gorm.DB) error {
-		// Keep the stage locked across I/O. Even an expired stage can't be
-		// reaped while its upload holds this lock.
-		var row models.MessageSource
-		err := unexpiredStage(tx, ref).Select("ref").Clauses(clause.Locking{Strength: "UPDATE"}).Take(&row).Error
-		if err != nil {
-			return err
-		}
-		object, err = s.store.putNamed(ctx, ref, source, limit)
-		if err != nil {
-			return err
-		}
-		return sourceUpdate(unexpiredStage(tx, ref).Updates(map[string]any{
-			"size": object.Size, "checksum": object.Checksum,
-		}))
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		object, err = s.WriteStage(ctx, tx, ref, source, limit, headerMetadata)
+		return err
 	})
 	if err != nil {
+		return Object{}, err
+	}
+	return object, nil
+}
+
+// ReserveStage commits the lease before a caller opens its owner transaction.
+// The reaper can clear the reservation if the caller exits.
+func (s *Sources) ReserveStage(ctx context.Context) (string, error) {
+	db := s.db.Session(&gorm.Session{Context: ctx, SkipDefaultTransaction: true})
+	ref := s.store.newRef()
+	err := db.Model(&models.MessageSource{}).Create(map[string]any{
+		"ref": ref, "size": 0, "checksum": "", "reference_count": 0,
+		"state":   models.MessageSourceStaged,
+		"reap_at": gorm.Expr("clock_timestamp() + interval '1 hour'"),
+	}).Error
+	return ref, err
+}
+
+// DiscardUnusedStage removes a reservation the caller never passed to
+// WriteStage. Once an upload was attempted, the object may exist even if the
+// database transaction rolled back, so only the reaper may clear that stage.
+func (s *Sources) DiscardUnusedStage(ctx context.Context, ref string) error {
+	db := s.db.Session(&gorm.Session{Context: ctx, SkipDefaultTransaction: true})
+	return unexpiredStage(db, ref).Where("checksum = ''").Delete(&models.MessageSource{}).Error
+}
+
+// WriteStage uploads into a committed reservation while holding its lock. A
+// caller already holding owner locks can write and publish using the same
+// connection. If the transaction rolls back, the reservation survives and
+// the reaper can remove the uploaded object.
+func (s *Sources) WriteStage(ctx context.Context, tx *gorm.DB, ref string, source io.Reader, limit int64, headerMetadata []byte) (Object, error) {
+	if !isSourceTransaction(tx) {
+		return Object{}, ErrSourceTransaction
+	}
+	if limit < 0 {
+		return Object{}, ErrTooLarge
+	}
+	if len(headerMetadata) > MaxHeaderMetadataBytes {
+		return Object{}, ErrHeaderMetadataTooLarge
+	}
+	ctx, cancel := context.WithTimeout(ctx, stageUploadTimeout)
+	defer cancel()
+	tx = tx.Session(&gorm.Session{Context: ctx, NewDB: true})
+	emptyStage := func() *gorm.DB { return unexpiredStage(tx, ref).Where("checksum = ''") }
+	var row models.MessageSource
+	err := emptyStage().Select("ref").Clauses(clause.Locking{Strength: "UPDATE"}).Take(&row).Error
+	if err != nil {
+		return Object{}, err
+	}
+	object, err := s.store.putNamed(ctx, ref, source, limit)
+	if err != nil {
+		return Object{}, err
+	}
+	if err := sourceUpdate(emptyStage().Updates(map[string]any{
+		"size": object.Size, "checksum": object.Checksum, "header_metadata": headerMetadata,
+	})); err != nil {
 		return Object{}, err
 	}
 	return object, nil

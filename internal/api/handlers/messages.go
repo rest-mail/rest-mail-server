@@ -69,6 +69,9 @@ type MessageHandler struct {
 	forwardRoot     string
 	maxForwardBytes int64
 	messageSources  *messagestore.Sources
+	messageSpoolDir string
+	sourceStage     string // set on a request-local handler that owns a send transaction
+	sourceStageUsed bool
 
 	// oneClick sends RFC 8058 one-click unsubscribe POSTs (#1575); nil uses the guarded
 	// default, and tests replace it.
@@ -111,9 +114,14 @@ func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, 
 	return h
 }
 
-// SetMessageSources configures referenced message reads before serving traffic.
+// SetMessageSources configures referenced message reads and composed sends.
 func (h *MessageHandler) SetMessageSources(sources *messagestore.Sources) {
 	h.messageSources = sources
+}
+
+// SetMessageSpoolDir configures temporary storage for unsigned messages.
+func (h *MessageHandler) SetMessageSpoolDir(directory string) {
+	h.messageSpoolDir = directory
 }
 
 // SetSendLimits configures the send-path abuse limits (#184): the per-message
@@ -134,21 +142,6 @@ func (h *MessageHandler) recordTrace(ctx context.Context, t models.MessageTrace)
 	if h.recorder != nil {
 		h.recorder.Record(withRequestID(ctx, t))
 	}
-}
-
-// signOutboundDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes
-// with the sender domain's key, returning the signed message. DKIM must be
-// signed over what is transmitted, so it runs on the finished message, after the
-// pipeline. If the domain has no key configured the message is returned
-// unchanged. If the domain HAS a key but it cannot sign (OSI-8: an
-// encrypted-at-rest key that fails to decrypt), it returns an error so the
-// caller fails closed (temp-fail) rather than sending the message unsigned.
-//
-// The signing itself lives in internal/outbound.SignDKIM, the only DKIM signer,
-// shared with the queue worker so submitted mail is signed by the same code
-// (#171).
-func (h *MessageHandler) signOutboundDKIM(ctx context.Context, senderDomain, raw string) (string, error) {
-	return outbound.SignDKIM(ctx, h.db, h.masterKey, senderDomain, raw)
 }
 
 // listMessagesRequest is a page of a folder, newest first. limit is 1 to 100 (50 otherwise);
@@ -654,9 +647,8 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	}
 
 	// Per-message recipient cap (#184): a single API send must not fan out to an
-	// unbounded number of recipients — each becomes one queue row holding a full
-	// copy of the message, so an uncapped recipient list is a queue/storage
-	// amplification vector. Counted across to+cc+bcc and mirrored on the SMTP
+	// unbounded number of recipients. Each becomes a queue row and an independent
+	// delivery. Counted across to+cc+bcc and mirrored on the SMTP
 	// submission path (which caps RCPT TO per transaction). Checked before any DB
 	// work so an oversized fan-out is rejected cheaply. maxRecipients <= 0 disables.
 	if h.maxRecipients > 0 {
@@ -822,6 +814,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	// happy-path trace until the sent Message row exists (message_id non-nil);
 	// the outbound continue outcome is "queued" (handed to the delivery queue).
 	var queuedTrace *traceInputs
+	recipients := [][]string{req.To, req.Cc, req.Bcc}
 	if h.engine != nil {
 		var outToAddrs []pipeline.Address
 		for _, addr := range req.To {
@@ -978,11 +971,10 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 					req.BodyHTML = bodyHTML
 				}
 
-				// Update recipients if the pipeline modified them.
+				// Apply envelope changes without publishing hidden recipients
+				// in the signed To or Cc fields.
 				if len(outResult.FinalEmail.Envelope.RcptTo) > 0 {
-					req.To = outResult.FinalEmail.Envelope.RcptTo
-					req.Cc = nil
-					req.Bcc = nil
+					recipients = [][]string{outResult.FinalEmail.Envelope.RcptTo}
 				}
 
 				// Capture headers a transform added for the raw message.
@@ -1031,8 +1023,6 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	if req.Cc == nil {
 		ccJSON = []byte("[]")
 	}
-	// BCC recipients are not stored in the message metadata; they are only used for delivery routing.
-	_ = req.Bcc
 
 	now := time.Now()
 	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
@@ -1073,51 +1063,28 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		sentMsg.CalendarEventsRaw = models.JSONB(calJSON)
 	}
 
-	if parts != nil {
-		return h.commitForward(r, req, &senderMailbox, &sentMsg, parts, extraHeaders, queuedTrace)
+	message := outboundMessage{
+		Sender: req.Sender, FromName: senderMailbox.DisplayName, From: req.From,
+		To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML,
+		MessageID: messageID, InReplyTo: req.InReplyTo, References: references, Date: now,
+		Extra: withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
+		ICS:   icsData, ICSMethod: calendarMethod(req.CalendarEvent), Attachments: parts,
 	}
-
-	// Build raw RFC 2822 message for outbound queue entries.
-	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
-		Sender:     req.Sender,
-		FromName:   senderMailbox.DisplayName,
-		From:       req.From,
-		To:         req.To,
-		Cc:         req.Cc,
-		Subject:    req.Subject,
-		BodyText:   req.BodyText,
-		BodyHTML:   req.BodyHTML,
-		MessageID:  messageID,
-		InReplyTo:  req.InReplyTo,
-		References: references,
-		Date:       now,
-		Extra:      withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
-		ICS:        icsData,
-		ICSMethod:  calendarMethod(req.CalendarEvent),
-	})
-	if rawErr != nil {
-		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
-	}
-
-	// Sign the finalized outbound message over its actual transmitted bytes.
-	// OSI-8: a key that should decrypt but cannot fails closed — temp-fail the
-	// send (client retries) rather than deliver the message unsigned.
-	signedRaw, signErr := h.signOutboundDKIM(r.Context(), rmail.DomainFromAddress(req.From), rawMessage)
-	if signErr != nil {
-		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-	}
-	// The key was there when the request was checked; if the message still
-	// came back unsigned, its one-click claim must not leave.
-	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && signedRaw == rawMessage {
-		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-	}
-	rawMessage = signedRaw
-
-	// The Sent copy keeps the source that was sent, as a delivered copy does,
-	// so its raw source can be read (GET /messages/{id}/raw, IMAP, POP3).
-	sentMsg.RawMessage, sentMsg.RawSize = rawMessage, len(rawMessage)
-	if err := h.db.Create(&sentMsg).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
+	requireSignature := req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != ""
+	err = h.spoolComposed(r.Context(), message, &sentMsg, recipients, req.RequireTLS, requireSignature)
+	if err != nil {
+		if parts != nil && errors.Is(err, errComposedTooLarge) {
+			return zero, errForwardTooLarge
+		}
+		var refusal *endpoint.Error
+		if errors.As(err, &refusal) {
+			return zero, refusal
+		}
+		if parts != nil {
+			return zero, fmt.Errorf("commit forwarded message: %w", err)
+		}
+		slog.ErrorContext(r.Context(), "send: could not store composed message", "error", err)
+		return zero, errSendDeferred
 	}
 
 	if queuedTrace != nil {
@@ -1126,23 +1093,6 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		mid := sentMsg.ID
 		queuedTrace.MessageID = &mid
 		h.recordTrace(r.Context(), buildTrace(*queuedTrace))
-	}
-
-	// Every recipient in to + cc + bcc goes on the outbound queue, one on this
-	// server as much as one elsewhere (#1564): the worker delivers it through the
-	// normal route, and the recipient's domain judges the signed message as it
-	// judges any other. The answer says the message was durably queued, not that
-	// it arrived: a later refusal becomes a bounce to the sender.
-	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
-	allRecipients = append(allRecipients, req.To...)
-	allRecipients = append(allRecipients, req.Cc...)
-	allRecipients = append(allRecipients, req.Bcc...)
-
-	queued := queueRowsFor(allRecipients, sentMsg.ID, req.From, rawMessage, req.RequireTLS)
-	db := h.db.WithContext(r.Context())
-	if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&queued).Error }); err != nil {
-		slog.ErrorContext(r.Context(), "send: could not queue the message", "error", err)
-		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 
 	// Publish SSE event for sent message
@@ -1157,36 +1107,18 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		})
 	}
 
-	// Auto-collect recipient contacts
-	for _, rcptAddr := range allRecipients {
-		contact := models.Contact{MailboxID: senderMailbox.ID, Email: rcptAddr}
-		h.db.Where(contact).Attrs(models.Contact{
-			Name:       "",
-			TrustLevel: "auto",
-			Source:     "sent",
-		}).FirstOrCreate(&models.Contact{})
+	// Auto-collect recipient contacts.
+	for _, group := range recipients {
+		for _, recipient := range group {
+			contact := models.Contact{MailboxID: senderMailbox.ID, Email: recipient}
+			h.db.Where(contact).Attrs(models.Contact{
+				TrustLevel: "auto",
+				Source:     "sent",
+			}).FirstOrCreate(&models.Contact{})
+		}
 	}
 
 	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(sentMsg)}, nil
-}
-
-// queueRowsFor is one pending outbound queue row per recipient of the sent
-// message messageID.
-func queueRowsFor(recipients []string, messageID uint, sender, raw string, requireTLS bool) []models.OutboundQueue {
-	rows := make([]models.OutboundQueue, 0, len(recipients))
-	for _, rcpt := range recipients {
-		id := messageID
-		rows = append(rows, models.OutboundQueue{
-			MessageID:  &id,
-			Sender:     sender,
-			Recipient:  rcpt,
-			Domain:     rmail.DomainFromAddress(rcpt),
-			RawMessage: raw,
-			Status:     "pending",
-			RequireTLS: requireTLS,
-		})
-	}
-	return rows
 }
 
 // deliverMessageBody is an arrival addressed to a recipient, not an IMAP import.
@@ -2035,7 +1967,9 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	}
 
 	var draft models.Message
-	if err := h.db.WithContext(r.Context()).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).
+		Select("id", "mailbox_id", "sender", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "in_reply_to", "references", "has_attachments").
+		Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
 		return zero, draftLookupRefusal(err)
 	}
 	if err := h.draftAccess(r, &draft); err != nil {
@@ -2218,7 +2152,8 @@ func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (end
 
 func (h *MessageHandler) forwardWithoutIdempotency(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
-	original, err := h.ownedMessage(r, in.ID, models.CapMailRead)
+	original, err := h.ownedMessage(r, in.ID, models.CapMailRead,
+		"id", "mailbox_id", "sender", "subject", "body_text", "body_html", "has_attachments")
 	if err != nil {
 		return zero, err
 	}
@@ -2312,7 +2247,8 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		return CalendarReplied{}, errNotSignedIn
 	}
 
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead,
+		"id", "mailbox_id", "message_id", "in_reply_to", "references", "sender", "subject", "calendar_events")
 	if err != nil {
 		return CalendarReplied{}, err
 	}
@@ -2406,7 +2342,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 
 	// The reply is rendered by the serializer all other outgoing mail goes
 	// through, so its headers are encoded, folded and on one line each (#146).
-	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
+	message := outboundMessage{
 		FromName:      senderMailbox.DisplayName,
 		From:          req.From,
 		To:            []string{organizerAddress.Address},
@@ -2417,16 +2353,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		InReplyTo:     inReplyTo,
 		References:    references,
 		Date:          now,
-	})
-	if rawErr != nil {
-		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the calendar reply")
 	}
-	// OSI-8: fail closed if the DKIM key cannot sign (see signOutboundDKIM).
-	signedRaw, signErr := h.signOutboundDKIM(r.Context(), rmail.DomainFromAddress(req.From), rawMessage)
-	if signErr != nil {
-		return CalendarReplied{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
-	}
-	rawMessage = signedRaw
 
 	// Save the reply to Sent folder
 	toJSON, _ := json.Marshal([]string{organizer})
@@ -2443,24 +2370,19 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		RecipientsCc: models.JSONB([]byte("[]")),
 		Subject:      subject,
 		BodyText:     note,
-		RawMessage:   rawMessage,
-		RawSize:      len(rawMessage),
 		IsRead:       true,
-		SizeBytes:    len(rawMessage),
 		ReceivedAt:   now,
 	}
 
 	// The Sent copy and its queue entry commit together, so a reply is never
 	// shown as sent with nothing queued to send it. An organizer on this server
 	// gets it through the normal route too (#1564).
-	err = h.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&sentMsg).Error; err != nil {
-			return err
-		}
-		queued := queueRowsFor([]string{organizer}, sentMsg.ID, req.From, rawMessage, false)
-		return tx.Create(&queued).Error
-	})
+	err = h.spoolComposed(r.Context(), message, &sentMsg, [][]string{{organizer}}, false, false)
 	if err != nil {
+		var refusal *endpoint.Error
+		if errors.As(err, &refusal) {
+			return CalendarReplied{}, refusal
+		}
 		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
 	}
 

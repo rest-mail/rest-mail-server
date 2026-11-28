@@ -21,6 +21,7 @@ import (
 
 type mailRequirementConnection struct {
 	*authRequirementConnection
+	testSourceLedger
 	readOnly, released, removed bool
 	policyReads                 int
 	policyRejections            int
@@ -34,6 +35,9 @@ func (c *mailRequirementConnection) Driver() driver.Driver                      
 func (c *mailRequirementConnection) Open(string) (driver.Conn, error)             { return c, nil }
 func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
 	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
+	if rows, ok := c.testSourceLedger.query(q); ok {
 		return rows, nil
 	}
 	switch {
@@ -175,6 +179,9 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 	return c.authRequirementConnection.QueryContext(ctx, q, args)
 }
 func (c *mailRequirementConnection) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if c.testSourceLedger.exec(q, args) {
+		return driver.RowsAffected(1), nil
+	}
 	switch {
 	case strings.HasPrefix(q, `UPDATE "quarantine"`):
 		c.released = true
@@ -217,7 +224,10 @@ func TestMailStateRequirementExamples(t *testing.T) {
 			}
 			c := &mailRequirementConnection{authRequirementConnection: &authRequirementConnection{t: t, op: tc.op, name: tc.name, password: requirementHash(t, "supplied-by-contract-hook"), revoked: true}, readOnly: tc.name == "read_only"}
 			jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
-			r := NewRouters(requirementDB(t, c), jwt, &config.Config{Environment: "test", MasterKey: accessMasterKey}, nil)
+			db := requirementDB(t, c)
+			cfg := &config.Config{Environment: "test", MasterKey: accessMasterKey}
+			setTestMessageStorage(t, cfg)
+			r := NewRouters(db, jwt, cfg, nil)
 			t.Cleanup(r.Close)
 			actor, address := uint(1), "admin@restmail.test"
 			if c.readOnly {
@@ -306,8 +316,12 @@ func TestMailStateRequirementExamples(t *testing.T) {
 					t.Fatal("release did not preserve content and charge quota")
 				}
 			case "accepted":
-				if len(c.messages) != 1 || len(c.queue) != 1 || c.queue[0]["recipient"] != "organizer@remote.test" || !strings.Contains(c.queue[0]["raw_message"].(string), "PARTSTAT=ACCEPTED") {
+				if len(c.messages) != 1 || len(c.queue) != 1 || c.queue[0]["recipient"] != "organizer@remote.test" || c.queue[0]["source_ref"] != c.messages[0]["source_ref"] {
 					t.Fatal("calendar reply not persisted and queued for organizer")
+				}
+				raw := readTestSource(t, testMessageSources(t, db, cfg), c.queue[0]["source_ref"].(string))
+				if !strings.Contains(raw, "PARTSTAT=ACCEPTED") {
+					t.Fatal("calendar reply lost the attendee response")
 				}
 			case "unlinked":
 				if !c.removed {

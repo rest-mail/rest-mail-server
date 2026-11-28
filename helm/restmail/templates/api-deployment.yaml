@@ -8,8 +8,8 @@ metadata:
 spec:
   replicas: {{ .Values.api.replicaCount }}
   {{- with .Values.api.attachments.persistence }}
-  {{- if and .enabled (eq .accessMode "ReadWriteOnce") }}
-  # The attachments volume can be mounted by one node at a time. A rolling
+  {{- if and (or .enabled (eq $.Values.api.attachments.storageType "filesystem")) (eq .accessMode "ReadWriteOnce") }}
+  # A ReadWriteOnce volume can be mounted by one node at a time. A rolling
   # update starts the new pod before stopping the old one, and a new pod on
   # another node then waits forever to attach a volume the old one still holds,
   # until the deploy times out. Recreate stops the old pod first: a brief gap
@@ -104,17 +104,7 @@ spec:
             {{- include "restmail.dbEnv" . | nindent 12 }}
             {{- include "restmail.tracingEnv" . | nindent 12 }}
             {{- if eq .Values.api.attachments.storageType "s3" }}
-            {{- $attachmentSecret := include "restmail.attachments.secretName" . }}
-            - name: ATTACHMENT_S3_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $attachmentSecret }}
-                  key: ACCESS_KEY_ID
-            - name: ATTACHMENT_S3_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $attachmentSecret }}
-                  key: SECRET_ACCESS_KEY
+            {{- include "restmail.attachments.credentialsEnv" . | nindent 12 }}
             {{- end }}
             - name: JWT_SECRET
               valueFrom:
@@ -187,6 +177,10 @@ spec:
             - name: attachments
               mountPath: /attachments
             {{- end }}
+            {{- if eq .Values.api.attachments.storageType "filesystem" }}
+            - name: messages
+              mountPath: /messages
+            {{- end }}
             {{- if .Values.api.push.apns.enabled }}
             - name: apns-key
               mountPath: /etc/restmail/apns
@@ -237,6 +231,11 @@ spec:
         - name: attachments
           persistentVolumeClaim:
             claimName: {{ include "restmail.componentName" (list . "api-attachments") }}
+        {{- end }}
+        {{- if eq .Values.api.attachments.storageType "filesystem" }}
+        - name: messages
+          persistentVolumeClaim:
+            claimName: {{ include "restmail.componentName" (list . "messages") }}
         {{- end }}
         {{- with .Values.api.push.apns }}
         {{- if .enabled }}

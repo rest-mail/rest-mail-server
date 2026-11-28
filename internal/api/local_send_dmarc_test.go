@@ -20,6 +20,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/queue"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -163,11 +164,14 @@ func smtpHopOnly(t *testing.T, db *gorm.DB) {
 
 // startMailRoute runs the inbound port and the queue worker a real install runs
 // around the router. From here on, whatever is queued is delivered.
-func startMailRoute(t *testing.T, db *gorm.DB, public, internal http.Handler) string {
+func startMailRoute(t *testing.T, db *gorm.DB, public, internal http.Handler, sources ...*messagestore.Sources) string {
 	t.Helper()
 	inbound := startInboundPort(t, db, public, internal)
 	smtpHopOnly(t, db)
 	worker := queue.NewWorker(db, "mx.example.test", 1, 10*time.Millisecond)
+	if len(sources) > 0 {
+		worker.SetMessageSources(sources[0])
+	}
 	// What the E2E topology sets as well: a test's peers are on a private network
 	// and have certificates no public root issued.
 	worker.SetAllowPrivateDestinations(true)
@@ -320,6 +324,13 @@ func TestLocalSendQueuesForNormalDelivery(t *testing.T) {
 			if len(queued) != 1 || queued[0].Recipient != "recipient@example.test" || queued[0].Domain != localSendDomain || queued[0].Status != "pending" {
 				t.Errorf("local send must enter the normal outbound queue: %+v", queued)
 			}
+			var sent models.Message
+			if err := f.db.Where("mailbox_id = ? AND folder = 'Sent'", f.mailboxID).Take(&sent).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(queued) != 1 || !sameSourceRef(sent.SourceRef, queued[0].SourceRef) || len(sent.Source()) != 0 || queued[0].RawMessage != "" {
+				t.Fatal("Sent and the pending recipient must share one source")
+			}
 			if f.scans.Load() != 0 {
 				t.Errorf("inbound scanner ran before outbound delivery: %d scans", f.scans.Load())
 			}
@@ -358,7 +369,7 @@ func TestLocalSendPassesDMARCOnItsSignature(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router, f.gatewayRouter())
+			startMailRoute(t, f.db, f.router, f.gatewayRouter(), testMessageSources(t, f.db, f.cfg))
 
 			row := queueRow(t, f.db, "recipient@example.test", "delivered", "bounced")
 			if row.Status != "delivered" {
@@ -407,7 +418,7 @@ func TestLocalSendPermanentRefusalBounces(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			f := newLocalRoute(t, spfOtherServer, true)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test", "nobody@example.test"))
-			startMailRoute(t, f.db, f.router, f.gatewayRouter())
+			startMailRoute(t, f.db, f.router, f.gatewayRouter(), testMessageSources(t, f.db, f.cfg))
 
 			if row := queueRow(t, f.db, "recipient@example.test", "delivered", "bounced"); row.Status != "delivered" {
 				t.Errorf("the recipient that exists: %s: %s", row.Status, row.LastError)
@@ -449,7 +460,7 @@ func TestLocalSendWithoutADKIMKey(t *testing.T) {
 		t.Run(route+"/SPF lists this server", func(t *testing.T) {
 			f := newLocalRoute(t, spfThisServer, false)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router, f.gatewayRouter())
+			startMailRoute(t, f.db, f.router, f.gatewayRouter(), testMessageSources(t, f.db, f.cfg))
 			if row := queueRow(t, f.db, "recipient@example.test", "delivered", "bounced"); row.Status != "delivered" {
 				t.Fatalf("queue row ended %s: %s", row.Status, row.LastError)
 			}
@@ -469,7 +480,7 @@ func TestLocalSendWithoutADKIMKey(t *testing.T) {
 		t.Run(route+"/SPF does not list this server", func(t *testing.T) {
 			f := newLocalRoute(t, spfOtherServer, false)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router, f.gatewayRouter())
+			startMailRoute(t, f.db, f.router, f.gatewayRouter(), testMessageSources(t, f.db, f.cfg))
 			row := queueRow(t, f.db, "recipient@example.test", "bounced", "delivered")
 			if row.Status != "bounced" || row.LastErrorCode != 550 {
 				t.Fatalf("queue row: %s %d: %s; want bounced with 550", row.Status, row.LastErrorCode, row.LastError)
@@ -520,7 +531,7 @@ func TestLocalSendTemporaryRefusalRetries(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			f := newLocalRoute(t, spfOtherServer, true, greylist)
 			wantSent(t, route, f.send(t, route, f.session, "recipient@example.test"))
-			startMailRoute(t, f.db, f.router, f.gatewayRouter())
+			startMailRoute(t, f.db, f.router, f.gatewayRouter(), testMessageSources(t, f.db, f.cfg))
 
 			row := queueRow(t, f.db, "recipient@example.test", "deferred", "delivered", "bounced")
 			if row.Status != "deferred" || row.LastErrorCode != 450 || !row.NextAttempt.After(time.Now()) {

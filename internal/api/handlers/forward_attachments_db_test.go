@@ -39,7 +39,7 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	if err := db.Create(&models.QuotaUsage{MailboxID: sender.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	h := NewMessageHandler(db, nil, nil, "", nil)
+	h := testMessageHandler(t, db)
 	h.forwardRoot = t.TempDir()
 	h.SetForwardStorage(8192, nil)
 	data := []byte("invoice\xff\x00")
@@ -75,8 +75,8 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 		return &models.Message{MailboxID: sender.ID, Folder: "Sent", MsgID: id, Sender: sender.Address, Subject: req.Subject, BodyText: req.BodyText, SizeBytes: len(req.Subject) + len(req.BodyText), IsRead: true, ReceivedAt: time.Now()}
 	}
 	first := makeSent("<forward@example.test>")
-	if result, err := h.commitForward(r, req, &sender, first, loaded, nil, nil); err != nil || result.Code != 201 {
-		t.Fatalf("forward: result=%+v err=%v", result, err)
+	if err := spoolForwardForTest(h, r, req, first, loaded); err != nil {
+		t.Fatalf("forward: %v", err)
 	}
 	var stored []models.Attachment
 	if err := db.Where("message_id = ?", first.ID).Order("id").Find(&stored).Error; err != nil || len(stored) != 2 {
@@ -93,10 +93,10 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 		}
 	}
 	var queue models.OutboundQueue
-	if err := db.Where("message_id = ?", first.ID).First(&queue).Error; err != nil || queue.RawMessage != first.RawMessage {
+	if err := db.Where("message_id = ?", first.ID).First(&queue).Error; err != nil || queue.SourceRef == nil || first.SourceRef == nil || *queue.SourceRef != *first.SourceRef {
 		t.Fatalf("queue source differs: %v", err)
 	}
-	parsed, err := rmime.Parse([]byte(queue.RawMessage))
+	parsed, err := rmime.Parse([]byte(composedRaw(t, h, queue.SourceRef)))
 	if err != nil || len(parsed.Attachments) != 2 {
 		t.Fatal("queued parts lost")
 	}
@@ -109,7 +109,7 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	for i := range 2 {
 		go func() {
 			<-start
-			_, err := h.commitForward(r, req, &sender, makeSent(fmt.Sprintf("<parallel-%d@example.test>", i)), loaded, nil, nil)
+			err := spoolForwardForTest(h, r, req, makeSent(fmt.Sprintf("<parallel-%d@example.test>", i)), loaded)
 			results <- err
 		}()
 	}
@@ -140,7 +140,7 @@ func TestForwardAttachmentsPostgresPersistenceQuotaAndRollback(t *testing.T) {
 	if err := db.Exec(`CREATE TRIGGER reject_forward_queue BEFORE INSERT ON outbound_queue FOR EACH ROW EXECUTE FUNCTION reject_forward_queue()`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.commitForward(r, req, &sender, makeSent("<rollback@example.test>"), loaded, nil, nil); err == nil {
+	if err := spoolForwardForTest(h, r, req, makeSent("<rollback@example.test>"), loaded); err == nil {
 		t.Fatal("queue fault acknowledged a forward")
 	}
 	var count int64

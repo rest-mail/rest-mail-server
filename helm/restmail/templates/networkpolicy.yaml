@@ -54,7 +54,7 @@ spec:
       {{- include "restmail.componentSelectorLabels" (list . "garage") | nindent 6 }}
   policyTypes:
     - Ingress
-  # Only the API reaches it: S3 for objects, and the admin API for its bootstrap.
+  # The API bootstraps Garage. The SMTP queue worker only needs its S3 port.
   ingress:
     - from:
         - podSelector:
@@ -65,6 +65,15 @@ spec:
           port: 3900
         - protocol: TCP
           port: 3903
+    {{- if .Values.smtpGateway.enabled }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3900
+    {{- end }}
 {{- end }}
 {{- if .Values.postgres.enabled }}
 ---
@@ -253,6 +262,24 @@ spec:
         - protocol: TCP
           port: {{ .Values.postgres.service.port }}
     {{- end }}
+    {{- if .Values.garage.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "garage") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3900
+    {{- end }}
+    {{- if eq .Values.api.attachments.storageType "s3" }}
+    {{- with .Values.api.attachments.s3.networkPolicy.to }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.api.attachments.s3.networkPolicy.port }}
+    {{- end }}
+    {{- end }}
     # Outbound delivery to remote MX (25) and smart hosts (465/587), plus
     # MTA-STS policy fetches over HTTPS (443).
     - to:
@@ -267,6 +294,10 @@ spec:
           port: 587
         - protocol: TCP
           port: 443
+        {{- if and (eq .Values.api.attachments.storageType "s3") (not .Values.garage.enabled) (hasPrefix "http://" .Values.api.attachments.s3.endpoint) }}
+        - protocol: TCP
+          port: 80
+        {{- end }}
 {{- end }}
 {{- if .Values.imapGateway.enabled }}
 ---
