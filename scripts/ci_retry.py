@@ -136,20 +136,22 @@ def decide(policy, mode, attempt, max_attempts, failure_text, ready_runners,
     return Decision(True, reason, signature, runner=runner)
 
 
-SELF_HOSTED_MARK = "antimatter"
+# Our pools are <machine>-<os>-<arch> (vps-linux-x64, ryzen-linux-x64, ...); "antimatter" is the
+# VPS pool's old name, still in older runs.
+SELF_HOSTED_MARK = re.compile(r"antimatter|^(vps|ryzen|pi|macbook)-")
 
 
 def runner_of(job):
     """Where one failed job ran: "self-hosted", "hosted", or None when it was not reported.
 
-    Anything naming the antimatter pool, in the runner name or the labels, is
+    Anything naming one of our pools, in the runner name or the labels, is
     self-hosted; any other name or label (ubuntu-24.04, "GitHub Actions 7") is hosted.
     """
     names = [job.get("runner_name") or ""] + [str(label) for label in job.get("labels") or []]
     names = [name for name in names if name.strip()]
     if not names:
         return None
-    if any(SELF_HOSTED_MARK in name.lower() for name in names):
+    if any(SELF_HOSTED_MARK.search(name.lower()) for name in names):
         return "self-hosted"
     return "hosted"
 

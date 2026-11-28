@@ -25,8 +25,8 @@ ARC = "Error: the job was cancelled after its runner reservation ran out"
 EGRESS = "Failed to upload artifact: 503 Egress is over the account limit"
 DNS = "dial tcp: lookup proxy.golang.org on 127.0.0.53:53: server misbehaving"
 RESET = "read tcp 10.0.0.4:5432: connection reset by peer"
-SELF_HOSTED_JOB = {"id": 501, "name": "Test", "runner_name": "antimatter-vps-linux-x64-runner-4zjsp",
-                   "labels": ["antimatter-vps-linux-x64"]}
+SELF_HOSTED_JOB = {"id": 501, "name": "Test", "runner_name": "vps-linux-x64-runner-4zjsp",
+                   "labels": ["vps-linux-x64"]}
 HOSTED_JOB = {"id": 501, "name": "Test", "runner_name": "GitHub Actions 1000000123",
               "labels": ["ubuntu-24.04"]}
 UNREPORTED_JOB = {"id": 501, "name": "Test", "runner_name": None, "labels": []}
@@ -249,10 +249,10 @@ class WhereTheJobRanTests(unittest.TestCase):
 class RunnerOfTests(unittest.TestCase):
     def test_the_pool_is_self_hosted_by_runner_name_or_label(self):
         self.assertEqual(ci_retry.runner_of(SELF_HOSTED_JOB), "self-hosted")
-        self.assertEqual(ci_retry.runner_of({"runner_name": "antimatter-vps-linux-x64-runner-x"}),
+        self.assertEqual(ci_retry.runner_of({"runner_name": "vps-linux-x64-runner-x"}),
                          "self-hosted")
         # A job that never got its runner still carries the label it asked for.
-        self.assertEqual(ci_retry.runner_of({"runner_name": "", "labels": ["antimatter-vps-linux-x64"]}),
+        self.assertEqual(ci_retry.runner_of({"runner_name": "", "labels": ["vps-linux-x64"]}),
                          "self-hosted")
 
     def test_github_runners_are_hosted(self):
@@ -516,7 +516,7 @@ class WorkflowStepTests(unittest.TestCase):
             "run": {"run_attempt": run_attempt or attempt, "status": "completed"},
             "jobs": [dict(runner, conclusion="failure"),
                      {"id": 502, "name": "Lint", "conclusion": "success",
-                      "runner_name": "antimatter-vps-linux-x64-runner-zz", "labels": []}],
+                      "runner_name": "vps-linux-x64-runner-zz", "labels": []}],
             "logs": {} if logs is None else logs,
             "annotations": annotations or {},
             "comments": list(comments), "labels": list(labels), "pr_labels": [],

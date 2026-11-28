@@ -336,11 +336,11 @@ jobs:
           pick() {
             $ours || { echo ubuntu-24.04; return; }
             r=$(curl -fsS --max-time 10 --get https://runner-gate.antimatter-studios.com/pick \
-                  --data-urlencode "org=$ORG" --data-urlencode prefer=antimatter-vps-linux-x64 \
+                  --data-urlencode "org=$ORG" --data-urlencode prefer=vps-linux-x64 \
                   --data-urlencode fallback=ubuntu-24.04 --data-urlencode "actor=$ACTOR" --data-urlencode "author=$AUTHOR" \
                   --data-urlencode "run=${{ github.run_id }}" --data-urlencode "attempt=${{ github.run_attempt }}" \
                   --data-urlencode "job=$1") || r=ubuntu-24.04
-            case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
+            case "$r" in vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac
           }
           runners='{}'
           for entry in $JOBS; do
