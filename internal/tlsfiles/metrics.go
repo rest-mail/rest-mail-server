@@ -16,9 +16,9 @@ var (
 	// reloadFailures counts replacements of an already loaded TLS
 	// certificate/key pair that could not be loaded: missing, malformed, or a
 	// certificate that does not match its key. Each is a renewal the process
-	// did not pick up; the previous pair keeps serving. A failure that persists
-	// across checks counts once, until a later check succeeds. No labels: the
-	// file paths are in the log line that accompanies each increment.
+	// did not pick up; the previous pair keeps serving. Repeated checks of the
+	// same broken state count once. A different failed replacement counts
+	// again even before recovery. File paths are logged with each increment.
 	reloadFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_tls_cert_reload_failures_total",
 		Help: "Replaced TLS certificate or key files that failed to load while the previous pair kept serving",
@@ -37,7 +37,14 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(reloadFailures, reloadFailing, servedExpiry)
+	RegisterReloadMetrics(prometheus.DefaultRegisterer)
+	prometheus.MustRegister(servedExpiry)
+}
+
+// RegisterReloadMetrics registers the process-wide reload counter and gauge.
+// Gathering these metrics alone does not trigger an expiry check.
+func RegisterReloadMetrics(registry prometheus.Registerer) {
+	registry.MustRegister(reloadFailures, reloadFailing)
 }
 
 // expiryCollector reports restmail_tls_cert_expiry_timestamp_seconds: when the

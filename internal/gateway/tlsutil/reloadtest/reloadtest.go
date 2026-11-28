@@ -261,11 +261,18 @@ func clientConfig(host string) *tls.Config {
 	return &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} //nolint:gosec // Prove verifies the name and chain against the fixture CA
 }
 
-// Metric reads an unlabelled counter or gauge from the default registry, the
-// one each gateway serves on /metrics.
+var reloadMetrics = func() *prometheus.Registry {
+	registry := prometheus.NewRegistry()
+	tlsfiles.RegisterReloadMetrics(registry)
+	return registry
+}()
+
+// Metric reads the same reload counter or gauge exposed on /metrics. A full
+// default-registry scrape would also recheck loaders from other fixtures,
+// including ones whose temporary files have already been removed.
 func Metric(t *testing.T, name string) float64 {
 	t.Helper()
-	families, err := prometheus.DefaultGatherer.Gather()
+	families, err := reloadMetrics.Gather()
 	if err != nil {
 		t.Fatal(err)
 	}
