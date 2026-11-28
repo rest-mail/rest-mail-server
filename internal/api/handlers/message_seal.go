@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 )
 
 type MessageSeal struct {
@@ -23,11 +24,18 @@ func (handler *MessageHandler) verifyMessageSeal(request *http.Request, input me
 	if message.SealedHash == "" {
 		return result, nil
 	}
-	result.ComputedHash, err = message.SealDigest()
+	result.State = "mismatch"
+	if message.SourceRef != nil {
+		if handler.messageSources == nil {
+			return MessageSeal{}, fmt.Errorf("verify message seal: %w", messagestore.ErrSourceUnavailable)
+		}
+		result.ComputedHash, err = handler.messageSources.SealDigest(request.Context(), message)
+	} else {
+		result.ComputedHash, err = message.SealDigest()
+	}
 	if err != nil {
 		return MessageSeal{}, fmt.Errorf("verify message seal: %w", err)
 	}
-	result.State = "mismatch"
 	if result.ComputedHash == result.SealedHash {
 		result.State = "intact"
 	}

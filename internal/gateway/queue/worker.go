@@ -1894,7 +1894,7 @@ func (w *Worker) queueRemoteDSN(ctx context.Context, item models.OutboundQueue, 
 	if item.LastAttempt != nil {
 		lastAttempt = *item.LastAttempt
 	}
-	dsn := buildDSNMessage(w.hostname, item, smtpErr, now, lastAttempt)
+	dsn := w.buildDSN(ctx, item, smtpErr, now, lastAttempt)
 	notice := models.OutboundQueue{
 		Sender:        "",
 		SendingDomain: w.hostname,
@@ -1973,7 +1973,7 @@ func (w *Worker) generateBounce(ctx context.Context, item models.OutboundQueue, 
 	if item.LastAttempt != nil {
 		lastAttempt = *item.LastAttempt
 	}
-	dsn := buildDSNMessage(w.hostname, item, smtpErr, now, lastAttempt)
+	dsn := w.buildDSN(ctx, item, smtpErr, now, lastAttempt)
 
 	// Insert bounce message into sender's INBOX. is_dsn marks this row as a
 	// locally generated DSN so the per-recipient rate-limit counter counts only
@@ -2015,6 +2015,19 @@ type builtDSN struct {
 	raw       string
 	subject   string
 	humanPart string
+}
+
+func (w *Worker) buildDSN(ctx context.Context, item models.OutboundQueue, smtpErr *SMTPError, now, lastAttempt time.Time) builtDSN {
+	if item.MessageID != nil {
+		header, err := messagestore.MessageSourceHeaders(w.db.WithContext(ctx), *item.MessageID)
+		switch {
+		case err == nil:
+			item.RawMessage = string(header)
+		case !errors.Is(err, gorm.ErrRecordNotFound):
+			slog.WarnContext(ctx, "queue: could not load original headers for DSN", "id", item.ID, "error", err)
+		}
+	}
+	return buildDSNMessage(w.hostname, item, smtpErr, now, lastAttempt)
 }
 
 // buildDSNMessage renders an RFC 3464 multipart/report DSN for a failed outbound

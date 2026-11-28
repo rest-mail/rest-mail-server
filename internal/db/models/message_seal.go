@@ -10,7 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/messageseal"
 )
 
-// SourceReader reads the exact stored RFC 5322 source without copying it, preferring the
+// SourceReader reads the exact inline RFC 5322 source without copying it, preferring the
 // octets when the source could not be stored as text.
 func (message Message) SourceReader() io.Reader {
 	if message.RawOctets != nil {
@@ -20,7 +20,11 @@ func (message Message) SourceReader() io.Reader {
 }
 
 func (message Message) SealDigest() (string, error) {
-	source := message.SourceReader()
+	return message.SealDigestFrom(message.SourceReader())
+}
+
+// SealDigestFrom seals the supplied source and the same fields as an inline receipt.
+func (message Message) SealDigestFrom(source io.Reader) (string, error) {
 	fields := []string{message.MsgID, message.InReplyTo, message.References, message.Sender, message.SenderName, message.Subject, message.BodyText, message.BodyHTML}
 	for _, field := range []JSONB{message.Headers, message.RecipientsTo, message.RecipientsCc} {
 		if len(field) == 0 {

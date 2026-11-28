@@ -30,6 +30,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
@@ -67,6 +68,7 @@ type MessageHandler struct {
 	forwardStore    *attachmentstore.S3
 	forwardRoot     string
 	maxForwardBytes int64
+	messageSources  *messagestore.Sources
 
 	// oneClick sends RFC 8058 one-click unsubscribe POSTs (#1575); nil uses the guarded
 	// default, and tests replace it.
@@ -107,6 +109,11 @@ func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, 
 		h.broker = broker
 	}
 	return h
+}
+
+// SetMessageSources configures referenced message reads before serving traffic.
+func (h *MessageHandler) SetMessageSources(sources *messagestore.Sources) {
+	h.messageSources = sources
 }
 
 // SetSendLimits configures the send-path abuse limits (#184): the per-message
@@ -368,7 +375,7 @@ func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability str
 
 // getMessage returns a single message by ID.
 func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, error) {
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, messageThreadFields)
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, messageListFields)
 	if err != nil {
 		return Message{}, err
 	}
@@ -420,7 +427,7 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 		return Message{}, errModSequenceTooLarge
 	}
 	h = h.forRequest(r)
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailWrite)
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailWrite, "id", "mailbox_id")
 	if err != nil {
 		return Message{}, err
 	}
@@ -494,7 +501,7 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 			}
 			modified = req.UnchangedSince != nil && result.RowsAffected == 0
 		}
-		if err := tx.First(&msg, in.ID).Error; err != nil {
+		if err := tx.Select(messageHeaderFields).First(&msg, in.ID).Error; err != nil {
 			return err
 		}
 		return nil
@@ -2160,9 +2167,12 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 // The source is read in bounded chunks as it is written (rawSourceChunk), never loaded whole,
 // so the API holds the same memory for a message of any size (#2107).
 func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoint.Stream, error) {
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, "id", "mailbox_id")
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, "id", "mailbox_id", "source_ref")
 	if err != nil {
 		return endpoint.Stream{}, err
+	}
+	if msg.SourceRef != nil {
+		return h.referencedRawMessage(r.Context(), msg.ID, *msg.SourceRef)
 	}
 	db := h.db.WithContext(r.Context())
 	size, err := rawSourceLength(db, msg.ID)

@@ -210,6 +210,9 @@ func autoMigrate(db *gorm.DB) error {
 	if err := MigrateFolderModSeqs(db); err != nil {
 		return fmt.Errorf("folder mod-sequences: %w", err)
 	}
+	if err := migrateMessageSourceReferences(db); err != nil {
+		return fmt.Errorf("message source references: %w", err)
+	}
 
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {

@@ -40,7 +40,9 @@ func (c *testSnapshotConnection) Open(string) (driver.Conn, error) { return c, n
 
 func (c *testSnapshotConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
 	for _, table := range testSnapshotTables {
-		if q == `SELECT * FROM "`+table+`"` && len(args) == 0 {
+		// Tables whose source columns the snapshot leaves out select a column
+		// list; every other table selects *. Either way: one table, no filter.
+		if strings.HasPrefix(q, "SELECT ") && strings.HasSuffix(q, ` FROM "`+table+`"`) && len(args) == 0 {
 			c.record(q, args)
 			c.record("SNAPSHOT_CONTEXT", []driver.NamedValue{{Value: ctx.Value(testSnapshotContextKey{}) == true}})
 			if c.failTable == table {

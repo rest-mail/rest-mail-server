@@ -10,7 +10,9 @@ package handlers
 //
 // A column added to the model has to be added here too;
 // TestMessageListFieldsNameEveryColumn fails until it is.
-const messageListFields = messageListColumns + `, ` + messageSourceHeaderSection + `, ` + messageDueColumns + `, ` + messageSnoozeColumn
+const messageListFields = messageHeaderFields + `, ` + messageDueColumns + `, ` + messageSnoozeColumn
+
+const messageHeaderFields = messageListColumns + `, messages.source_ref, ` + messageSourceHeaderSection
 
 const messageListColumns = `messages.id, messages.mailbox_id, messages.folder, messages.message_id,
 	messages.in_reply_to, messages."references", messages.thread_id, messages.sender, messages.sender_name,
@@ -29,4 +31,7 @@ const messageSourceHeaderSection = `COALESCE(substr(messages.raw_message, 1, LEA
 		NULLIF(position(E'\n\r\n' IN messages.raw_message), 0)) + 2), messages.raw_message) AS raw_message,
 	COALESCE(substring(messages.raw_octets FROM 1 FOR LEAST(
 		NULLIF(position('\x0a0a'::bytea IN messages.raw_octets), 0),
-		NULLIF(position('\x0a0d0a'::bytea IN messages.raw_octets), 0)) + 2), messages.raw_octets) AS raw_octets`
+		NULLIF(position('\x0a0d0a'::bytea IN messages.raw_octets), 0)) + 2), messages.raw_octets) AS raw_octets,
+	CASE WHEN messages.source_ref IS NOT NULL THEN (
+		SELECT header_metadata FROM message_sources WHERE ref = messages.source_ref
+	) END AS source_header`

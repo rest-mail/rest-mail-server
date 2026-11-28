@@ -311,13 +311,13 @@ func (h *TestHandler) snapshot(r *http.Request, _ endpoint.Empty) (TestSnapshot,
 	snap.Aliases = aliases
 
 	var messages []models.Message
-	if err := database.Find(&messages).Error; err != nil {
+	if err := database.Select(messageListColumns).Find(&messages).Error; err != nil {
 		return TestSnapshot{}, fmt.Errorf("snapshot messages: %w", err)
 	}
 	snap.Messages = messages
 
 	var queue []models.OutboundQueue
-	if err := database.Find(&queue).Error; err != nil {
+	if err := database.Select(queueMetadataColumns).Find(&queue).Error; err != nil {
 		return TestSnapshot{}, fmt.Errorf("snapshot queue: %w", err)
 	}
 	snap.Queue = queue

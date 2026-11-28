@@ -24,6 +24,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/dns"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	pipelineobs "github.com/rest-mail/rest-mail-server/internal/metrics/observer"
 	"github.com/rest-mail/rest-mail-server/internal/netallow"
@@ -358,6 +359,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	traceRecorder.Start()
 
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
+	if sources, err := messagestore.NewSources(db, cfg); err == nil {
+		messageH.SetMessageSources(sources)
+	} else if cfg.Attachments.Type != "" {
+		slog.Error("configure message sources", "error", err)
+	}
 	tlsReportEmail := handlers.NewTLSReportEmailReceiver(db, cfg.TLSRPTReportAddress)
 	messageH.SetTLSReportEmailReceiver(tlsReportEmail)
 	messageH.SetForwardStorage(cfg.SMTPMaxMessageSize, attachmentStore)

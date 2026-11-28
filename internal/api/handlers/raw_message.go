@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"gorm.io/gorm"
 )
 
@@ -60,8 +63,14 @@ func streamRawSource(ctx context.Context, db *gorm.DB, id uint, size int64, w io
 // rawMessageStream answers the raw route with message id's stored source of size octets,
 // read in chunks as it is written.
 func rawMessageStream(ctx context.Context, db *gorm.DB, id uint, size int64) func(io.Writer, func()) {
+	return sendRawMessage(ctx, id, func(w io.Writer) error {
+		return streamRawSource(ctx, db, id, size, w)
+	})
+}
+
+func sendRawMessage(ctx context.Context, id uint, send func(io.Writer) error) func(io.Writer, func()) {
 	return func(w io.Writer, _ func()) {
-		if err := streamRawSource(ctx, db, id, size, w); err != nil {
+		if err := send(w); err != nil {
 			if ctx.Err() == nil {
 				slog.ErrorContext(ctx, "raw message: source not sent", "message_id", id, "error", err)
 			}
@@ -70,6 +79,32 @@ func rawMessageStream(ctx context.Context, db *gorm.DB, id uint, size int64) fun
 			panic(http.ErrAbortHandler)
 		}
 	}
+}
+
+func (h *MessageHandler) openMessageSource(ctx context.Context, id uint, ref string) (io.ReadCloser, int64, error) {
+	if h.messageSources == nil {
+		return nil, 0, messagestore.ErrSourceUnavailable
+	}
+	return h.messageSources.OpenMessage(ctx, id, ref)
+}
+
+func (h *MessageHandler) referencedRawMessage(ctx context.Context, id uint, ref string) (endpoint.Stream, error) {
+	body, size, err := h.openMessageSource(ctx, id, ref)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return endpoint.Stream{}, errMessageNotFound
+	}
+	if err != nil {
+		return endpoint.Stream{}, fmt.Errorf("open message source: %w", err)
+	}
+	return endpoint.Stream{
+		ContentType: "message/rfc822",
+		Header:      rawMessageHeader(size),
+		Done:        func() { _ = body.Close() },
+		Send: sendRawMessage(ctx, id, func(w io.Writer) error {
+			_, err := io.Copy(w, body)
+			return err
+		}),
+	}, nil
 }
 
 // rawMessageHeader is the Content-Length the raw route declares for a source of size octets.

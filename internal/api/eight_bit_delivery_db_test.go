@@ -99,7 +99,12 @@ type eightBitServer struct {
 
 func newEightBitServer(t *testing.T) *eightBitServer {
 	t.Helper()
-	f := newCredentialFixtureWith(t, &config.Config{Environment: "test", SMTPMaxMessageSize: config.DefaultSMTPMaxMessageSize})
+	return newEightBitServerWith(t, &config.Config{Environment: "test", SMTPMaxMessageSize: config.DefaultSMTPMaxMessageSize})
+}
+
+func newEightBitServerWith(t *testing.T, cfg *config.Config) *eightBitServer {
+	t.Helper()
+	f := newCredentialFixtureWith(t, cfg)
 	serveTXT(t, map[string][]string{})
 	// The default inbound pipeline, keeping attachments where this test may write them.
 	var filters []pipeline.FilterConfig

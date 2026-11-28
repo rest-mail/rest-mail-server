@@ -14,6 +14,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -151,7 +152,11 @@ func (h *MessageTransferHandler) transferMessages(r *http.Request, in transferMe
 			copied.ID, copied.Folder = 0, body.Folder
 			copied.CreatedAt, copied.UpdatedAt = time.Time{}, time.Time{}
 			copied.Mailbox = models.Mailbox{}
-			if err := tx.Omit("Mailbox").Create(&copied).Error; err != nil {
+			if copied.SourceRef != nil {
+				if err := messagestore.CopyMessage(r.Context(), tx, &copied); err != nil {
+					return err
+				}
+			} else if err := tx.Omit("Mailbox").Create(&copied).Error; err != nil {
 				return err
 			}
 			ids = append(ids, copied.ID)
