@@ -3622,6 +3622,9 @@ def cancel_a_message_we_made(transaction):
         transaction["fullPath"] = f"/api/v1/messages/scheduled/{scheduled_id:d}"
 
 
+IMPORTED_MESSAGE_BODY = "A contract fixture."
+
+
 def an_imported_message(transaction, folder, subject):
     """The id of a message imported into the fixture admin's mailbox, looked
     up by address, for this exchange alone."""
@@ -3631,7 +3634,7 @@ def an_imported_message(transaction, folder, subject):
         "From: sender@example.test\r\n"
         f"To: {ADMIN}\r\n"
         f"Date: {formatdate(usegmt=True)}\r\n"
-        f"Subject: {subject}\r\n\r\nA contract fixture.\r\n"
+        f"Subject: {subject}\r\n\r\n{IMPORTED_MESSAGE_BODY}\r\n"
     ).encode()
     request = urllib.request.Request(
         origin + f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
@@ -3741,6 +3744,46 @@ def on_a_message_of_its_own(transaction):
         message_id = an_imported_message(transaction, "Contract own", "Contract own message")
     parts[segment] = str(message_id)
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
+@hooks.after("forwardMessage")
+def the_forward_is_in_sent(transaction):
+    if (
+        not asked_for_a_clean_start()
+        or expected_status(transaction) != "201"
+        or str((transaction.get("real") or {}).get("statusCode")) != "201"
+    ):
+        return
+
+    # The creation response names the row. Read the stored copy separately.
+    created = (hooks.get_json(transaction, "real") or {}).get("data") or {}
+    message_id = created.get("id")
+    if type(message_id) is not int or message_id < 1:
+        transaction["fail"] = "forward returned 201 without a Sent copy id"
+        return
+    path = f"/api/v1/messages/{message_id:d}"
+    sent = fixture_call(transaction, "GET", path, expect=(404,))
+    if sent is None:
+        transaction["fail"] = f"forward returned 201 but its Sent copy {message_id:d} is missing"
+        return
+
+    request = hooks.get_json(transaction)
+    problems = []
+    if sent.get("id") != message_id or sent.get("folder") != "Sent":
+        problems.append(f"read back id {sent.get('id')!r} in folder {sent.get('folder')!r}")
+    # Forward takes To only. The stored copy must have no Cc recipients.
+    for field, wanted in (("recipients_to", request["to"]), ("recipients_cc", [])):
+        got = sent.get(field)
+        if got != wanted:
+            problems.append(f"{field} is {got!r}, want {wanted!r}")
+    body = sent.get("body_text") or ""
+    if IMPORTED_MESSAGE_BODY not in body:
+        problems.append("body_text is missing the quoted original")
+    note = request.get("body_text")
+    if note and note not in body:
+        problems.append("body_text is missing the forward note")
+    if problems:
+        transaction["fail"] = f"forward Sent copy {message_id:d}: " + "; ".join(problems)
 
 
 # What a forward's sender needs free of its storage cap. A forward stores its

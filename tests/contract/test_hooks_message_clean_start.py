@@ -24,7 +24,7 @@ def load_hooks():
     stub.stash = {}
     stub.before = lambda name: lambda function: function
     stub.after = lambda name: lambda function: function
-    stub.get_json = lambda transaction: json.loads(transaction["request"]["body"] or "null")
+    stub.get_json = lambda transaction, which="request": json.loads(transaction[which]["body"] or "null")
     spec = importlib.util.spec_from_file_location(
         "contract_message_clean_start_hooks", ROOT / "tests/contract/hooks.py"
     )
@@ -92,6 +92,59 @@ class MessageCleanStart(unittest.TestCase):
         )
         self.assertEqual(sent["fullPath"], "/api/v1/messages/700/raw")
         self.assertEqual(self.events, ["reset", "POST /api/v1/accounts/4/messages/import"])
+
+    def forward_created(self):
+        sent = self.send(
+            self.module.on_a_message_of_its_own,
+            "/api/v1/messages/7/forward",
+            "/api/v1/messages/{id}/forward > Forward a message > 201 > application/json",
+        )
+        sent["request"]["body"] = json.dumps(
+            {"from": "admin@restmail.test", "to": ["admin@restmail.test"], "body_text": "See below."}
+        )
+        sent["real"] = {"statusCode": 201, "body": '{"data": {"id": 701}}'}
+        return sent
+
+    def check_sent_copy(self, transaction, copy):
+        def readback(request, timeout):
+            self.assertEqual(request.get_method(), "GET")
+            self.assertEqual(request.full_url, "http://server.test:8080/api/v1/messages/701")
+            self.events.append("GET /api/v1/messages/701")
+            if copy is None:
+                raise self.module.urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+            return Reply(json.dumps({"data": copy}).encode())
+
+        with patch.object(self.module.urllib.request, "urlopen", readback):
+            self.module.the_forward_is_in_sent(transaction)
+
+    def test_a_clean_start_forward_reads_the_sent_copy(self):
+        sent = self.forward_created()
+        self.assertEqual(sent["fullPath"], "/api/v1/messages/700/forward")
+        self.check_sent_copy(sent, {
+            "id": 701, "folder": "Sent", "recipients_to": ["admin@restmail.test"],
+            "recipients_cc": [], "body_text": "See below.\n\nA contract fixture.",
+        })
+        self.assertEqual(self.events, [
+            "reset", "POST /api/v1/accounts/4/messages/import", "GET /api/v1/messages/701",
+        ])
+        self.assertNotIn("fail", sent)
+
+    def test_a_forward_201_fails_when_its_sent_copy_is_missing(self):
+        sent = self.forward_created()
+        self.check_sent_copy(sent, None)
+        self.assertEqual(sent["fail"], "forward returned 201 but its Sent copy 701 is missing")
+
+    def test_a_forward_201_fails_when_its_sent_copy_is_wrong(self):
+        sent = self.forward_created()
+        self.check_sent_copy(sent, {
+            "id": 701, "folder": "INBOX", "recipients_to": ["other@restmail.test"],
+            "recipients_cc": ["extra@restmail.test"], "body_text": "Unrelated message.",
+        })
+        for problem in (
+            "folder 'INBOX'", "recipients_to", "recipients_cc", "quoted original", "forward note",
+        ):
+            with self.subTest(problem=problem):
+                self.assertIn(problem, sent["fail"])
 
     def test_a_trace_is_read_from_a_message_sent_after_the_reset(self):
         sent = self.send(
