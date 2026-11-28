@@ -233,7 +233,7 @@ func seedSigningDomain(t *testing.T, prefix string) (*MessageHandler, string, dk
 		}
 		return nil, fmt.Errorf("no TXT record for %s", name)
 	}
-	return &MessageHandler{db: tx, masterKey: masterKey}, domain, resolver
+	return setTestMessageSources(t, NewMessageHandler(tx, nil, nil, masterKey, nil)), domain, resolver
 }
 
 // signSentMessage renders a reply the way the API sends it, carrying one each

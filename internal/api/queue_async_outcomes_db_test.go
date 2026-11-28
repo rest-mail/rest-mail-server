@@ -106,7 +106,7 @@ func TestAC02LocalAndRemoteSubmissionReportWorkerOutcomes(t *testing.T) {
 				t.Fatalf("inbound scanner ran %d times before the queue worker started", scans)
 			}
 
-			startMailRoute(t, fixture.db, fixture.router, fixture.gatewayRouter())
+			startMailRoute(t, fixture.db, fixture.router, fixture.gatewayRouter(), testMessageSources(t, fixture.db, fixture.cfg))
 			deferred := queueRow(t, fixture.db, accepting, "deferred", "bounced", "delivered")
 			if deferred.Status != "deferred" || deferred.LastErrorCode != 450 || !deferred.NextAttempt.After(time.Now()) {
 				t.Fatalf("first local attempt = %s (SMTP %d, retry %s), want greylist deferral: %s", deferred.Status, deferred.LastErrorCode, deferred.NextAttempt, deferred.LastError)

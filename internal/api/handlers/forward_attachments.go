@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"hash"
 	"io"
 	"net/http"
@@ -18,7 +17,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
-	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -207,228 +205,90 @@ func (p handedParts) Open(ctx context.Context, att pipeline.Attachment) (io.Read
 // putIndependentPart stores a copy of a part's bytes that no other message shares, streaming
 // them from where the part is, and checking them on the way.
 func (h *MessageHandler) putIndependentPart(ctx context.Context, part pipeline.Attachment) (storage, ref, checksum string, err error) {
-	if h.forwardStore != nil {
-		source := &reopeningReader{size: part.Size, open: func() (io.ReadCloser, error) {
-			reader, err := h.openCheckedPart(ctx, part)
-			if err != nil {
-				return nil, err
-			}
-			return reader, nil
-		}}
-		defer func() { _ = source.Close() }()
-		ref, checksum, err = h.forwardStore.PutIndependentReader(ctx, source, part.Size)
-		storage = "s3"
-	} else {
-		// The checked part fails the copy unless it is exactly the part's octets.
-		var source *checkedPart
-		if source, err = h.openCheckedPart(ctx, part); err != nil {
-			return "", "", "", err
-		}
-		defer func() { _ = source.Close() }()
-		ref, checksum, _, err = attachmentstore.PutIndependentFilesystemReader(ctx, h.forwardRoot, source)
-		storage = "filesystem"
+	source, err := h.openCheckedPart(ctx, part)
+	if err != nil {
+		return "", "", "", err
 	}
-	// The upload reads the part to its size and no further, so only its checksum can
-	// show a part that is longer.
-	if err == nil && part.Checksum != "" && checksum != part.Checksum {
-		err = errForwardAttachment
+	if h.forwardStore == nil {
+		ref, checksum, _, err := attachmentstore.PutIndependentFilesystemReader(ctx, h.forwardRoot, source)
+		return "filesystem", ref, checksum, errors.Join(err, source.Close())
 	}
-	return storage, ref, checksum, err
+
+	// The S3 uploader seeks for signing and retries. Spool the verified GET
+	// before the PUT so the upload does not depend on an open download.
+	file, closeSpool, err := h.openOutboundSpool("restmail-sent-part-*")
+	if err != nil {
+		_ = source.Close()
+		return "", "", "", err
+	}
+	defer closeSpool()
+	_, err = attachmentstore.Copy(file, source)
+	if err := errors.Join(err, source.Close()); err != nil {
+		return "", "", "", err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", "", "", err
+	}
+	ref, checksum, err = h.forwardStore.PutIndependentReader(ctx, file, part.Size)
+	return "s3", ref, checksum, err
 }
 
-// reopeningReader is a part's bytes as an io.ReadSeeker, for an upload that reads them for
-// their checksum and then again to send them: seeking opens the part again, so it is never
-// held whole.
-type reopeningReader struct {
-	open      func() (io.ReadCloser, error)
-	size, pos int64
-	r         io.ReadCloser
-	rpos      int64
-}
-
-func (s *reopeningReader) Read(p []byte) (int, error) {
-	if s.pos >= s.size {
-		return 0, io.EOF
-	}
-	if s.r == nil || s.rpos != s.pos {
-		if err := s.Close(); err != nil {
-			return 0, err
+// prepareComposedParts pins a checksum for any part supplied by a transform
+// so the rendered source and the independent Sent objects contain the same bytes.
+func (h *MessageHandler) prepareComposedParts(ctx context.Context, parts []pipeline.Attachment) (int64, error) {
+	var size int64
+	for i, part := range parts {
+		if part.Size < 0 || part.Size > h.maxForwardBytes-size {
+			return 0, errForwardTooLarge
 		}
-		r, err := s.open()
-		if err != nil {
-			return 0, err
-		}
-		s.r, s.rpos = r, 0
-		if s.pos > 0 {
-			skipped, err := io.CopyN(io.Discard, r, s.pos)
-			s.rpos = skipped
+		if part.Checksum == "" {
+			checksum, err := h.checkForwardPart(ctx, part)
 			if err != nil {
 				return 0, err
 			}
+			parts[i].Checksum = checksum
 		}
+		size += part.Size
 	}
-	if left := s.size - s.pos; int64(len(p)) > left {
-		p = p[:left]
-	}
-	n, err := s.r.Read(p)
-	s.pos += int64(n)
-	s.rpos += int64(n)
-	if err == io.EOF && s.pos < s.size {
-		err = io.ErrUnexpectedEOF
-	} else if err == io.EOF {
-		err = nil
-	}
-	return n, err
+	return size, nil
 }
 
-func (s *reopeningReader) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekStart:
-	case io.SeekCurrent:
-		offset += s.pos
-	case io.SeekEnd:
-		offset += s.size
-	default:
-		return 0, errors.New("invalid seek mode")
-	}
-	if offset < 0 {
-		return 0, errors.New("negative offset")
-	}
-	s.pos = offset
-	return offset, nil
-}
-
-func (s *reopeningReader) Close() error {
-	if s.r == nil {
-		return nil
-	}
-	err := s.r.Close()
-	s.r = nil
-	return err
-}
-
-// The normal send validation, sender policy, rate limit and outbound pipeline
-// have already run. Commit the forward's Sent copy, independent attachment
-// references, quota and recipient work together; refuse any partial outcome.
-func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, sender *models.Mailbox, sent *models.Message, parts []pipeline.Attachment, extra map[string]string, queued *traceInputs) (endpoint.Status[any], error) {
-	var zero endpoint.Status[any]
-	// Outbound transforms may replace content with a stored reference. Read the
-	// transformed parts with the same bounds and integrity checks before MIME,
-	// into a copy: the caller's parts stay as they were passed.
-	parts = append([]pipeline.Attachment(nil), parts...)
-	remaining := h.maxForwardBytes
-	for i, part := range parts {
-		data, err := h.forwardPartBytes(r.Context(), part, remaining)
-		if err != nil {
-			return zero, err
+func reserveForwardStorage(tx *gorm.DB, sent *models.Message, attachmentBytes int64) error {
+	cost := int64(sent.SizeBytes) + attachmentBytes
+	if err := repositories.ReserveStorage(tx, sent.MailboxID, cost); err != nil {
+		if errors.Is(err, repositories.ErrStorageQuota) {
+			return endpoint.Refuse(422, "mailbox_full", "The sender account has insufficient quota")
 		}
-		remaining -= int64(len(data))
-		parts[i].Content = base64.StdEncoding.EncodeToString(data)
-		parts[i].Size = int64(len(data))
-		// The checked bytes are the part from here on, whatever it referred to.
-		parts[i].Storage, parts[i].Ref = "", ""
+		return err
 	}
-	raw, err := buildOutboundRaw(outboundMessage{Sender: req.Sender, FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, References: sent.References, Date: sent.ReceivedAt, Extra: withListUnsubscribe(extra, req.ListUnsubscribe), Attachments: parts})
-	if err != nil {
-		return zero, endpoint.Refuse(500, "internal_error", "Failed to build the forwarded message")
-	}
-	unsigned := raw
-	raw, err = h.signOutboundDKIM(r.Context(), rmail.DomainFromAddress(req.From), raw)
-	if err != nil {
-		return zero, endpoint.Refuse(503, "deferred", "Try again later")
-	}
-	// As for a send: a one-click claim must not leave unsigned (#144).
-	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && raw == unsigned {
-		return zero, endpoint.Refuse(503, "deferred", "Try again later")
-	}
-	if int64(len(raw)) > h.maxForwardBytes {
-		return zero, errForwardTooLarge
-	}
-	sent.RawMessage, sent.RawSize, sent.HasAttachments = raw, len(raw), len(parts) > 0
-	var attachmentBytes int64
-	for _, part := range parts {
-		attachmentBytes += part.Size
-	}
-	recipients := append(append(append([]string{}, req.To...), req.Cc...), req.Bcc...)
-	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		cost := int64(sent.SizeBytes) + attachmentBytes
-		if err := repositories.ReserveStorage(tx, sender.ID, cost); err != nil {
-			if errors.Is(err, repositories.ErrStorageQuota) {
-				return endpoint.Refuse(422, "mailbox_full", "The sender account has insufficient quota")
-			}
-			return err
-		}
-		usage := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", sender.ID).Updates(map[string]any{"subject_bytes": gorm.Expr("subject_bytes + ?", len(sent.Subject)), "body_bytes": gorm.Expr("body_bytes + ?", len(sent.BodyText)+len(sent.BodyHTML)), "attachment_bytes": gorm.Expr("attachment_bytes + ?", attachmentBytes), "message_count": gorm.Expr("message_count + 1")})
-		if usage.Error != nil {
-			return usage.Error
-		}
-		if usage.RowsAffected != 1 {
-			return errors.New("sender quota usage missing")
-		}
-		if err := tx.Create(sent).Error; err != nil {
-			return err
-		}
-		for _, part := range parts {
-			// The Sent copy's own object, decoded from the checked content as it is
-			// stored: the part is not held a second time.
-			storage, ref, checksum, err := h.putIndependentPart(r.Context(), part)
-			if err != nil {
-				return err
-			}
-			row := models.Attachment{MessageID: sent.ID, Filename: part.Filename, ContentType: part.ContentType, SizeBytes: part.Size, StorageType: storage, StorageRef: ref, Checksum: checksum, Disposition: part.Disposition, ContentID: part.ContentID}
-			if err := tx.Create(&row).Error; err != nil {
-				return err
-			}
-		}
-		// Every recipient goes on the outbound queue, one on this server as much
-		// as one elsewhere (#1564): the worker delivers it through the normal route.
-		rows := queueRowsFor(recipients, sent.ID, req.From, raw, req.RequireTLS)
-		return tx.Create(&rows).Error
+	usage := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", sent.MailboxID).Updates(map[string]any{
+		"subject_bytes":    gorm.Expr("subject_bytes + ?", len(sent.Subject)),
+		"body_bytes":       gorm.Expr("body_bytes + ?", len(sent.BodyText)+len(sent.BodyHTML)),
+		"attachment_bytes": gorm.Expr("attachment_bytes + ?", attachmentBytes),
+		"message_count":    gorm.Expr("message_count + 1"),
 	})
-	if err != nil {
-		return zero, fmt.Errorf("commit forwarded message: %w", err)
+	if usage.Error != nil {
+		return usage.Error
 	}
-	if queued != nil {
-		queued.Outcome = outcomeQueued
-		queued.RFCMessageID = sent.MsgID
-		id := sent.ID
-		queued.MessageID = &id
-		h.recordTrace(r.Context(), buildTrace(*queued))
+	if usage.RowsAffected != 1 {
+		return errors.New("sender quota usage missing")
 	}
-	if h.broker != nil {
-		h.broker.Publish(r.Context(), sender.ID, SSEEvent{Type: "message_sent", Data: map[string]any{"message_id": sent.ID, "folder": "Sent", "subject": sent.Subject}})
-	}
-	for _, rcpt := range recipients {
-		contact := models.Contact{MailboxID: sender.ID, Email: rcpt}
-		h.db.WithContext(r.Context()).Where(contact).Attrs(models.Contact{TrustLevel: "auto", Source: "sent"}).FirstOrCreate(&models.Contact{})
-	}
-	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(*sent)}, nil
+	return nil
 }
 
-func (h *MessageHandler) forwardPartBytes(ctx context.Context, part pipeline.Attachment, remaining int64) ([]byte, error) {
-	var data []byte
-	var err error
-	if part.Ref == "" {
-		data, err = base64.StdEncoding.DecodeString(part.Content)
-	} else {
-		var reader io.ReadCloser
-		if reader, err = h.openForwardPart(ctx, part); err != nil {
-			return nil, errForwardAttachment
+func (h *MessageHandler) saveSentParts(ctx context.Context, messageID uint, parts []pipeline.Attachment) error {
+	for _, part := range parts {
+		storage, ref, checksum, err := h.putIndependentPart(ctx, part)
+		if err != nil {
+			return err
 		}
-		data, err = io.ReadAll(io.LimitReader(reader, remaining+1))
-		closeErr := reader.Close()
-		if err == nil {
-			err = closeErr
+		row := models.Attachment{
+			MessageID: messageID, Filename: part.Filename, ContentType: part.ContentType, SizeBytes: part.Size,
+			StorageType: storage, StorageRef: ref, Checksum: checksum, Disposition: part.Disposition, ContentID: part.ContentID,
+		}
+		if err := h.db.Create(&row).Error; err != nil {
+			return err
 		}
 	}
-	if err != nil || ctx.Err() != nil {
-		return nil, errForwardAttachment
-	}
-	if int64(len(data)) > remaining {
-		return nil, errForwardTooLarge
-	}
-	if int64(len(data)) != part.Size || (part.Checksum != "" && fmt.Sprintf("%x", sha256.Sum256(data)) != part.Checksum) {
-		return nil, errForwardAttachment
-	}
-	return data, nil
+	return nil
 }

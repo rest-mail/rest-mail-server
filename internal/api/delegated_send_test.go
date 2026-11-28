@@ -40,7 +40,7 @@ func (c *delegatedSendConnection) ExecContext(ctx context.Context, q string, arg
 	if strings.HasPrefix(q, `UPDATE "messages"`) || strings.HasPrefix(q, `DELETE FROM "messages"`) {
 		return driver.RowsAffected(1), nil
 	}
-	return c.importConnection.ExecContext(ctx, q, args)
+	return c.forwardConnection.ExecContext(ctx, q, args)
 }
 func (c *delegatedSendConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
 	if strings.Contains(q, "JOIN role_capabilities") {
@@ -117,7 +117,10 @@ func TestDelegatedSendingCapabilitiesAndAudit(t *testing.T) {
 				var entries []*models.AuditEntry
 				auditor := middleware.NewAuditor(func(e *models.AuditEntry) error { entries = append(entries, e); return nil }, nil, nil)
 				router := chi.NewRouter()
-				handlers.NewMessageHandler(db, nil, nil, "", nil).RegisterCompose(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, func(action string, opts ...middleware.AuditOption) endpoint.Middleware {
+				handler := handlers.NewMessageHandler(db, nil, nil, "", nil)
+				source := filesystemTestSources(t, db)
+				handler.SetMessageSources(source)
+				handler.RegisterCompose(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, func(action string, opts ...middleware.AuditOption) endpoint.Middleware {
 					return endpoint.Middleware{Wrap: auditor.Audit(action, opts...)}
 				})
 				path := "/api/v1/messages/send"
@@ -187,7 +190,7 @@ func TestDelegatedSendingCapabilitiesAndAudit(t *testing.T) {
 				if len(c.queue) != 1 {
 					t.Fatalf("queued %d messages", len(c.queue))
 				}
-				raw := c.queue[0]["raw_message"].(string)
+				raw := readTestSource(t, source, c.queue[0]["source_ref"].(string))
 				message, err := mail.ReadMessage(strings.NewReader(raw))
 				if err != nil {
 					t.Fatal(err)
@@ -235,7 +238,10 @@ func TestDelegatedSendExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			router := chi.NewRouter()
-			handlers.NewMessageHandler(db, nil, nil, "", nil).RegisterCompose(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, func(string, ...middleware.AuditOption) endpoint.Middleware {
+			handler := handlers.NewMessageHandler(db, nil, nil, "", nil)
+			source := filesystemTestSources(t, db)
+			handler.SetMessageSources(source)
+			handler.RegisterCompose(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, func(string, ...middleware.AuditOption) endpoint.Middleware {
 				return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
 			})
 			claims := &auth.Claims{AccountID: actorID, Address: "actor@example.test"}
@@ -268,7 +274,7 @@ func TestDelegatedSendExamples(t *testing.T) {
 				t.Fatalf("stored %d messages, queued %d", len(c.state.messages), len(c.queue))
 			}
 			sent, data := c.state.messages[0], got["data"]
-			raw, _ := c.queue[0]["raw_message"].(string)
+			raw := readTestSource(t, source, c.queue[0]["source_ref"].(string))
 			assertExampleReceipt(t, data, raw, sent["sealed_hash"])
 			data["sealed_hash"] = want["data"]["sealed_hash"]
 			if data["id"] != float64(sent["id"].(int64)) || data["message_id"] != sent["message_id"] || data["thread_id"] != sent["thread_id"] ||

@@ -17,6 +17,7 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -125,8 +126,8 @@ func HasDKIMKey(db *gorm.DB, senderDomain string) (bool, error) {
 // SignDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes with the
 // sender domain's key, returning the signed message. DKIM must be signed over
 // what is transmitted, so this operates on the raw message directly rather than
-// a reconstructed representation. It is the only DKIM signer: the API send path,
-// SMTP submission and the queue worker all reach it.
+// a reconstructed representation. Composed API mail uses DKIMSignature to
+// sign its spooled source instead.
 //
 // A domain with no key configured is not an error — the message is returned
 // unchanged. A domain WITH a key either signs or fails CLOSED: a key that cannot
@@ -136,12 +137,38 @@ func HasDKIMKey(db *gorm.DB, senderDomain string) (bool, error) {
 // A nil db or empty senderDomain returns the message unchanged — there is
 // nothing to look a key up with.
 func SignDKIM(ctx context.Context, db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
-	domain, priv, asciiDomain, err := domainKey(ctx, db, masterKey, senderDomain, "dkim sign")
+	opt, err := dkimOptions(ctx, db, masterKey, senderDomain)
 	if err != nil {
 		return "", err
 	}
-	if priv == nil {
+	if opt.PrivateKey == nil {
 		return raw, nil
+	}
+	val, err := dkim.Sign([]byte(raw), opt)
+	if err != nil {
+		return "", dkimSignError(ctx, senderDomain, err)
+	}
+	return "DKIM-Signature: " + val + "\r\n" + raw, nil
+}
+
+// DKIMSignature returns the folded header to prepend to a rendered source.
+// An empty result means the sender domain has no configured signing key.
+func DKIMSignature(ctx context.Context, db *gorm.DB, masterKey, senderDomain string, raw io.Reader) (string, error) {
+	opt, err := dkimOptions(ctx, db, masterKey, senderDomain)
+	if err != nil || opt.PrivateKey == nil {
+		return "", err
+	}
+	signature, err := SignDKIMReader(raw, opt)
+	if err != nil {
+		return "", dkimSignError(ctx, senderDomain, err)
+	}
+	return signature, nil
+}
+
+func dkimOptions(ctx context.Context, db *gorm.DB, masterKey, senderDomain string) (dkim.SignOptions, error) {
+	domain, priv, asciiDomain, err := domainKey(ctx, db, masterKey, senderDomain, "dkim sign")
+	if err != nil || priv == nil {
+		return dkim.SignOptions{}, err
 	}
 	// go-dkim's defaults sign the RFC 6376 §5.4.1 set and oversign the fields
 	// a reader sees, so a From, Subject or Reply-To added after signing breaks
@@ -149,19 +176,19 @@ func SignDKIM(ctx context.Context, db *gorm.DB, masterKey, senderDomain, raw str
 	// lists are given in full: the defaults plus List-Unsubscribe-Post, which
 	// RFC 8058 §4 requires signed and RFC 6376 predates (#144). A field the
 	// message lacks is not named, so plain mail signs exactly as before.
-	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
+	return dkim.SignOptions{
 		Domain:     asciiDomain,
 		Selector:   domain.DKIMSelector,
 		PrivateKey: priv,
 		Time:       time.Now().Unix(),
 		Headers:    signedHeaders,
 		Oversign:   dkim.DefaultOversignedHeaders,
-	})
-	if err != nil {
-		slog.ErrorContext(ctx, "outbound dkim sign failed (fail-closed)", "domain", senderDomain, "error", err)
-		return "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
-	}
-	return "DKIM-Signature: " + val + "\r\n" + raw, nil
+	}, nil
+}
+
+func dkimSignError(ctx context.Context, senderDomain string, err error) error {
+	slog.ErrorContext(ctx, "outbound dkim sign failed (fail-closed)", "domain", senderDomain, "error", err)
+	return fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
 }
 
 // domainKey loads the key a hosted domain signs its mail with, and the domain's A-label

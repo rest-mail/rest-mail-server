@@ -189,12 +189,13 @@ func TestUnsubscribeMailto_SendsThroughTheSendPath(t *testing.T) {
 	if len(queued) != 1 || queued[0].Recipient != "leave@remote.test" || queued[0].Sender != mailbox.Address {
 		t.Fatalf("queued = %+v, want one copy from %s to leave@remote.test", queued, mailbox.Address)
 	}
-	fields := headerFields(queued[0].RawMessage)
+	source := composedRaw(t, h, queued[0].SourceRef)
+	fields := headerFields(source)
 	if got := fields["subject"]; len(got) != 1 || got[0] != "remove me" {
 		t.Fatalf("Subject = %q", got)
 	}
-	if !strings.Contains(queued[0].RawMessage, "please") {
-		t.Fatalf("the URI's body is not in the message:\n%s", queued[0].RawMessage)
+	if !strings.Contains(source, "please") {
+		t.Fatalf("the URI's body is not in the message:\n%s", source)
 	}
 
 	// The send path's own checks apply: a from the session can't reach answers 404, as

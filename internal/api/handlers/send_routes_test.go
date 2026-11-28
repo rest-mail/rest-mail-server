@@ -46,7 +46,7 @@ func deliverQueued(t *testing.T, h *MessageHandler, db *gorm.DB, sent models.Mes
 			RecipientsTo: json.RawMessage(sent.RecipientsTo), RecipientsCc: json.RawMessage(sent.RecipientsCc),
 			Subject: sent.Subject, BodyText: sent.BodyText, BodyHTML: sent.BodyHTML,
 			MessageID: sent.MsgID, InReplyTo: sent.InReplyTo, References: sent.References,
-			RawMessage: row.RawMessage, RequireTLS: row.RequireTLS,
+			RawMessage: composedRaw(t, h, row.SourceRef), RequireTLS: row.RequireTLS,
 		}); err != nil {
 			t.Fatalf("deliver to %s: %v", row.Recipient, err)
 		}

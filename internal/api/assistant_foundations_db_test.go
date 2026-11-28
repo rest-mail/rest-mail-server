@@ -160,13 +160,13 @@ func TestAC02AssistantFoundationDraftSendRequiresWriteAndSend(t *testing.T) {
 	var sent struct{ Data handlers.Message }
 	decodeInto(t, response, &sent)
 	got := assistantFoundationStored(t, fixture, sent.Data.ID)
-	if got.ID == stored.ID || got.IsDraft || got.Folder != "Sent" || got.Subject != stored.Subject || got.BodyText != stored.BodyText || got.SubmittedAt != nil || got.RawMessage == "" {
+	if got.ID == stored.ID || got.IsDraft || got.Folder != "Sent" || got.Subject != stored.Subject || got.BodyText != stored.BodyText || got.SubmittedAt != nil || fixture.sentSource(got) == "" {
 		t.Fatalf("sent state does not match reviewed draft: %+v", got)
 	}
 	assistantFoundationCount(t, fixture, &models.Message{}, 1)
 	assistantFoundationCount(t, fixture, &models.OutboundQueue{}, 1)
 	var queued models.OutboundQueue
-	if err := fixture.db.First(&queued).Error; err != nil || queued.MessageID == nil || *queued.MessageID != got.ID || queued.Recipient != "recipient@remote.test" || queued.Sender != fixture.address || queued.Status != "pending" || queued.RawMessage != got.RawMessage {
+	if err := fixture.db.First(&queued).Error; err != nil || queued.MessageID == nil || *queued.MessageID != got.ID || queued.Recipient != "recipient@remote.test" || queued.Sender != fixture.address || queued.Status != "pending" || !sameSourceRef(queued.SourceRef, got.SourceRef) {
 		t.Fatalf("queue does not link to Sent: %+v (%v)", queued, err)
 	}
 	if read := assistantFoundationRead(t, fixture, got.ID, reader); read.Folder != "Sent" || read.IsDraft || read.BodyText != stored.BodyText {

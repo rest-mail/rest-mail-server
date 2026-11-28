@@ -47,7 +47,7 @@ func layeredSendFixture(t *testing.T) (*gorm.DB, *MessageHandler, models.Mailbox
 	if err := db.Create(&models.QuotaUsage{MailboxID: child.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	h := NewMessageHandler(db, nil, nil, "", nil)
+	h := testMessageHandler(t, db)
 	h.forwardRoot = t.TempDir()
 	h.SetLayeredSendLimits(&sendlimits.Service{Defaults: models.SendLimitValues{MessagesPerHour: 1, MessagesPerDay: 10, RecipientsPerHour: 10, RecipientsPerDay: 20}})
 	return db, h, owner, child

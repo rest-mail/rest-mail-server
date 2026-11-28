@@ -211,6 +211,7 @@ func newCredentialFixture(t *testing.T) *credentialFixture {
 func newCredentialFixtureWith(t *testing.T, cfg *config.Config) *credentialFixture {
 	t.Helper()
 	db := openCredentialScratchDB(t)
+	setTestMessageStorage(t, cfg)
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 	routers := NewRouters(db, jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)

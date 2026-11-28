@@ -37,7 +37,7 @@ func threadRootFixture(t *testing.T) (*gorm.DB, authzFixture, *MessageHandler) {
 	if err := tx.Create(&[]models.QuotaUsage{{MailboxID: fixture.ownerMailbox.ID}, {MailboxID: fixture.attackerMailbox.ID}}).Error; err != nil {
 		t.Fatal(err)
 	}
-	return tx, fixture, NewMessageHandler(tx, nil, nil, "", nil)
+	return tx, fixture, testMessageHandler(t, tx)
 }
 
 func TestThreadRootDeliveryAndDraftRoutes(t *testing.T) {
@@ -185,7 +185,7 @@ func TestThreadRootConversationThroughSendRoutes(t *testing.T) {
 		if err := tx.Where("message_id = ?", sent.ID).First(&queued).Error; err != nil {
 			t.Fatal(err)
 		}
-		parsed, err := rmime.Parse([]byte(queued.RawMessage))
+		parsed, err := rmime.Parse([]byte(composedRaw(t, handler, queued.SourceRef)))
 		if err != nil {
 			t.Fatal(err)
 		}

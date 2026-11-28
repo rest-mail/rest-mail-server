@@ -127,7 +127,7 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 			t.Fatalf("send must replace the draft with one Sent row and one recipient: queue=%d messages=%+v", queued, messages)
 		}
 		var row models.OutboundQueue
-		if err := f.db.First(&row).Error; err != nil || row.MessageID == nil || *row.MessageID != messages[0].ID || row.RawMessage != messages[0].RawMessage || row.Recipient != "someone@imap.restmail.test" {
+		if err := f.db.First(&row).Error; err != nil || row.MessageID == nil || *row.MessageID != messages[0].ID || !sameSourceRef(row.SourceRef, messages[0].SourceRef) || row.Recipient != "someone@imap.restmail.test" {
 			t.Fatal("outgoing work does not refer to the committed Sent source")
 		}
 	} else {
@@ -163,7 +163,11 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 		}
 		data, want := actual["data"], expected["data"]
 		stored := messages[0]
-		if data["id"] != float64(stored.ID) || data["mailbox_id"] != float64(stored.MailboxID) || data["sender"] != stored.Sender || data["subject"] != stored.Subject || data["size_bytes"] != float64(stored.SizeBytes) || data["raw_size"] != float64(len(stored.RawMessage)) || stored.RawSize != len(stored.RawMessage) {
+		raw := stored.RawMessage
+		if name == "sent" {
+			raw = f.sentSource(stored)
+		}
+		if data["id"] != float64(stored.ID) || data["mailbox_id"] != float64(stored.MailboxID) || data["sender"] != stored.Sender || data["subject"] != stored.Subject || data["size_bytes"] != float64(stored.SizeBytes) || data["raw_size"] != float64(len(raw)) || stored.RawSize != len(raw) {
 			t.Fatalf("response and stored content/identity/byte counts differ: %s", body)
 		}
 		for _, field := range []string{"received_at", "created_at", "updated_at"} {
@@ -181,7 +185,7 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 			data[field] = want[field]
 		}
 		if name == "sent" {
-			assertExampleReceipt(t, data, stored.RawMessage, stored.SealedHash)
+			assertExampleReceipt(t, data, raw, stored.SealedHash)
 			data["sealed_hash"] = want["sealed_hash"]
 			if stored.DowngradedSize == 0 || data["downgraded_size"] != float64(stored.DowngradedSize) {
 				t.Fatalf("sent downgraded size differs from storage: %v, stored %d", data["downgraded_size"], stored.DowngradedSize)
@@ -189,8 +193,8 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 			if stored.POP3UTF8Size == 0 || data["pop3_utf8_size"] != float64(stored.POP3UTF8Size) {
 				t.Fatalf("sent POP3 size differs from storage: %v, stored %d", data["pop3_utf8_size"], stored.POP3UTF8Size)
 			}
-			if data["imap_size"] != float64(len(stored.RawMessage)) || data["imap_utf8_size"] != float64(len(stored.RawMessage)) {
-				t.Fatalf("sent IMAP sizes differ from the 7-bit source: %v and %v, source %d", data["imap_size"], data["imap_utf8_size"], len(stored.RawMessage))
+			if data["imap_size"] != float64(len(raw)) || data["imap_utf8_size"] != float64(len(raw)) {
+				t.Fatalf("sent IMAP sizes differ from the 7-bit source: %v and %v, source %d", data["imap_size"], data["imap_utf8_size"], len(raw))
 			}
 			for _, field := range []string{"raw_size", "downgraded_size", "pop3_utf8_size", "imap_size", "imap_utf8_size"} {
 				data[field] = want[field]

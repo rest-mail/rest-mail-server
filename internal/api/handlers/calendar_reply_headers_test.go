@@ -61,7 +61,7 @@ func newCalendarReplyFixture(t *testing.T) *calendarReplyFixture {
 	}
 	return &calendarReplyFixture{
 		tx:        tx,
-		h:         NewMessageHandler(tx, nil, nil, "", nil),
+		h:         testMessageHandler(t, tx),
 		attendee:  seed("attendee"),
 		organizer: seed("organizer"),
 		remote:    "organizer@remote-" + name,
@@ -151,7 +151,7 @@ func (f *calendarReplyFixture) queued(t *testing.T, recipient string) string {
 	if err := f.tx.Where("recipient = ?", recipient).First(&entry).Error; err != nil {
 		t.Fatalf("no queued reply for %s: %v", recipient, err)
 	}
-	return entry.RawMessage
+	return composedRaw(t, f.h, entry.SourceRef)
 }
 
 // sentCopy is the reply as the attendee's Sent folder holds it.
@@ -382,8 +382,9 @@ func TestCalendarReplySentCopyStoresItsSource(t *testing.T) {
 	f := newCalendarReplyFixture(t)
 	f.reply(t, f.deliverInvitation(t, f.remote, "SUMMARY:Lunch"))
 	raw, sent := f.queued(t, f.remote), f.sentCopy(t)
-	if raw == "" || sent.RawMessage != raw || sent.RawSize != len(raw) || sent.SizeBytes != len(raw) {
-		t.Fatalf("the Sent copy stores %d octets with raw_size %d and size_bytes %d; the reply is %d", len(sent.RawMessage), sent.RawSize, sent.SizeBytes, len(raw))
+	sentRaw := composedRaw(t, f.h, sent.SourceRef)
+	if raw == "" || sentRaw != raw || sent.RawSize != len(raw) || sent.SizeBytes != len(raw) {
+		t.Fatalf("the Sent copy stores %d octets with raw_size %d and size_bytes %d; the reply is %d", len(sentRaw), sent.RawSize, sent.SizeBytes, len(raw))
 	}
 	if sent.IMAPSize == 0 || sent.POP3UTF8Size == 0 || sent.DowngradedSize == 0 {
 		t.Fatalf("the Sent copy's sizes are not measured: %d %d %d", sent.IMAPSize, sent.POP3UTF8Size, sent.DowngradedSize)

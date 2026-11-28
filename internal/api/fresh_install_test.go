@@ -193,8 +193,9 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	}
 
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
-	routers := NewRouters(db, jwtSvc, &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey,
-		InternalMTLSEnabled: true}, nil)
+	cfg := &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey, InternalMTLSEnabled: true}
+	setTestMessageStorage(t, cfg)
+	routers := NewRouters(db, jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)
 	f := &freshInstall{t: t, db: db, router: routers.Public}
 	_, submission, rootCAs := startSubmission(t, db, f.router, routers.Internal)
@@ -319,7 +320,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	if err := db.Exec("UPDATE outbound_queue SET next_attempt = now() + interval '1 day' WHERE recipient = 'someone@elsewhere.test'").Error; err != nil {
 		t.Fatal(err)
 	}
-	startMailRoute(t, db, f.router, routers.Internal)
+	startMailRoute(t, db, f.router, routers.Internal, testMessageSources(t, db, cfg))
 	deliveredPastGreylist(t, db, "chris@fresh.test")
 	var inbox []struct {
 		Subject string `json:"subject"`

@@ -25,6 +25,7 @@ const sendRemoteRecipient = "far@remote.example"
 
 type sendQueueDB struct {
 	serviceProbeTestDB
+	testSourceLedger
 	failLookup, failQueue bool
 
 	mu      sync.Mutex
@@ -46,6 +47,9 @@ func (d *sendQueueDB) QueryContext(_ context.Context, q string, args []driver.Na
 		}
 	}
 	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
+	}
+	if rows, ok := d.testSourceLedger.query(q, args); ok {
 		return rows, nil
 	}
 	switch {
@@ -72,7 +76,10 @@ func (d *sendQueueDB) QueryContext(_ context.Context, q string, args []driver.Na
 	return &deliveryReadRows{}, nil
 }
 
-func (d *sendQueueDB) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
+func (d *sendQueueDB) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.testSourceLedger.exec(q, args)
 	return driver.RowsAffected(1), nil
 }
 
@@ -99,7 +106,7 @@ func sendWith(t *testing.T, d *sendQueueDB) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := NewMessageHandler(db, nil, nil, "", nil)
+	h := testMessageHandler(t, db)
 	rr := sendAs(h, &auth.Claims{AccountID: 7, Address: "owner@example.test", CredentialID: 3, CredentialKind: "app_password"},
 		`{"from":"owner@example.test","to":["`+sendRemoteRecipient+`"],"subject":"hello","body_text":"x"}`)
 	return rr.Code, rr.Body.String()

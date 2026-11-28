@@ -9,7 +9,6 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
-	"gorm.io/gorm"
 )
 
 type messageEventPublisher interface {
@@ -29,9 +28,7 @@ func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoi
 		return sent, errNotSignedIn
 	}
 	effects := &draftSendEffects{handler: h}
-	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		sender := *h
-		sender.db = tx
+	err := h.sendTransaction(r.Context(), func(sender *MessageHandler) error {
 		if h.broker != nil {
 			sender.broker = effects
 		}
@@ -87,7 +84,7 @@ func (e *draftSendEffects) Record(trace models.MessageTrace) {
 
 // draftSendRefusal keeps sendDraft's 422 a validation failure with details, as
 // it was before drafts carried uploads. A Sent copy with uploads is charged to
-// the sender's quota (commitForward), and that refusal names from, the field
+// the sender's quota, and that refusal names from, the field
 // that chose the account, as updateDraft does when a move would overfill it.
 func draftSendRefusal(err error) error {
 	var refusal *endpoint.Error
