@@ -48,9 +48,17 @@ tasks:
       - |
         echo "  building {{.WEBMAIL_IMAGE}} (target={{.WEBMAIL_MODE}})"
         if [ "{{.WEBMAIL_MODE}}" = "prod" ]; then
-          docker build -t {{.WEBMAIL_IMAGE}} --target prod --build-arg NGINX_BASE_PATH={{.WEBMAIL_BASE_PATH}} {{.WEBMAIL_BUILD_CONTEXT}} >$OUTPUT 2>&1
+          if ! out=$(docker build -t {{.WEBMAIL_IMAGE}} --target prod --build-arg NGINX_BASE_PATH={{.WEBMAIL_BASE_PATH}} {{.WEBMAIL_BUILD_CONTEXT}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         else
-          docker build -t {{.WEBMAIL_IMAGE}} --target dev {{.WEBMAIL_BUILD_CONTEXT}} >$OUTPUT 2>&1
+          if ! out=$(docker build -t {{.WEBMAIL_IMAGE}} --target dev {{.WEBMAIL_BUILD_CONTEXT}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         fi
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
@@ -85,13 +93,17 @@ tasks:
         fi
         echo "  installing webmail node_modules from pnpm-lock.yaml"
         docker volume create --label "$RESTMAIL_LABEL" {{.WEBMAIL_MODULES_VOLUME}} >/dev/null
-        docker run --rm --label "$RESTMAIL_LABEL" \
+        if ! out=$(docker run --rm --label "$RESTMAIL_LABEL" \
           -v "$(pwd)/webmail:/app" \
           -v {{.WEBMAIL_MODULES_VOLUME}}:/app/node_modules \
           -w /app \
           -e CI=true \
           --entrypoint pnpm \
-          {{.WEBMAIL_IMAGE}} install --frozen-lockfile >$OUTPUT 2>&1
+          {{.WEBMAIL_IMAGE}} install --frozen-lockfile 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   up:
     desc: Start the webmail container (recreates if already present)
@@ -115,7 +127,7 @@ tasks:
           --cap-drop ALL \
           --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.WEBMAIL_MODE}}" = "prod" ]; then
-          docker run -d --label "$RESTMAIL_LABEL" --name {{.WEBMAIL_CONTAINER_NAME}} \
+          if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.WEBMAIL_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.WEBMAIL_NETWORK}} \
@@ -125,9 +137,13 @@ tasks:
             -l docker-proxy.webmail.host={{.WEBMAIL_PROXY_HOST}} \
             -l docker-proxy.webmail.port={{.WEBMAIL_PROD_PORT}} \
             -l docker-proxy.webmail.path={{.WEBMAIL_BASE_PATH}} \
-            {{.WEBMAIL_IMAGE}} >$OUTPUT 2>&1
+            {{.WEBMAIL_IMAGE}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         else
-          docker run -d --label "$RESTMAIL_LABEL" --name {{.WEBMAIL_CONTAINER_NAME}} \
+          if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.WEBMAIL_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.WEBMAIL_NETWORK}} \
@@ -142,7 +158,11 @@ tasks:
             -l docker-proxy.webmail.port={{.WEBMAIL_DEV_PORT}} \
             -l docker-proxy.webmail.path={{.WEBMAIL_BASE_PATH}} \
             -l docker-proxy.webmail.websocket=true \
-            {{.WEBMAIL_IMAGE}} >$OUTPUT 2>&1
+            {{.WEBMAIL_IMAGE}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         fi
 
   down:

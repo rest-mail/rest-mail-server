@@ -148,7 +148,11 @@ tasks:
       - |
         if ! docker image inspect {{.PROMETHEUS_IMAGE}} >/dev/null 2>&1; then
           echo "  pulling {{.PROMETHEUS_UPSTREAM_IMAGE}} and tagging as {{.PROMETHEUS_IMAGE}}"
-          docker pull {{.PROMETHEUS_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          if ! out=$(docker pull "{{.PROMETHEUS_UPSTREAM_IMAGE}}" 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
           docker tag {{.PROMETHEUS_UPSTREAM_IMAGE}} {{.PROMETHEUS_IMAGE}}
         fi
       - |
@@ -163,7 +167,7 @@ tasks:
         #   * --web.enable-lifecycle OFF   — no remote POST /-/reload or /-/quit
         #                                    (off by default; never enabled here)
         #   * admin API stays off (default) — no remote TSDB delete/snapshot
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.PROMETHEUS_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.PROMETHEUS_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.PROMETHEUS_IP}} \
@@ -173,7 +177,11 @@ tasks:
           -v {{.PROMETHEUS_DATA_VOLUME}}:/prometheus \
           {{.PROMETHEUS_IMAGE}} \
           --config.file=/etc/prometheus/prometheus.yml \
-          --storage.tsdb.retention.time=30d >$OUTPUT 2>&1
+          --storage.tsdb.retention.time=30d 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   prometheus:down:
     desc: Stop and remove the prometheus container (preserves the data volume)
@@ -208,7 +216,11 @@ tasks:
       - |
         if ! docker image inspect {{.GRAFANA_IMAGE}} >/dev/null 2>&1; then
           echo "  pulling {{.GRAFANA_UPSTREAM_IMAGE}} and tagging as {{.GRAFANA_IMAGE}}"
-          docker pull {{.GRAFANA_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          if ! out=$(docker pull "{{.GRAFANA_UPSTREAM_IMAGE}}" 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
           docker tag {{.GRAFANA_UPSTREAM_IMAGE}} {{.GRAFANA_IMAGE}}
         fi
       - |
@@ -231,7 +243,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "{{.GRAFANA_ADMIN_PASSWORD}}" > "$SECRETS_ENV"
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.GRAFANA_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.GRAFANA_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.GRAFANA_IP}} \
@@ -242,7 +254,11 @@ tasks:
           -v "$(pwd)/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro" \
           -v "$(pwd)/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro" \
           -v {{.GRAFANA_DATA_VOLUME}}:/var/lib/grafana \
-          {{.GRAFANA_IMAGE}} >$OUTPUT 2>&1
+          {{.GRAFANA_IMAGE}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   grafana:down:
     desc: Stop and remove the grafana container (preserves the data volume)
@@ -270,7 +286,11 @@ tasks:
       - |
         if ! docker image inspect {{.POSTGRES_EXPORTER_IMAGE}} >/dev/null 2>&1; then
           echo "  pulling {{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}} and tagging as {{.POSTGRES_EXPORTER_IMAGE}}"
-          docker pull {{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          if ! out=$(docker pull "{{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}}" 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
           docker tag {{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}} {{.POSTGRES_EXPORTER_IMAGE}}
         fi
       - |
@@ -288,12 +308,16 @@ tasks:
         chmod 600 "$SECRETS_ENV"
         printf 'DATA_SOURCE_NAME=postgresql://%s:%s@%s:5432/%s?sslmode=disable\n' \
           "{{.MONITORING_DB_USER}}" "{{.MONITORING_DB_PASS}}" "{{.MONITORING_DB_HOST}}" "{{.MONITORING_DB_NAME}}" > "$SECRETS_ENV"
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.POSTGRES_EXPORTER_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.POSTGRES_EXPORTER_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.POSTGRES_EXPORTER_IP}} \
           --env-file "$SECRETS_ENV" \
-          {{.POSTGRES_EXPORTER_IMAGE}} >$OUTPUT 2>&1
+          {{.POSTGRES_EXPORTER_IMAGE}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   postgres-exporter:down:
     desc: Stop and remove the postgres-exporter container
@@ -321,7 +345,11 @@ tasks:
       - |
         if ! docker image inspect {{.NODE_EXPORTER_IMAGE}} >/dev/null 2>&1; then
           echo "  pulling {{.NODE_EXPORTER_UPSTREAM_IMAGE}} and tagging as {{.NODE_EXPORTER_IMAGE}}"
-          docker pull {{.NODE_EXPORTER_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          if ! out=$(docker pull "{{.NODE_EXPORTER_UPSTREAM_IMAGE}}" 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
           docker tag {{.NODE_EXPORTER_UPSTREAM_IMAGE}} {{.NODE_EXPORTER_IMAGE}}
         fi
       - |
@@ -348,7 +376,7 @@ tasks:
             echo "  volume $vol not found, /volumes/$name not measured"
           fi
         done
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.NODE_EXPORTER_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.NODE_EXPORTER_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.NODE_EXPORTER_IP}} \
@@ -360,7 +388,11 @@ tasks:
           {{.NODE_EXPORTER_IMAGE}} \
           --collector.disable-defaults \
           --collector.filesystem \
-          --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|etc)($|/)' >$OUTPUT 2>&1
+          --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|etc)($|/)' 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   node-exporter:down:
     desc: Stop and remove the node-exporter container

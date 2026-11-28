@@ -49,7 +49,11 @@ tasks:
         # FQDN convention (ghcr.io/rest-mail/postgres:16-alpine). Idempotent.
         if ! docker image inspect {{.POSTGRES_IMAGE}} >/dev/null 2>&1; then
           echo "  pulling {{.POSTGRES_UPSTREAM_IMAGE}} and tagging as {{.POSTGRES_IMAGE}}"
-          docker pull {{.POSTGRES_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          if ! out=$(docker pull "{{.POSTGRES_UPSTREAM_IMAGE}}" 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
           docker tag {{.POSTGRES_UPSTREAM_IMAGE}} {{.POSTGRES_IMAGE}}
         fi
       - |
@@ -79,7 +83,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'POSTGRES_PASSWORD=%s\n' "{{.POSTGRES_DB_PASS}}" > "$SECRETS_ENV"
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.POSTGRES_CONTAINER_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.POSTGRES_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
           --network {{.POSTGRES_NETWORK}} \
@@ -93,7 +97,11 @@ tasks:
           --health-timeout 5s \
           --health-retries 5 \
           {{.POSTGRES_IMAGE}} \
-          -c shared_preload_libraries=pg_stat_statements >$OUTPUT 2>&1
+          -c shared_preload_libraries=pg_stat_statements 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   down:
     desc: Stop and remove postgres (preserves the data volume)

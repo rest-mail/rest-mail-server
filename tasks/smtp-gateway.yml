@@ -103,11 +103,15 @@ tasks:
           exit 0
         fi
         echo "  building {{.SMTP_GATEWAY_IMAGE}} (target: {{.SMTP_GATEWAY_MODE}})"
-        docker build \
+        if ! out=$(docker build \
           -t {{.SMTP_GATEWAY_IMAGE}} \
           --label rest-mail.mode={{.SMTP_GATEWAY_MODE}} --target {{.SMTP_GATEWAY_MODE}} \
           -f projects/smtp-gateway/Dockerfile \
-          . >$OUTPUT 2>&1
+          . 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   # ════════════════════════════════════════════════════════
@@ -206,7 +210,7 @@ tasks:
         if [ "{{.SMTP_GATEWAY_LOAD_LIMITS_OFF}}" = "true" ]; then
           LOAD_LIMITS="-e API_SEND_RATE_LIMIT_PER_MINUTE=0 -e API_SEND_RATE_LIMIT_PER_HOUR=0 -e SEND_LIMIT_MESSAGES_PER_DAY=0 -e SEND_LIMIT_RECIPIENTS_PER_HOUR=0 -e SEND_LIMIT_RECIPIENTS_PER_DAY=0 -e QUEUE_MAX_PER_DESTINATION=0"
         fi
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           $LOAD_LIMITS \
           --hostname {{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \
@@ -255,12 +259,16 @@ tasks:
           -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-smtp-delivery.key \
           -e INTERNAL_MTLS_SUBMISSION_CERT=/certs/internal-smtp-submission.crt \
           -e INTERNAL_MTLS_SUBMISSION_KEY=/certs/internal-smtp-submission.key \
-          {{.SMTP_GATEWAY_IMAGE}} >$OUTPUT 2>&1
+          {{.SMTP_GATEWAY_IMAGE}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
       - |
         api="{{.SMTP_GATEWAY_API_BASE_URL}}"; api="${api#*://}"; api="${api%%/*}"
         conf="events {}\nstream { server { listen 443 ssl; ssl_certificate {{.SMTP_GATEWAY_TLS_CERT_PATH}}; ssl_certificate_key {{.SMTP_GATEWAY_TLS_KEY_PATH}}; proxy_pass $api; } }\n"
         docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}}-https >"$OUTPUT" 2>&1 || true
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}}-https \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.SMTP_GATEWAY_CONTAINER_NAME}}-https \
           --security-opt no-new-privileges:true --user 10001:10001 --cap-drop ALL \
           --read-only $(sh "{{.TASKFILE_DIR}}/writable-volume.sh" {{.SMTP_GATEWAY_CONTAINER_NAME}}-https-tmp 10001 1777 /tmp) \
           --pids-limit 64 --memory 64m --cpus 0.25 \
@@ -269,7 +277,11 @@ tasks:
           -v {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
           --entrypoint sh nginxinc/nginx-unprivileged:1.30-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 \
           -c "$(cat "{{.TASKFILE_DIR}}/tls-front-reload.sh")" tls-front "$conf" \
-          {{.SMTP_GATEWAY_TLS_CERT_PATH}} {{.SMTP_GATEWAY_TLS_KEY_PATH}} >"$OUTPUT" 2>&1
+          {{.SMTP_GATEWAY_TLS_CERT_PATH}} {{.SMTP_GATEWAY_TLS_KEY_PATH}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   down:
     desc: Stop and remove smtp-gateway and its HTTPS front (preserves the logs volume)

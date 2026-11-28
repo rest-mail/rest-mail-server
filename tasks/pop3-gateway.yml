@@ -69,7 +69,11 @@ tasks:
           exit 0
         fi
         echo "  building {{.POP3_GATEWAY_IMAGE}} (target {{.POP3_GATEWAY_MODE}})"
-        docker build -t {{.POP3_GATEWAY_IMAGE}} --label rest-mail.mode={{.POP3_GATEWAY_MODE}} --target {{.POP3_GATEWAY_MODE}} -f projects/pop3-gateway/Dockerfile . >$OUTPUT 2>&1
+        if ! out=$(docker build -t {{.POP3_GATEWAY_IMAGE}} --label rest-mail.mode={{.POP3_GATEWAY_MODE}} --target {{.POP3_GATEWAY_MODE}} -f projects/pop3-gateway/Dockerfile . 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   up:
@@ -138,7 +142,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'DB_PASS=%s\n' "{{.POP3_GATEWAY_DB_PASS}}" > "$SECRETS_ENV"
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.POP3_GATEWAY_CONTAINER_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.POP3_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           --hostname {{.POP3_GATEWAY_RESTMAIL_HOSTNAME}} \
           --restart unless-stopped \
@@ -172,7 +176,11 @@ tasks:
           -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
           -e INTERNAL_MTLS_CLIENT_CERT=/certs/internal-pop3.crt \
           -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-pop3.key \
-          {{.POP3_GATEWAY_IMAGE}} >$OUTPUT 2>&1
+          {{.POP3_GATEWAY_IMAGE}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   down:
     desc: Stop and remove the pop3-gateway container (preserves logs volume)

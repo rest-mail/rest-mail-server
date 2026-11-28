@@ -34,7 +34,11 @@ tasks:
     cmds:
       - |
         echo "  building {{.JS_FILTER_IMAGE}} from {{.JS_FILTER_BUILD_CONTEXT}}"
-        docker build -t {{.JS_FILTER_IMAGE}} {{.JS_FILTER_BUILD_CONTEXT}} >$OUTPUT 2>&1
+        if ! out=$(docker build -t {{.JS_FILTER_IMAGE}} {{.JS_FILTER_BUILD_CONTEXT}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
   up:
@@ -80,7 +84,7 @@ tasks:
         : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
         printf 'JS_FILTER_TOKEN=%s\n' "{{.JS_FILTER_TOKEN}}" > "$SECRETS_ENV"
-        docker run -d --label "$RESTMAIL_LABEL" --name {{.JS_FILTER_CONTAINER_NAME}} \
+        if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.JS_FILTER_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
           --network "{{.JS_FILTER_PROJECT}}-js-filter-net" \
@@ -89,7 +93,11 @@ tasks:
           --health-interval 10s \
           --health-timeout 5s \
           --health-retries 3 \
-          {{.JS_FILTER_IMAGE}} >$OUTPUT 2>&1
+          {{.JS_FILTER_IMAGE}} 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   down:
     desc: Stop and remove the js-filter sidecar container (no-op if not running)
