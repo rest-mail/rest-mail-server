@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 )
 
 func runDataExport(t *testing.T, command, server, path string, extra ...string) (int, string, string) {
@@ -257,7 +259,7 @@ func TestDataExportUsageAndExistingDestinations(t *testing.T) {
 func TestVCardFoldingPreservesUTF8(t *testing.T) {
 	for _, value := range []string{strings.Repeat("a", 74) + "猫", strings.Repeat("Élodie猫", 50), strings.Repeat("x", 200)} {
 		var output bytes.Buffer
-		if err := writeVCardLine(&output, "FN:"+value); err != nil {
+		if err := vcard.WriteContact(&output, "urn:uuid:ed0fc7d0-3a26-40b7-96f5-e6b5cc4a51ee", vcard.Contact{ID: 1, Email: "contact@example.test", Name: value}); err != nil {
 			t.Fatal(err)
 		}
 		for _, line := range strings.Split(strings.TrimSuffix(output.String(), "\r\n"), "\r\n") {
@@ -265,7 +267,7 @@ func TestVCardFoldingPreservesUTF8(t *testing.T) {
 				t.Fatalf("bad folded line (%d bytes): %q", len(line), line)
 			}
 		}
-		if got := strings.ReplaceAll(output.String(), "\r\n ", ""); got != "FN:"+value+"\r\n" {
+		if got := strings.ReplaceAll(output.String(), "\r\n ", ""); !strings.Contains(got, "\r\nFN:"+value+"\r\n") {
 			t.Fatalf("unfolding changed text: %q", got)
 		}
 	}

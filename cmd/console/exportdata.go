@@ -8,18 +8,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
-	"unicode/utf8"
 
 	gomessage "github.com/emersion/go-message"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/vcard"
 )
 
 const exportDataUsage = `restmail %s — export account data through the public API
@@ -54,15 +52,7 @@ See docs/exporting-data.md.
 Exit status: 0 complete, 2 usage, 1 export failed.
 `
 
-type exportedContact struct {
-	ID         uint      `json:"id"`
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	TrustLevel string    `json:"trust_level"`
-	Source     string    `json:"source"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
+type exportedContact = vcard.Contact
 
 func runExportData(ctx context.Context, command string, args []string, token string, client *http.Client, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -184,64 +174,8 @@ func exportContactsFile(exporter *mailExporter, path string, overwrite bool, cou
 }
 
 func writeVCard(writer io.Writer, exporter *mailExporter, contact exportedContact) error {
-	address, err := mail.ParseAddress(contact.Email)
-	if contact.ID == 0 || err != nil || address.Address != contact.Email {
-		return errors.New("the server returned a contact without an id or valid email")
-	}
-	name := contact.Name
-	nameProperty := "FN"
-	if name == "" {
-		name = contact.Email
-	} else if name == contact.Email {
-		nameProperty += ";X-RESTMAIL-EXPLICIT-NAME=TRUE"
-	}
-	lines := []string{"BEGIN:VCARD", "VERSION:4.0", "UID:" + exporter.base.String() + fmt.Sprintf("/api/v1/accounts/%d/contacts/%d", exporter.account, contact.ID),
-		nameProperty + ":" + vcardText(name), "EMAIL:" + vcardText(contact.Email)}
-	for _, field := range []struct{ name, value string }{
-		{"X-RESTMAIL-TRUST-LEVEL", contact.TrustLevel}, {"X-RESTMAIL-SOURCE", contact.Source},
-	} {
-		if field.value != "" {
-			lines = append(lines, field.name+":"+vcardText(field.value))
-		}
-	}
-	if !contact.CreatedAt.IsZero() {
-		lines = append(lines, "X-RESTMAIL-CREATED-AT:"+contact.CreatedAt.UTC().Format(time.RFC3339Nano))
-	}
-	if !contact.UpdatedAt.IsZero() {
-		lines = append(lines, "REV:"+contact.UpdatedAt.UTC().Format("20060102T150405Z"), "X-RESTMAIL-UPDATED-AT:"+contact.UpdatedAt.UTC().Format(time.RFC3339Nano))
-	}
-	for _, line := range append(lines, "END:VCARD") {
-		if err := writeVCardLine(writer, line); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func vcardText(value string) string {
-	value = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n")
-	return strings.NewReplacer("\\", "\\\\", ";", "\\;", ",", "\\,", "\n", "\\n").Replace(value)
-}
-
-func writeVCardLine(writer io.Writer, line string) error {
-	if !utf8.ValidString(line) || strings.ContainsFunc(line, func(character rune) bool {
-		return character < 0x20 && character != '\t' || character == 0x7f
-	}) {
-		return errors.New("the server returned invalid vCard text")
-	}
-	width := 75
-	for len(line) > width {
-		end := width
-		for !utf8.RuneStart(line[end]) {
-			end--
-		}
-		if _, err := io.WriteString(writer, line[:end]+"\r\n "); err != nil {
-			return err
-		}
-		line, width = line[end:], 74
-	}
-	_, err := io.WriteString(writer, line+"\r\n")
-	return err
+	uid := exporter.base.String() + fmt.Sprintf("/api/v1/accounts/%d/contacts/%d", exporter.account, contact.ID)
+	return vcard.WriteContact(writer, uid, contact)
 }
 
 func exportCalendarDirectory(exporter *mailExporter, path string, count *int) error {
