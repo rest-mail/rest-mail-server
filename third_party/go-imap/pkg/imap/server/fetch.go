@@ -62,9 +62,8 @@ func (s *Session) handleFetch(tag, args string) {
 // response or phantom flags. Read-only selections never set or echo new \Seen.
 func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) error {
 	// A Mailbox that streams messages answers the whole message, its header and its
-	// text from a reader (#2107): opened and scanned once, and closed however the
-	// response ends. A scan that shows the response cannot be copied from it, an
-	// 8-bit message FETCH converts, reads it back whole instead of fetching again.
+	// text from a reader (#2107), which is closed however the response ends.
+	// MIME conversion that needs the whole message reads it from the same reader.
 	var stream *fetchStream
 	if s.streamSpans(tokens) {
 		st, err := s.openFetchStream(msg.UID)
@@ -72,7 +71,11 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 			return err
 		}
 		defer st.close()
-		if st.streamable(tokens) {
+		streamable, err := st.prepareWireSpans(tokens, s.utf8)
+		if err != nil {
+			return err
+		}
+		if streamable {
 			return s.streamedFetchResponse(seq, msg, tokens, st)
 		}
 		stream = st

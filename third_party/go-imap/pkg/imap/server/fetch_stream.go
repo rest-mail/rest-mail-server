@@ -25,6 +25,7 @@ type fetchStream struct {
 	size int64
 	scan *message.Scan
 	buf  []byte
+	sent message.SpanSource
 }
 
 // streamSpans is whether a response to tokens can be sent from a stream: the
@@ -57,7 +58,7 @@ func (s *Session) streamSpans(tokens []string) bool {
 }
 
 // openFetchStream opens uid's message and scans it once, in pieces, so the
-// response knows its header block's end and whether it is 7-bit before sending.
+// response knows its header block's end and which octets may need conversion.
 // The caller closes it.
 func (s *Session) openFetchStream(uid uint32) (*fetchStream, error) {
 	msg, err := s.mailbox.(imap.StreamFetcher).FetchStream(uid)
@@ -91,18 +92,17 @@ func (st *fetchStream) whole() (string, bool) {
 	return b.String(), true
 }
 
-// streamable is whether every span of tokens sends stored octets: always for
-// BINARY, and for the others only when FETCH sends the message as stored.
-func (st *fetchStream) streamable(tokens []string) bool {
-	if !st.scan.EightBit() {
-		return true
-	}
+// prepareWireSpans plans conversion only when a BODY or RFC822 item needs it.
+// BINARY always uses the source the Mailbox supplied.
+func (st *fetchStream) prepareWireSpans(tokens []string, utf8 bool) (bool, error) {
 	for _, item := range tokens {
 		if it, ok := message.ParseSpanItem(item); ok && !it.Binary {
-			return false
+			sent, streamable, err := st.scan.WireSpans(st.msg, utf8)
+			st.sent = sent
+			return streamable, err
 		}
 	}
-	return true
+	return true, nil
 }
 
 // spanLit is a literal a streamed response copies from the message.
@@ -110,6 +110,7 @@ type spanLit struct {
 	name         string
 	start, count int64
 	literal8     bool
+	source       *message.SpanSource
 }
 
 // streamedFetchResponse is fetchResponse for a response streamSpans planned and
@@ -119,7 +120,7 @@ func (s *Session) streamedFetchResponse(seq int, msg imap.Message, tokens []stri
 	plain := []string{fmt.Sprintf("UID %d", msg.UID), ""}
 	marksSeen := false
 	var lits []spanLit
-	size, headerEnd := st.size, st.scan.HeaderEnd()
+	stored := st.scan.StoredSpans(st.msg)
 	for _, item := range tokens {
 		switch up := strings.ToUpper(item); up {
 		case "FLAGS", "UID":
@@ -132,12 +133,16 @@ func (s *Session) streamedFetchResponse(seq int, msg imap.Message, tokens []stri
 			if !ok {
 				continue
 			}
-			name, start, count := it.Range(size, headerEnd)
+			source := &st.sent
+			if it.Binary {
+				source = &stored
+			}
+			name, start, count := it.Range(source.Size, source.HeaderEnd)
 			if it.Size {
 				plain = append(plain, fmt.Sprintf("%s %d", name, count))
 				continue
 			}
-			lit := spanLit{name: name, start: start, count: count}
+			lit := spanLit{name: name, start: start, count: count, source: source}
 			if it.Binary && st.scan.NUL() {
 				nul, err := message.HasNUL(st.msg, start, count, st.buf)
 				if err != nil {
@@ -166,7 +171,7 @@ func (s *Session) streamedFetchResponse(seq int, msg imap.Message, tokens []stri
 			eight = "~"
 		}
 		s.writeString(fmt.Sprintf(" %s %s{%d}\r\n", lit.name, eight, lit.count))
-		n, err := io.Copy(s.writer, io.NewSectionReader(st.msg, lit.start, lit.count))
+		n, err := io.Copy(s.writer, lit.source.Section(lit.start, lit.count))
 		if err == nil && n != lit.count {
 			err = io.ErrUnexpectedEOF
 		}

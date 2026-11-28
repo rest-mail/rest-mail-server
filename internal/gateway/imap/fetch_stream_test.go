@@ -81,6 +81,12 @@ func fetchStreamShapes() map[string]string {
 		"starts with a blank line":     "\r\n\r\nbody only \xc3\xa9\r\n",
 		"8-bit body only":              "Subject: x\r\n\r\ncaf\xe9\r\n",
 		"8-bit after a CRLF CRLF body": "Subject: x\r\n\r\nSubject: caf\xc3\xa9\r\n\r\n",
+		"8-bit body without charset":   "Subject: x\r\n\r\ncafé\x00\r\n",
+		"mixed charsets and NUL":       "Subject: Grüße\x00\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\ncaf\xe9\x00\r\n",
+		"wide text with NUL as data":   "Content-Type: text/plain; charset=utf-16le\r\n\r\na\x00\xe9\x00\r\n",
+		"bare LF with 8-bit and NUL":   "Subject: Grüße\n\ncafé\x00\n",
+		"nested 8-bit parts": "Subject: Grüße\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n" +
+			"--B\r\nContent-Type: message/rfc822\r\n\r\nSubject: Grüße\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\ncaf\xe9\x00\r\n--B--\r\n",
 	}
 	for _, at := range []int{fetchSpoolChunk - 3, fetchSpoolChunk - 2, fetchSpoolChunk - 1, fetchSpoolChunk, fetchSpoolChunk + 1} {
 		head := "Subject: caf\xc3\xa9\r\nX-Pad: "
@@ -229,11 +235,11 @@ func TestFetchStreamFallsBackAsFetchDoes(t *testing.T) {
 	}
 }
 
-// bigSource is a 7-bit message of about 9 MiB.
-func bigSource() string {
-	line := strings.Repeat("0123456789abcdef", 4) + "\r\n"
+// bigSource is a message of about 9 MiB with a repeated body line.
+func bigSource(header, line string) string {
 	var b strings.Builder
-	b.WriteString("Subject: big\r\n\r\n")
+	b.Grow(9<<20 + len(line))
+	b.WriteString(header)
 	for b.Len() < 9<<20 {
 		b.WriteString(line)
 	}
@@ -273,8 +279,23 @@ func literalThrough(t *testing.T, r *bufio.Reader, tag string) int64 {
 // it, API client and server included: the source goes from the API to a spool file
 // and from the file to the client, and the file is gone after (#2107 AC01).
 func TestGatewayFetchOfABigMessageHoldsLittleOfIt(t *testing.T) {
+	for _, tc := range []struct {
+		name, header, line string
+		utf8               bool
+	}{
+		{"seven-bit", "Subject: big\r\n\r\n", strings.Repeat("0123456789abcdef", 4) + "\r\n", false},
+		{"legacy-charset", "Subject: big\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\n", "caf\xe9\x00\r\n", false},
+		{"utf8-default", "Subject: Grüße\r\n\r\n", "café\x00\r\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkBigGatewayFetch(t, bigSource(tc.header, tc.line), tc.utf8)
+		})
+	}
+}
+
+func checkBigGatewayFetch(t *testing.T, raw string, utf8 bool) {
+	t.Helper()
 	dir := spoolIn(t)
-	raw := bigSource()
 	client, server := net.Pipe()
 	sess := imapserver.NewSession(server, NewBackend(storeAPI(t, raw), nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
@@ -296,8 +317,11 @@ func TestGatewayFetchOfABigMessageHoldsLittleOfIt(t *testing.T) {
 	}
 	_, _ = r.ReadString('\n') // greeting
 	send("a1", "LOGIN jorg@example.test pw")
+	if utf8 {
+		send("e1", "ENABLE UTF8=ACCEPT")
+	}
 	send("a2", "SELECT INBOX")
-	for i, items := range []string{"BODY.PEEK[]", "RFC822", "BINARY.PEEK[]"} {
+	for i, items := range []string{"BODY.PEEK[]", "BODY[]", "RFC822", "BINARY.PEEK[]"} {
 		var before, after runtime.MemStats
 		runtime.GC()
 		runtime.ReadMemStats(&before)
@@ -319,7 +343,8 @@ func TestGatewayFetchOfABigMessageHoldsLittleOfIt(t *testing.T) {
 func TestGatewayFetchSpoolGoesWhenTheClientLeaves(t *testing.T) {
 	dir := spoolIn(t)
 	client, server := net.Pipe()
-	sess := imapserver.NewSession(server, NewBackend(storeAPI(t, bigSource()), nil), "imap.test", nil, goimap.NopLimiter{})
+	raw := bigSource("Subject: big\r\n\r\n", strings.Repeat("0123456789abcdef", 4)+"\r\n")
+	sess := imapserver.NewSession(server, NewBackend(storeAPI(t, raw), nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

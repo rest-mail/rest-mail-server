@@ -396,18 +396,26 @@ the optional `StreamFetcher` hands over an `io.ReaderAt` and a size instead
 (`FetchedMessage`). When every body item of a FETCH is the whole message, its
 header or its text (BODY[], BODY[HEADER], BODY[TEXT], RFC822, RFC822.HEADER,
 RFC822.TEXT, BINARY[], BINARY.SIZE[], with PEEK and partials), the server scans
-the message once in 32 KiB pieces (`message.Scan`: the header block's end as
-`headerEnd` finds it, 8-bit octets, NUL) and copies each literal from its run of
-the message through the connection's buffer. `message.ParseSpanItem` names
-each item and applies its partial as `BodySection` and `BinarySection` do.
-What stays whole: BODY and RFC822 items of a message with an 8-bit octet or a
-NUL, which `WireForm` converts (read back from the reader once, not fetched
-again); and any FETCH that also asks for ENVELOPE, BODYSTRUCTURE, BODY, a
-numeric section, a MIME header or a header field list, which calls `Fetch`.
+the message in 32 KiB pieces. `message.Scan` finds the header boundary and
+tracks 8-bit octets and NULs separately in the header and body. For BODY and
+RFC822 items, a streaming view can prepend a header converted by the existing
+`wireHeader` and replace NULs with spaces as it copies text. Text with a
+declared charset keeps its 8-bit octets in both session types. For text
+without a charset, a UTF8=ACCEPT session checks UTF-8 validity in a bounded
+pass before copying it. `message.ParseSpanItem` computes partial offsets
+against the converted view for BODY and RFC822 items and the source for BINARY.
+
+Bodies requiring MIME traversal or transfer-encoding changes still use
+`WireForm` on the whole message read from the same source. This covers 8-bit
+or NUL-containing multipart and encapsulated bodies, undeclared 8-bit text
+that cannot be sent as default UTF-8, and NULs that are binary or wide-character
+data. A FETCH that also asks for ENVELOPE, BODYSTRUCTURE, BODY, a numeric
+section, a MIME header or a header field list still calls `Fetch`.
+
 The message is closed however the response ends. A read that fails after a
 literal's length was sent closes the connection, since the client would take
 the next response for the rest of it. `TestStreamedFetchSendsTheSameOctets`
-compares every octet of 1248 FETCH transcripts against the `Fetch` path;
+compares 1144 pairs of FETCH transcripts byte for byte;
 `TestStreamedFetchOfABigMessageHoldsLittleOfIt`,
 `TestStreamedFetchClosesTheMessageHoweverItEnds`, `TestScanAgreesAtEveryCut`
 and `TestSpanItemIsTheSection` prove the rest.
