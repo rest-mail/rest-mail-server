@@ -47,12 +47,20 @@ tasks:
       - |
         if [ "{{.ADMIN_MODE}}" = "prod" ]; then
           echo "  building {{.ADMIN_IMAGE}} (target: prod, base path: {{.ADMIN_BASE_PATH}})"
-          docker build -t {{.ADMIN_IMAGE}} --target prod \
+          if ! out=$(docker build -t {{.ADMIN_IMAGE}} --target prod \
             --build-arg NGINX_BASE_PATH={{.ADMIN_BASE_PATH}} \
-            {{.ADMIN_BUILD_CONTEXT}} >$OUTPUT 2>&1
+            {{.ADMIN_BUILD_CONTEXT}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         else
           echo "  building {{.ADMIN_IMAGE}} (target: dev)"
-          docker build -t {{.ADMIN_IMAGE}} --target dev {{.ADMIN_BUILD_CONTEXT}} >$OUTPUT 2>&1
+          if ! out=$(docker build -t {{.ADMIN_IMAGE}} --target dev {{.ADMIN_BUILD_CONTEXT}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         fi
       - sh "{{.TASKFILE_DIR}}/docker-hygiene.sh" cap-build-cache
 
@@ -85,7 +93,7 @@ tasks:
           --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.ADMIN_MODE}}" = "prod" ]; then
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (prod @ {{.ADMIN_IP}}, port {{.ADMIN_PROD_PORT}})"
-          docker run -d --label "$RESTMAIL_LABEL" --name {{.ADMIN_CONTAINER_NAME}} \
+          if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.ADMIN_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.ADMIN_NETWORK}} \
@@ -95,10 +103,14 @@ tasks:
             -l docker-proxy.admin.host={{.ADMIN_PROXY_HOST}} \
             -l docker-proxy.admin.port={{.ADMIN_PROD_PORT}} \
             -l docker-proxy.admin.path={{.ADMIN_BASE_PATH}} \
-            {{.ADMIN_IMAGE}} >$OUTPUT 2>&1
+            {{.ADMIN_IMAGE}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         else
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (dev @ {{.ADMIN_IP}}, port {{.ADMIN_DEV_PORT}})"
-          docker run -d --label "$RESTMAIL_LABEL" --name {{.ADMIN_CONTAINER_NAME}} \
+          if ! out=$(docker run -d --label "$RESTMAIL_LABEL" --name {{.ADMIN_CONTAINER_NAME}} \
             $HARDENING \
             --restart unless-stopped \
             --network {{.ADMIN_NETWORK}} \
@@ -113,7 +125,11 @@ tasks:
             -l docker-proxy.admin.port={{.ADMIN_DEV_PORT}} \
             -l docker-proxy.admin.path={{.ADMIN_BASE_PATH}} \
             -l docker-proxy.admin.websocket=true \
-            {{.ADMIN_IMAGE}} >$OUTPUT 2>&1
+            {{.ADMIN_IMAGE}} 2>&1); then
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
         fi
 
   deps:
@@ -143,13 +159,17 @@ tasks:
         fi
         echo "  installing admin node_modules from pnpm-lock.yaml"
         docker volume create --label "$RESTMAIL_LABEL" {{.ADMIN_MODULES_VOLUME}} >/dev/null
-        docker run --rm --label "$RESTMAIL_LABEL" \
+        if ! out=$(docker run --rm --label "$RESTMAIL_LABEL" \
           -v "$(pwd)/admin:/app" \
           -v {{.ADMIN_MODULES_VOLUME}}:/app/node_modules \
           -w /app \
           -e CI=true \
           --entrypoint pnpm \
-          {{.ADMIN_IMAGE}} install --frozen-lockfile >$OUTPUT 2>&1
+          {{.ADMIN_IMAGE}} install --frozen-lockfile 2>&1); then
+          printf '%s\n' "$out" >&2
+          exit 1
+        fi
+        if [ -n "$out" ]; then printf '%s\n' "$out" >"$OUTPUT"; fi
 
   down:
     desc: Stop and remove the admin container
