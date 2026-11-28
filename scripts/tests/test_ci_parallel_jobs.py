@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / ".github/workflows/ci.yml").read_text()
 JOBS = blocks(blocks(SOURCE, 0)["jobs"], 2)
 STATUS_CHECK = re.compile(r"\b(?:always|cancelled|failure|success)\(\)")
-POOL = "antimatter-vps-linux-x64"
+POOL = "vps-linux-x64"
 FALLBACK = "ubuntu-24.04"
 IMAP_GATES = (
     "Check the IMAP module's 32-bit sequence dispatch",

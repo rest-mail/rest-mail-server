@@ -26,7 +26,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github/workflows"
-POOL = "antimatter-vps-linux-x64"
+POOL = "vps-linux-x64"
 HOSTED = "ubuntu-latest"
 # Where every gate job runs, and the workflows whose jobs ask it.
 GATE_LABEL = "antimatter-vps-gate"
@@ -247,7 +247,7 @@ class RunnerGate(unittest.TestCase):
                         '--data-urlencode "run=${{ github.run_id }}"',
                         '--data-urlencode "attempt=${{ github.run_attempt }}"',
                         '--data-urlencode "job=$1") || r=ubuntu-24.04',
-                        'case "$r" in antimatter-vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac',
+                        'case "$r" in vps-linux-x64|ubuntu-24.04) echo "$r" ;; *) echo ubuntu-24.04 ;; esac',
                         'pick "${entry%%.*}"',
                         'echo "runners=$runners" >> "$GITHUB_OUTPUT"',
                     ):
@@ -537,7 +537,7 @@ class PickStepBehaviour(unittest.TestCase):
     OURS = {"ACTOR": "christhomas", "GH_ACTOR": "christhomas", "SENDER": "christhomas", "AUTHOR": "christhomas"}
 
     def test_an_answer_from_the_gate_is_used_per_entry_and_asked_by_job_id(self):
-        runners, calls = self.run_step("echo antimatter-vps-linux-x64", self.OURS)
+        runners, calls = self.run_step("echo vps-linux-x64", self.OURS)
         self.assertEqual(runners, {"test": POOL, "test-api.1": POOL, "test-api.2": POOL})
         self.assertEqual(len(calls), 3)
         self.assertIn("job=test-api", calls[1])
@@ -557,17 +557,17 @@ class PickStepBehaviour(unittest.TestCase):
         for who in ("ACTOR", "GH_ACTOR", "SENDER", "AUTHOR"):
             for other in ("github-merge-queue[bot]", "someone-else"):
                 with self.subTest(identity=who, value=other):
-                    runners, calls = self.run_step("echo antimatter-vps-linux-x64", {**self.OURS, who: other})
+                    runners, calls = self.run_step("echo vps-linux-x64", {**self.OURS, who: other})
                     self.assertEqual(set(runners.values()), {FALLBACK})
                     self.assertEqual(calls, [])
 
     def test_a_missing_identity_does_not_count_against_the_run(self):
-        runners, calls = self.run_step("echo antimatter-vps-linux-x64", {**self.OURS, "AUTHOR": "", "SENDER": ""})
+        runners, calls = self.run_step("echo vps-linux-x64", {**self.OURS, "AUTHOR": "", "SENDER": ""})
         self.assertEqual(set(runners.values()), {POOL})
         self.assertEqual(len(calls), 3)
 
     def test_no_entries_give_an_empty_map(self):
-        runners, calls = self.run_step("echo antimatter-vps-linux-x64", self.OURS, jobs="")
+        runners, calls = self.run_step("echo vps-linux-x64", self.OURS, jobs="")
         self.assertEqual((runners, calls), ({}, []))
 
 
