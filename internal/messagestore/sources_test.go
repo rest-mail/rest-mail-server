@@ -155,6 +155,40 @@ func TestSourceStagePublishAndRead(t *testing.T) {
 	})
 }
 
+func TestSourceWriteStageSurvivesOwnerRollbackForReaping(t *testing.T) {
+	adapters(t, func(t *testing.T, store Store) {
+		sources := &Sources{db: sourceDB(t), store: store.(sourceBackend)}
+		ctx := t.Context()
+		ref, err := sources.ReserveStage(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rollback := errors.New("owner write failed")
+		err = sources.db.Transaction(func(tx *gorm.DB) error {
+			if _, err := sources.WriteStage(ctx, tx, ref, strings.NewReader("original"), 8, nil); err != nil {
+				return err
+			}
+			if err := sources.Publish(ctx, tx, ref, 2); err != nil {
+				return err
+			}
+			return rollback
+		})
+		if !errors.Is(err, rollback) {
+			t.Fatalf("publish transaction returned %v", err)
+		}
+		row := sourceRow(t, sources, ref)
+		if row.State != models.MessageSourceStaged || row.ReferenceCount != 0 || row.ReapAt == nil {
+			t.Fatalf("rollback left source with state %q, %d owners and lease %v", row.State, row.ReferenceCount, row.ReapAt)
+		}
+		assertStored(t, sources, ref, true)
+		expireSource(t, sources, ref)
+		if removed, err := sources.Reap(ctx); err != nil || removed != 1 {
+			t.Fatalf("reaped %d sources, error %v", removed, err)
+		}
+		assertStored(t, sources, ref, false)
+	})
+}
+
 func TestSourceStageLimitsAndAllocation(t *testing.T) {
 	directory := t.TempDir()
 	sources := &Sources{db: sourceDB(t), store: NewFilesystem(directory)}
