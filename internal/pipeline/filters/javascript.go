@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+
 	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -56,6 +59,7 @@ func (s JSSidecar) post(ctx context.Context, client *http.Client, path string, b
 	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(body.reader()), nil }
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.Token)
+	otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
 	return client.Do(req)
 }
 

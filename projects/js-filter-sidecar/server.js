@@ -48,6 +48,51 @@ const WASM_MODULE = new WebAssembly.Module(
   fs.readFileSync(require.resolve('@jitl/quickjs-wasmfile-release-sync/wasm')),
 );
 
+const tracing = setupTracing();
+
+function setupTracing() {
+  const tracesEndpoint = (process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || '').trim();
+  const baseEndpoint = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '').trim();
+  if ((!tracesEndpoint && !baseEndpoint) ||
+      (process.env.OTEL_SDK_DISABLED || '').trim().toLowerCase() === 'true') return;
+
+  const endpointValue = tracesEndpoint || baseEndpoint;
+  const endpoint = URL.canParse(endpointValue) ? new URL(endpointValue) : null;
+  if (!endpoint || (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:')) {
+    console.warn('js-filter-sidecar tracing disabled: invalid OTLP/HTTP endpoint');
+    return;
+  }
+  if (!tracesEndpoint) endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/v1/traces';
+
+  const { ROOT_CONTEXT, SpanKind, SpanStatusCode, defaultTextMapGetter } = require('@opentelemetry/api');
+  const { W3CTraceContextPropagator } = require('@opentelemetry/core');
+  const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+  const { defaultResource, detectResources, envDetector, resourceFromAttributes } = require('@opentelemetry/resources');
+  const { BatchSpanProcessor, TracerProvider } = require('@opentelemetry/sdk-trace');
+
+  const service = 'restmail-js-filter';
+  const provider = new TracerProvider({
+    resource: defaultResource()
+      .merge(resourceFromAttributes({ 'service.name': service }))
+      .merge(detectResources({ detectors: [envDetector] })),
+    spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter({ url: endpoint.href }) })],
+  });
+  const tracer = provider.getTracer(service);
+  const propagator = new W3CTraceContextPropagator();
+  return {
+    start(req, res) {
+      const parent = propagator.extract(ROOT_CONTEXT, req.headers, defaultTextMapGetter);
+      const span = tracer.startSpan(`POST ${req.url}`, { kind: SpanKind.SERVER }, parent);
+      res.once('close', () => {
+        if (res.headersSent) span.setAttribute('http.response.status_code', res.statusCode);
+        if (!res.writableFinished || res.statusCode >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
+        span.end();
+      });
+    },
+    shutdown: () => provider.shutdown(),
+  };
+}
+
 function sha256(s) {
   return crypto.createHash('sha256').update(s).digest();
 }
@@ -193,6 +238,8 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Only authenticated calls to these two fixed routes can supply a parent span.
+  tracing?.start(req, res);
   if (req.url === '/validate') {
     return handleValidate(req, res);
   }
@@ -267,3 +314,23 @@ server.listen(PORT, () => {
   const boundPort = addr && typeof addr === 'object' ? addr.port : PORT;
   console.log(`js-filter-sidecar listening on port ${boundPort}`);
 });
+
+if (tracing) {
+  let stopping = false;
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    const deadline = setTimeout(() => process.exit(0), 5000);
+    server.close(async () => {
+      try {
+        await tracing.shutdown();
+      } catch {
+        console.warn('js-filter-sidecar tracing: failed to flush spans');
+      } finally {
+        clearTimeout(deadline);
+      }
+    });
+  };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+}
