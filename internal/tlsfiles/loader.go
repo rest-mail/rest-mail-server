@@ -26,8 +26,24 @@ type Loader struct {
 	nextCheck         time.Time
 	now               func() time.Time
 	loadErr           error
-	warned            bool
+	failedVersion     *pairVersion
 	expiry            *expiryCollector
+}
+
+type fileVersion struct {
+	info os.FileInfo
+	err  error
+}
+
+func (v fileVersion) equal(other fileVersion) bool {
+	if v.err != nil || other.err != nil {
+		return v.err != nil && other.err != nil && v.err.Error() == other.err.Error()
+	}
+	return sameFileVersion(v.info, other.info)
+}
+
+type pairVersion struct {
+	cert, key fileVersion
 }
 
 // New loads the initial pair. A listener must reject an initial load error.
@@ -88,34 +104,42 @@ func (l *Loader) checkReload() {
 		return
 	}
 	l.nextCheck = now.Add(l.interval)
-	l.loadErr = l.reload()
+	certInfo, certErr := os.Stat(l.certPath)
+	keyInfo, keyErr := os.Stat(l.keyPath)
+	version := pairVersion{cert: fileVersion{certInfo, certErr}, key: fileVersion{keyInfo, keyErr}}
+	previousErr := l.loadErr
+	l.loadErr = l.reload(version)
 	if l.loadErr == nil {
-		if l.warned {
+		if l.failedVersion != nil {
 			reloadFailing.Dec()
-			l.warned = false
+			l.failedVersion = nil
 		}
 		return
 	}
 	// Initial errors belong to the caller: an SNI name may simply not be ours.
 	// Once a pair has loaded, a failed renewal is always an operator error.
-	if l.cert != nil && !l.warned {
-		slog.Error("tls: certificate reload failed; retaining last usable pair", "cert", l.certPath, "key", l.keyPath, "error", l.loadErr)
-		reloadFailures.Inc()
-		reloadFailing.Inc()
-		l.warned = true
+	if l.cert == nil {
+		return
 	}
+	if l.failedVersion == nil {
+		reloadFailing.Inc()
+	} else if version.cert.equal(l.failedVersion.cert) && version.key.equal(l.failedVersion.key) && l.loadErr.Error() == previousErr.Error() {
+		return
+	}
+	l.failedVersion = &version
+	slog.Error("tls: certificate reload failed; retaining last usable pair", "cert", l.certPath, "key", l.keyPath, "error", l.loadErr)
+	reloadFailures.Inc()
 }
 
 // reload runs under mu. Failed reads never update the cached pair or metadata.
-func (l *Loader) reload() error {
-	certInfo, err := os.Stat(l.certPath)
-	if err != nil {
-		return fmt.Errorf("stat TLS certificate: %w", err)
+func (l *Loader) reload(version pairVersion) error {
+	if version.cert.err != nil {
+		return fmt.Errorf("stat TLS certificate: %w", version.cert.err)
 	}
-	keyInfo, err := os.Stat(l.keyPath)
-	if err != nil {
-		return fmt.Errorf("stat TLS private key: %w", err)
+	if version.key.err != nil {
+		return fmt.Errorf("stat TLS private key: %w", version.key.err)
 	}
+	certInfo, keyInfo := version.cert.info, version.key.info
 	if l.cert != nil && sameFileVersion(certInfo, l.certInfo) && sameFileVersion(keyInfo, l.keyInfo) {
 		return nil
 	}

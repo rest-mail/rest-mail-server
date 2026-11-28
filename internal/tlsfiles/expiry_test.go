@@ -1,6 +1,7 @@
 package tlsfiles
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -178,6 +179,70 @@ func TestExpiryStaysOnTheServedPairWhenARenewalBreaks(t *testing.T) {
 	if got := testutil.ToFloat64(reloadFailures) - failures; got != 1 {
 		t.Fatalf("recovery changed the failure count to %v, want 1", got)
 	}
+}
+
+func TestReloadCountsDistinctBrokenVersionsAcrossChecks(t *testing.T) {
+	c := newExpiryCollector()
+	certPath, keyPath := pairPaths(t)
+	expiry := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	publishPair(t, certPath, keyPath, expiry)
+	l, err := newLoader(certPath, keyPath, 0, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := l.Current()
+	failures := testutil.ToFloat64(reloadFailures)
+	failing := testutil.ToFloat64(reloadFailing)
+	wantMetrics := func(count, active float64) {
+		t.Helper()
+		if got := testutil.ToFloat64(reloadFailures) - failures; got != count {
+			t.Errorf("failure counter change=%v, want %v", got, count)
+		}
+		if got := testutil.ToFloat64(reloadFailing) - failing; got != active {
+			t.Errorf("failing gauge change=%v, want %v", got, active)
+		}
+	}
+	handshake := func() {
+		t.Helper()
+		if got, err := l.GetClientCertificate(nil); got != good || err != nil {
+			t.Fatalf("handshake after failed renewal: got pair %p, want %p, error=%v", got, good, err)
+		}
+	}
+
+	if err := os.Rename(certPath, certPath+".good"); err != nil {
+		t.Fatal(err)
+	}
+	wantExpiry(t, c, expiry)
+	wantMetrics(1, 1)
+	handshake()
+	wantMetrics(1, 1)
+
+	replace(t, certPath, []byte("invalid first"))
+	handshake()
+	wantMetrics(2, 1)
+	wantExpiry(t, c, expiry)
+	wantMetrics(2, 1)
+
+	// A new file version with the same parser error is another failed renewal.
+	replace(t, certPath, []byte("invalid again"))
+	wantExpiry(t, c, expiry)
+	wantMetrics(3, 1)
+
+	if err := os.Rename(certPath+".good", certPath); err != nil {
+		t.Fatal(err)
+	}
+	handshake()
+	wantMetrics(3, 0)
+	if err := os.Rename(certPath, certPath+".good"); err != nil {
+		t.Fatal(err)
+	}
+	handshake()
+	wantMetrics(4, 1)
+	if err := os.Rename(certPath+".good", certPath); err != nil {
+		t.Fatal(err)
+	}
+	wantExpiry(t, c, expiry)
+	wantMetrics(4, 0)
 }
 
 // Scrapes share the bound on filesystem work that handshakes have, including
