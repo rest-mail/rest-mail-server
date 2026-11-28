@@ -81,7 +81,7 @@ type contactPath struct {
 
 // RegisterContacts mounts the account's contacts. Their routes take what the mail routes take;
 // the handler checks the account is reachable with mail:read to read and mail:write to change,
-// and answers 403 forbidden when it is not.
+// and refuses the request if it is not.
 func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	h.registerQuietHours(rs)
 	h.registerAccountTimeZone(rs)
@@ -100,6 +100,11 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "listContacts", Summary: "List contacts for an account", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/export.vcf",
+		OperationID: "exportContacts", Summary: "Download an account's contacts as vCard", Tags: tags,
+		Description: "Streams the account's stored contacts as UTF-8 vCard 4.0, one card per email address. An empty address book returns an empty file.",
+		MediaType:   contactVCardMedia, Headers: contactExportHeaders,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.exportContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "createContact", Summary: "Create a new contact", Tags: tags, Status: http.StatusCreated,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.create)
