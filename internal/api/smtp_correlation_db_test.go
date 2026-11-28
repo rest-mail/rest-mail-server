@@ -101,9 +101,9 @@ func TestSMTPDeliveryCarriesOneRequestID(t *testing.T) {
 		t.Fatal(err)
 	}
 	const sender = "sender@remote.test"
-	const messageID = "<correlation@remote.test>"
+	const messageID = "correlation@remote.test" // The SMTP gateway strips brackets before delivery.
 	mail := "From: " + sender + "\r\nTo: " + f.address + "\r\nSubject: Correlation test\r\n" +
-		"Date: Thu, 02 Jan 2020 03:04:05 +0000\r\nMessage-ID: " + messageID + "\r\n\r\nHello.\r\n"
+		"Date: Thu, 02 Jan 2020 03:04:05 +0000\r\nMessage-ID: <" + messageID + ">\r\n\r\nHello.\r\n"
 	if err := send(client, sender, f.address, mail); err != nil {
 		t.Fatalf("deliver over SMTP: %v", err)
 	}
