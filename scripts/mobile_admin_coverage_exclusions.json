@@ -1,0 +1,11 @@
+{
+  "addInstallationSenderRule": "Temporary (#2099). Installation-wide sender rules (#1620) landed after the mobile OpenAPI pin.",
+  "getReputation": "Temporary (#2099). The domain reputation view (#1625) landed after the mobile OpenAPI pin.",
+  "listInstallationSenderRules": "Temporary (#2099). Installation-wide sender rules (#1620) landed after the mobile OpenAPI pin.",
+  "listSlowStatements": "Temporary (#2099). Database diagnostics (#1655) landed after the mobile OpenAPI pin.",
+  "removeInstallationSenderRule": "Temporary (#2099). Installation-wide sender rules (#1620) landed after the mobile OpenAPI pin.",
+  "resetSlowStatements": "Temporary (#2099). Database diagnostics (#1655) landed after the mobile OpenAPI pin.",
+  "restartDomainOutbound": "Temporary (#2099). Domain outbound controls (#1615) landed after the mobile OpenAPI pin.",
+  "restoreDomain": "Temporary (#2099). Domain restoration (#1791) landed after the mobile OpenAPI pin.",
+  "stopDomainOutbound": "Temporary (#2099). Domain outbound controls (#1615) landed after the mobile OpenAPI pin."
+}
