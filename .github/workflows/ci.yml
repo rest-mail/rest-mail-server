@@ -380,6 +380,25 @@ jobs:
             --oasdiff "$RUNNER_TEMP/contract-gate/bin/oasdiff" "${labels[@]}" \
             --output "$RUNNER_TEMP/contract-diff"
 
+      - name: Checkout the pinned mobile client
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: rest-mail/rest-mail-mobile
+          # Update this pin and remove any resolved mobile coverage exclusions together.
+          ref: ef9c03b5362ac5bcb6245710ef35cc23a2e594b0
+          path: .cache/contract-diff-mobile
+          persist-credentials: false
+          sparse-checkout: |
+            api_contract
+            packages/restmail_generated/lib
+
+      - name: Require generated mobile methods for production admin operations
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/tests -p test_mobile_admin_coverage.py -v
+          python3 scripts/check_mobile_admin_coverage.py \
+            "$RUNNER_TEMP/contract-diff/head.json" .cache/contract-diff-mobile
+
       - name: Publish the comparison and generated descriptions
         if: always()
         # Only people read this, so losing it must not fail the job.
