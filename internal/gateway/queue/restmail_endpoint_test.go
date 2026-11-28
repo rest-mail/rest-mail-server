@@ -67,10 +67,12 @@ func fakeRESTMAILMX(t *testing.T, restmailLine string) string {
 func TestProbeRESTMAILKeywordIsAHint(t *testing.T) {
 	w := &Worker{sendDeadline: defaultSendDeadline, allowPrivateDest: true, hostname: "test.local"}
 	for _, line := range []string{"RESTMAIL", "RESTMAIL https://attacker.test/restmail"} {
+		before := smtpAttemptCounts()
 		probed, supported := w.probeRESTMAIL(fakeRESTMAILMX(t, line), "mx.test")
 		if !probed || !supported {
 			t.Errorf("EHLO %q: probed=%v supported=%v, want both true", line, probed, supported)
 		}
+		assertSMTPAttempts(t, before, nil)
 	}
 }
 
