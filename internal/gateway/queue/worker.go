@@ -275,6 +275,8 @@ type Worker struct {
 	heartbeatDB    *gorm.DB
 	// smtpAddr maps an MX host to the address to dial; nil is its port 25. Tests only.
 	smtpAddr func(host string) string
+	// mxDialContext replaces the guarded MX dial for tests.
+	mxDialContext func(context.Context, string, string) (net.Conn, error)
 	// wrapSMTPConn wraps the socket an SMTP conversation runs on; nil leaves it
 	// as dialed. Tests only.
 	wrapSMTPConn func(net.Conn) net.Conn
@@ -332,6 +334,7 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 		maxSourceOctets:   defaultMaxSourceOctets(),
 	}
 	initSMTPAttemptSeries()
+	initMXDialAttemptSeries()
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
 	w.sts = mtasts.NewResolver()
@@ -1798,8 +1801,7 @@ func restmailFailure(host string, item models.OutboundQueue, err error) error {
 // worker goroutine forever and, one MX at a time, wedge the outbound queue (#169).
 func (w *Worker) probeRESTMAIL(addr, serverName string) (probed, supported bool) {
 	timeouts := w.timeouts()
-	dialer := w.newGuardedDialer(smtpDialTimeout)
-	conn, err := dialer.Dial("tcp", addr)
+	conn, err := w.dialMX(addr)
 	if err != nil {
 		return false, false
 	}
@@ -2460,8 +2462,7 @@ type smtpLink struct {
 // own timer, set on the socket because net/smtp sets none.
 func (w *Worker) openSMTP(addr, host string, tryTLS, requireVerified bool, records []dane.TLSA) (*smtpLink, error) {
 	timeouts := w.timeouts()
-	dialer := w.newGuardedDialer(smtpDialTimeout)
-	conn, err := dialer.Dial("tcp", addr)
+	conn, err := w.dialMX(addr)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", addr, err)
 	}

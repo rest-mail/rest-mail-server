@@ -197,6 +197,17 @@ var (
 		[]string{"ip_version", "result"},
 	)
 
+	// OutboundMXDialAttempts counts each TCP dial attempt to an MX address,
+	// including each address tried during fallback (#2117). The labels are
+	// bounded to two address families and five outcomes.
+	OutboundMXDialAttempts = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_outbound_mx_dial_attempts_total",
+			Help: "Outbound TCP dial attempts to MX addresses, by address family and outcome",
+		},
+		[]string{"family", "outcome"},
+	)
+
 	// MessagesSent counts total outbound messages sent.
 	MessagesSent = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_messages_sent_total",
@@ -396,6 +407,7 @@ func init() {
 		MessagesSent,
 		OutboundTransport,
 		OutboundSMTPAttempts,
+		OutboundMXDialAttempts,
 		PipelineFilterDuration,
 		PipelineStageDecisions,
 		PipelineTerminal,
