@@ -22,6 +22,10 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -35,6 +39,40 @@ func jsConfig(t *testing.T, m map[string]any) []byte {
 }
 
 const testSidecarToken = "test-token-0123456789abcdef"
+
+func TestJSSidecar_PostPropagatesTraceContext(t *testing.T) {
+	previous := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(previous) })
+
+	const traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+	const tracestate = "vendor=value"
+	ctx := propagation.TraceContext{}.Extract(t.Context(), propagation.MapCarrier{
+		"traceparent": traceparent,
+		"tracestate":  tracestate,
+	})
+	if !trace.SpanContextFromContext(ctx).IsValid() {
+		t.Fatal("test trace context must be valid")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("traceparent"); got != traceparent {
+			t.Errorf("traceparent = %q, want %q", got, traceparent)
+		}
+		if got := r.Header.Get("tracestate"); got != tracestate {
+			t.Errorf("tracestate = %q, want %q", got, tracestate)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	sidecar := JSSidecar{URL: srv.URL, Token: testSidecarToken}
+	resp, err := sidecar.Post(ctx, srv.Client(), "/execute", []byte("{}"))
+	if err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	resp.Body.Close()
+}
 
 // sidecarStub returns an httptest server that, like the sidecar, refuses a
 // request without the token, and otherwise always responds with the given
