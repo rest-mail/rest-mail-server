@@ -4700,6 +4700,7 @@ def a_contact_exchange_from_a_clean_start(transaction):
 
 @hooks.before("listContacts")
 @hooks.before("importContacts")
+@hooks.before("exportContacts")
 @hooks.before("suggestContacts")
 @hooks.before("getContactReplyTimeSetting")
 @hooks.before("setContactReplyTimeSetting")
