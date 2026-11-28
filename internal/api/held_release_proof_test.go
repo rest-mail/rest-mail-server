@@ -18,8 +18,9 @@ func TestHeldReleasePersistsThroughRouter(t *testing.T) {
 	useRealGrants(t)
 	db := createMigratedScratchDB(t, "held_release_proof")
 	seedAdmins(t, db, []fixtureAdmin{{name: "proof", roles: []string{"superadmin"}}})
-	routers := NewRouters(db, auth.NewJWTService(routerTestSecret, 15*time.Minute, 24*time.Hour),
-		&config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey, SendLimits: &config.SendLimitConfig{}}, nil)
+	cfg := &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey, SendLimits: &config.SendLimitConfig{}}
+	setTestMessageStorage(t, cfg)
+	routers := NewRouters(db, auth.NewJWTService(routerTestSecret, 15*time.Minute, 24*time.Hour), cfg, nil)
 	t.Cleanup(routers.Close)
 	f := &freshInstall{t: t, db: db, router: routers.Public}
 	plain := f.signIn("proof@access.test", accessPassword, "")

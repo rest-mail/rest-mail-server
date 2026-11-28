@@ -182,8 +182,12 @@ func TestThreadRootConversationThroughSendRoutes(t *testing.T) {
 			}
 		}
 		var queued models.OutboundQueue
-		if err := tx.Where("message_id = ?", sent.ID).First(&queued).Error; err != nil {
+		// The terminal queue row for the local recipient has released its source.
+		if err := tx.Where("message_id = ? AND status = ?", sent.ID, "pending").First(&queued).Error; err != nil {
 			t.Fatal(err)
+		}
+		if queued.SourceRef == nil || sent.SourceRef == nil || *queued.SourceRef != *sent.SourceRef {
+			t.Fatalf("turn %d pending delivery and Sent copy do not share a stored source", turn)
 		}
 		parsed, err := rmime.Parse([]byte(composedRaw(t, handler, queued.SourceRef)))
 		if err != nil {
