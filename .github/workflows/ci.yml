@@ -534,6 +534,21 @@ jobs:
           args: --timeout=5m --no-config
           verify: false
 
+      # The vendored go-pop3 is a module of its own as well (#2107). Its gates take
+      # seconds, so they run on every change; its tests are in the Test IMAP module job.
+      - name: Run go vet on the POP3 module
+        working-directory: third_party/go-pop3
+        run: go vet ./...
+
+      - name: Run golangci-lint on the POP3 module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.11.4
+          install-mode: none
+          working-directory: third_party/go-pop3
+          args: --timeout=5m --no-config
+          verify: false
+
   test-gate:
     needs: preflight
     if: (github.event_name != 'push' || github.actor != 'github-merge-queue[bot]') && (github.event_name != 'pull_request' || (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
@@ -900,6 +915,29 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
           overwrite: true
+
+      # The vendored go-pop3's own gates (#2107), which take seconds, so they run on every
+      # change. CPython's poplib is the independent client its reference test compares with.
+      - name: Validate the POP3 module's RFC checklist
+        working-directory: third_party/go-pop3
+        run: go run ./internal/checklist pkg/pop3/rfctest
+
+      # The RFC proofs in pkg/pop3/rfctest drive the library from outside the package, so
+      # coverage is counted across every package. COVERAGE.md lists what is left uncovered.
+      - name: Test the vendored POP3 module with coverage
+        working-directory: third_party/go-pop3
+        env:
+          POP3_REFERENCE_PYTHON: python3
+        run: go test -race -count=1 -timeout=10m -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Require at least 95% statement coverage of the POP3 module
+        working-directory: third_party/go-pop3
+        shell: bash
+        run: |
+          set -euo pipefail
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {sub(/%/, "", $3); print $3}')
+          echo "Statement coverage: ${total}%"
+          awk -v t="$total" 'BEGIN { exit !(t + 0 >= 95) }'
 
   # One gate for every leg of test-handlers's matrix: the legs share the class linux-x64,
   # so each leg runs on the label this gate answers.

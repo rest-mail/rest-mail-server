@@ -4,6 +4,8 @@ go 1.26.11
 
 replace github.com/rest-mail/go-imap => ./third_party/go-imap
 
+replace github.com/rest-mail/go-pop3 => ./third_party/go-pop3
+
 require (
 	github.com/antimatter-studios/go-oapifly v0.35.0
 	github.com/aws/aws-sdk-go-v2 v1.47.3

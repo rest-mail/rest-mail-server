@@ -47,6 +47,14 @@
     "Run golangci-lint on the IMAP module": {
       "sha256": "340819d98eba1263143df8cc523500885480b88710e40675669ce93a6b1e33b0",
       "local": "IMAP module"
+    },
+    "Run go vet on the POP3 module": {
+      "sha256": "d8a6393222f434baf79c935c9d993586f087683afbbf96d22e1d3695918bbdd0",
+      "local": "POP3 module"
+    },
+    "Run golangci-lint on the POP3 module": {
+      "sha256": "4d0549038c15c7787cde3f594413c1e0567390faa9ad14abe7097edb4ae37298",
+      "local": "POP3 module"
     }
   },
   "constellation": {
@@ -329,6 +337,18 @@
     "Upload IMAP coverage evidence": {
       "sha256": "2f49f38cd78fdfe19d868cac3e40b09a235c381513514985bde4e193daea6db3",
       "exception": "GitHub artifact transport only; the local gate checks the coverage floor from its own profile and uploads nothing."
+    },
+    "Validate the POP3 module's RFC checklist": {
+      "sha256": "8fb79f38822bfc5b3bd74503610660d6fb20ce259b98a4a6991ca9415012b5fd",
+      "local": "POP3 module"
+    },
+    "Test the vendored POP3 module with coverage": {
+      "sha256": "d0b04a1f328d63dd4a0df0bb98de0720ae2c5d383c3ba6720ab4d672d4d381c7",
+      "local": "POP3 module"
+    },
+    "Require at least 95% statement coverage of the POP3 module": {
+      "sha256": "643fc82e356d83e5a8b31b5461c7345ba4a2be1a62eca6a4ef8d10322a765c39",
+      "local": "POP3 module"
     }
   },
   "release-cli": {

@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
-	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"github.com/rest-mail/rest-mail-server/pkg/requestid"
@@ -174,7 +173,8 @@ func (m *mailbox) Messages() ([]gopop3.Message, error) {
 	return out, nil
 }
 
-// Retrieve returns the full-fidelity RFC 2822 form of a message: the pristine
+// Retrieve returns the full-fidelity RFC 2822 form of a message, which RETR and
+// TOP read through OpenMessage instead: the pristine
 // stored original when the server has one, otherwise a best-effort
 // reconstruction from the structured detail (for locally-composed items that
 // have no stored raw). Serving the stored original preserves attachments, To/Cc,
@@ -192,12 +192,7 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !m.utf8 {
-		// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
-		// 6856 §3, RFC 6857).
-		raw = rawmsg.DowngradeForPOP3(raw)
-	}
-	return rawmsg.SpaceNUL(raw), nil
+	return m.converted(raw), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild. A

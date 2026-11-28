@@ -15,6 +15,7 @@ RUN apk add --no-cache git \
  && git config --system --add safe.directory '*'
 COPY go.mod go.sum ./
 COPY third_party/go-imap ./third_party/go-imap
+COPY third_party/go-pop3 ./third_party/go-pop3
 RUN go mod download
 
 # ── Stage 2: builder ─────────────────────────────────────────────────
