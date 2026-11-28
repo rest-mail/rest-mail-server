@@ -88,6 +88,7 @@ MOVED = (
     "listContacts",
     "blockSender",
     "importContacts",
+    "exportContacts",
     "suggestContacts",
     "getContactReplyTimeSetting",
     "setContactReplyTimeSetting",

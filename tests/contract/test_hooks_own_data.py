@@ -268,6 +268,7 @@ class OwnDataHooks(unittest.TestCase):
             "blockSender": "block_a_new_and_an_existing_sender",
             "listContacts": "a_contact_operation_from_a_clean_start",
             "importContacts": "a_contact_operation_from_a_clean_start",
+            "exportContacts": "a_contact_operation_from_a_clean_start",
             "suggestContacts": "a_contact_operation_from_a_clean_start",
             "getContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
             "setContactReplyTimeSetting": "a_contact_operation_from_a_clean_start",
