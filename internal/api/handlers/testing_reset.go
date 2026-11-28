@@ -135,6 +135,10 @@ func (h *TestHandler) ResetRuntime(broker *SSEBroker, sessions *SessionCache, au
 }
 
 func cleanResetData(tx *gorm.DB) error {
+	return cleanResetDataWithSources(tx, nil)
+}
+
+func cleanResetDataWithSources(tx *gorm.DB, sourceRefs *[]string) error {
 	if err := tx.Exec(`CREATE TABLE IF NOT EXISTS test_reset_baseline (
 		singleton boolean PRIMARY KEY CHECK (singleton), account_ids bigint[] NOT NULL)`).Error; err != nil {
 		return err
@@ -158,17 +162,50 @@ func cleanResetData(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	if containsResetTable(tables, "messages") {
-		if err := tx.Exec("DELETE FROM messages").Error; err != nil {
-			return fmt.Errorf("clear reset messages before their trigger-maintained history: %w", err)
+	// The attempt reaper locks an attempt before releasing its source. Clear
+	// attempts first, then prevent new sources from being published during reset.
+	if containsResetTable(tables, "message_source_attempts") {
+		if err := tx.Exec("DELETE FROM message_source_attempts").Error; err != nil {
+			return fmt.Errorf("clear reset message source attempts: %w", err)
 		}
 	}
-	for _, table := range tables {
-		if _, retained := resetRetainedTables[table]; retained || table == "messages" {
+	hasSources := containsResetTable(tables, "message_sources")
+	if hasSources {
+		if err := tx.Exec("LOCK TABLE message_sources IN SHARE ROW EXCLUSIVE MODE").Error; err != nil {
+			return fmt.Errorf("lock reset message sources: %w", err)
+		}
+	}
+	// Both owner tables release sources on DELETE. The messages trigger also
+	// writes folder history, which the general table sweep clears next.
+	for _, table := range []string{"messages", "outbound_queue"} {
+		if !containsResetTable(tables, table) {
 			continue
 		}
 		if err := tx.Exec("DELETE FROM " + resetIdentifier(table)).Error; err != nil {
 			return fmt.Errorf("clear reset table %s: %w", table, err)
+		}
+	}
+	for _, table := range tables {
+		if _, retained := resetRetainedTables[table]; retained {
+			continue
+		}
+		switch table {
+		case "messages", "outbound_queue", "message_source_attempts", "message_sources":
+			continue
+		}
+		if err := tx.Exec("DELETE FROM " + resetIdentifier(table)).Error; err != nil {
+			return fmt.Errorf("clear reset table %s: %w", table, err)
+		}
+	}
+	if hasSources {
+		if sourceRefs == nil {
+			if err := tx.Exec("DELETE FROM message_sources").Error; err != nil {
+				return fmt.Errorf("clear reset message sources: %w", err)
+			}
+		} else if err := tx.Raw(`UPDATE message_sources
+			SET state = ?, reference_count = 0, reap_at = clock_timestamp()
+			RETURNING ref`, models.MessageSourceDeleting).Scan(sourceRefs).Error; err != nil {
+			return fmt.Errorf("mark reset message sources for deletion: %w", err)
 		}
 	}
 	statements := []string{

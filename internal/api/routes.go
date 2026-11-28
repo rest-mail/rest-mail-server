@@ -361,6 +361,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
 	if sources, err := messagestore.NewSources(db, cfg); err == nil {
 		messageH.SetMessageSources(sources)
+		testH.SetMessageSources(sources)
 		messageH.SetMessageSpoolDir(cfg.Messages.SpoolDir)
 	} else if cfg.Attachments.Type != "" {
 		slog.Error("configure message sources", "error", err)
