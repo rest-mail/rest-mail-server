@@ -89,6 +89,27 @@ func fuzzFindingPointer(path, method string) string {
 	return "/paths/" + strings.ReplaceAll(strings.ReplaceAll(path, "~", "~0"), "/", "~1") + "/" + method
 }
 
+func TestContractFuzzRelayDescribesStoredPasswordPrecondition(t *testing.T) {
+	for name, document := range map[string]map[string]interface{}{
+		"generated": fuzzFindingDocument(t),
+		"oracle":    oracleDocument(t),
+	} {
+		t.Run(name, func(t *testing.T) {
+			operation := document["paths"].(map[string]interface{})["/api/v1/admin/domains/{id}/relay"].(map[string]interface{})["put"].(map[string]interface{})
+			description, _ := operation["description"].(string)
+			for _, fragment := range []string{
+				"An omitted or null password keeps the stored password.",
+				"an empty or omitted username with a stored password returns 422",
+				"To remove relay authentication, send an empty password and omit or empty the username.",
+			} {
+				if !strings.Contains(strings.Join(strings.Fields(description), " "), fragment) {
+					t.Errorf("relay description omits %q: %q", fragment, description)
+				}
+			}
+		})
+	}
+}
+
 func TestContractFuzzFindingsDescribeValidation(t *testing.T) {
 	doc := fuzzFindingDocument(t)
 	const dialect = "http://json-schema.org/draft-07/schema#"

@@ -25227,13 +25227,21 @@ paths:
         - APIKeyAuth: [domains:write]
       summary: Set the domain's outbound transport
       description: |
-        Replaces the domain's outbound transport. Takes `domains:write` held
-        at `*`: the relay is dialled from inside the installation, so only the
-        operator chooses it. TLS is mandatory (`starttls` or `implicit`), and
-        credentials are only ever sent after a verified handshake. Leaving
-        `password` out keeps the stored one; an empty string clears it. The
-        password is encrypted at rest and refused (409) when the server has no
-        MASTER_KEY. `direct` drops any relay settings, credentials included.
+        Replaces the domain's outbound transport. Requires domains:write at *.
+        Relay transport requires TLS (starttls or implicit) and sends credentials
+        only after a verified handshake.
+
+        An omitted or null password keeps the stored password. For relay
+        transport, the resulting username and password must both be set or both
+        be empty. When the password is omitted or null, an empty or omitted
+        username with a stored password returns 422 on the password field.
+        A nonempty username without a supplied or stored password also returns
+        422. Use GET on this resource to check password_set. To remove relay
+        authentication, send an empty password and omit or empty the username.
+
+        Passwords are encrypted at rest. Setting a nonempty relay password
+        requires MASTER_KEY and returns 409 without it. Direct transport drops
+        the relay settings and credentials.
       requestBody:
         required: true
         content:

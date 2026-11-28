@@ -462,6 +462,51 @@ func TestDomainPolicyRelayPasswordRemainsWriteOnly(t *testing.T) {
 	}
 }
 
+func TestDomainPolicyRelayFuzzUpdateDependsOnStoredPassword(t *testing.T) {
+	// The #2051 seed's baseline had already saved an authenticated relay.
+	const body = `{"host":"f0","port":65535,"tls_mode":"implicit","transport":"relay","username":""}`
+	for _, test := range []struct {
+		name   string
+		body   string
+		stored bool
+		status int
+	}{
+		{"stored credentials", body, true, http.StatusUnprocessableEntity},
+		{"no stored credentials", body, false, http.StatusOK},
+		{"explicit clear", strings.TrimSuffix(body, "}") + `,"password":""}`, true, http.StatusOK},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			steps := domainPolicySteps(12)
+			if !test.stored {
+				steps[1].values[6], steps[1].values[7] = "", ""
+			}
+			if test.status == http.StatusUnprocessableEntity {
+				steps = steps[:2]
+			}
+			d := &domainPolicyFaultDB{steps: steps}
+			r := domainPolicyFaultRequest(t, 12)
+			r.Body = io.NopCloser(strings.NewReader(test.body))
+			r.ContentLength = int64(len(test.body))
+			rr := httptest.NewRecorder()
+			domainPolicyFaultRouter(domainPolicyFaultGorm(t, d), nil).ServeHTTP(rr, r)
+			if rr.Code != test.status || int(d.calls.Load()) != len(steps) || d.lost.Load() != 0 {
+				t.Fatalf("status=%d want=%d body=%s SQL=%d/%d lost=%d", rr.Code, test.status, rr.Body, d.calls.Load(), len(steps), d.lost.Load())
+			}
+			if test.status == http.StatusUnprocessableEntity {
+				const refusal = `"password":"A username and a password are set together, or neither"`
+				if !strings.Contains(rr.Body.String(), refusal) || d.rollbacks.Load() != 1 || d.commits.Load() != 0 {
+					t.Fatalf("expected credential refusal and rollback: %s", rr.Body)
+				}
+				t.Log(rr.Body.String())
+				return
+			}
+			if got := domainPolicyBoundWrites(d)["password_enc"]; got != "" {
+				t.Errorf("unauthenticated relay wrote password ciphertext %q", got)
+			}
+		})
+	}
+}
+
 func TestDomainPolicyMissingDomainsKeepExistingRefusals(t *testing.T) {
 	// The lists look the domain up before reading by domain_id, so a missing one
 	// is not an empty list (#1746).
