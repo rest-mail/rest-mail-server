@@ -215,7 +215,7 @@ func (h *MessageHandler) putIndependentPart(ctx context.Context, part pipeline.A
 			}
 			return reader, nil
 		}}
-		defer source.Close()
+		defer func() { _ = source.Close() }()
 		ref, checksum, err = h.forwardStore.PutIndependentReader(ctx, source, part.Size)
 		storage = "s3"
 	} else {
@@ -224,7 +224,7 @@ func (h *MessageHandler) putIndependentPart(ctx context.Context, part pipeline.A
 		if source, err = h.openCheckedPart(ctx, part); err != nil {
 			return "", "", "", err
 		}
-		defer source.Close()
+		defer func() { _ = source.Close() }()
 		ref, checksum, _, err = attachmentstore.PutIndependentFilesystemReader(ctx, h.forwardRoot, source)
 		storage = "filesystem"
 	}
@@ -411,8 +411,8 @@ func (h *MessageHandler) forwardPartBytes(ctx context.Context, part pipeline.Att
 	if part.Ref == "" {
 		data, err = base64.StdEncoding.DecodeString(part.Content)
 	} else {
-		reader, err := h.openForwardPart(ctx, part)
-		if err != nil {
+		var reader io.ReadCloser
+		if reader, err = h.openForwardPart(ctx, part); err != nil {
 			return nil, errForwardAttachment
 		}
 		data, err = io.ReadAll(io.LimitReader(reader, remaining+1))
