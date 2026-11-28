@@ -13172,6 +13172,11 @@ paths:
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
           links:
+            getContact:
+              operationId: getContact
+              parameters:
+                id: '$request.path.id'
+                cid: '$response.body#/data/id'
             updateContact:
               operationId: updateContact
               parameters:
@@ -13396,6 +13401,11 @@ paths:
               parameters:
                 cid: '$response.body#/data/id'
                 id: '$request.path.id'
+            getContact:
+              operationId: getContact
+              parameters:
+                cid: '$response.body#/data/id'
+                id: '$request.path.id'
             updateContact:
               operationId: updateContact
               parameters:
@@ -13425,6 +13435,11 @@ paths:
           links:
             deleteContact:
               operationId: deleteContact
+              parameters:
+                cid: '$response.body#/data/id'
+                id: '$request.path.id'
+            getContact:
+              operationId: getContact
               parameters:
                 cid: '$response.body#/data/id'
                 id: '$request.path.id'

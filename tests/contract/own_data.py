@@ -79,7 +79,7 @@ MOVED = (
     "listBlocklist",
     "addToBlocklist",
     "removeFromBlocklist",
-    # The contact operations, including createContact's update and delete links.
+    # The contact operations, including every link from createContact and blockSender.
     "createContact",
     "getContact",
     "updateContact",
