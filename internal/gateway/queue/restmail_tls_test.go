@@ -35,11 +35,13 @@ func TestDeliverRESTMAILAlwaysVerifiesCertificate(t *testing.T) {
 				w := &Worker{sendDeadline: defaultSendDeadline, allowPrivateDest: true}
 				w.SetRESTMAILRootCAs(roots)
 				w.SetTLSInsecure(insecure)
+				before := smtpAttemptCounts()
 				err := w.deliverRESTMAILHTTPS(context.Background(), srv.URL+"/restmail", testItem())
 				if trust == "trusted" {
 					if err != nil || posts.Load() != 1 {
 						t.Fatalf("trusted endpoint: err=%v posts=%d, want successful POST", err, posts.Load())
 					}
+					assertSMTPAttempts(t, before, nil)
 					return
 				}
 				var verificationErr *tls.CertificateVerificationError

@@ -367,6 +367,7 @@ func TestRelaySuccess(t *testing.T) {
 					item.RawMessage += "café\r\n"
 				}
 				w := &Worker{hostname: "sender.test"}
+				before := smtpAttemptCounts()
 				if err := w.deliverToRelay(context.Background(), settings, item); err != nil {
 					t.Fatal(err)
 				}
@@ -399,6 +400,7 @@ func TestRelaySuccess(t *testing.T) {
 				if strings.Count(commands, "EHLO sender.test") != wantEHLO {
 					t.Fatalf("EHLO capability refresh missing: %s", commands)
 				}
+				assertSMTPAttempts(t, before, nil)
 			})
 		}
 	}
