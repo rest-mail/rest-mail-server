@@ -107,6 +107,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.ACMEAccount{},
 		&models.OutboundQueue{},
 		&models.MessageSource{},
+		&models.MessageSourceAttempt{},
 		// Addresses a domain no longer sends to after a hard bounce (#141).
 		&models.Suppression{},
 		&models.DNSBLListingEvent{},
@@ -260,6 +261,9 @@ func autoMigrate(db *gorm.DB) error {
 	// messages in flight, a handful however long the queue is.
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbound_queue_delivering ON outbound_queue(lower(domain)) WHERE status = 'delivering'`).Error; err != nil {
 		slog.Warn("failed to create outbound queue delivering index", "error", err)
+	}
+	if err := migrateQueueSources(db); err != nil {
+		return fmt.Errorf("queue source ownership: %w", err)
 	}
 
 	// Pipeline indexes

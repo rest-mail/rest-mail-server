@@ -42,6 +42,9 @@ func (s *Sources) Reap(ctx context.Context) (int, error) {
 	var removed int
 	var failures error
 	db := s.db.WithContext(ctx)
+	if err := reapAttempts(ctx, db); err != nil {
+		return 0, err
+	}
 	for range reapBatch {
 		row, err := claimSourceDeletion(db)
 		if err != nil || row.Ref == "" {

@@ -26,11 +26,13 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/messagestore"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 	"github.com/rest-mail/rest-mail-server/internal/testreset"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
+	"github.com/rest-mail/rest-mail-server/pkg/apiclient"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -200,6 +202,7 @@ func forData(raw, host string) (string, error) {
 // Worker processes outbound mail queue entries.
 type Worker struct {
 	db           *gorm.DB
+	sources      *messagestore.Sources
 	testReset    bool
 	hostname     string
 	numWorkers   int
@@ -569,7 +572,16 @@ func (w *Worker) queueSizeLoop() {
 	ticker := time.NewTicker(queueSizeInterval)
 	defer ticker.Stop()
 	for {
-		if err := refreshQueueSize(w.db, time.Now(), w.reclaim, w.maxPerDestination); err != nil {
+		now := time.Now()
+		if w.sources != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), heartbeatWriteTimeout)
+			err := w.expireQueueSources(ctx, now)
+			cancel()
+			if err != nil {
+				slog.Warn("queue: expiring source references failed", "error", err)
+			}
+		}
+		if err := refreshQueueSize(w.db, now, w.reclaim, w.maxPerDestination); err != nil {
 			slog.Warn("queue: counting the outbound queue failed", "error", err)
 		}
 		select {
@@ -713,6 +725,7 @@ func (w *Worker) processOne(workerID int) bool {
 	if err := testreset.Delivery(w.db, func(conn *gorm.DB) {
 		delivery := &Worker{
 			db: conn, hostname: w.hostname,
+			sources:     w.sources.WithDB(conn),
 			tlsInsecure: w.tlsInsecure, stsEnforce: w.stsEnforce, sts: w.sts, dane: w.dane,
 			masterKey: w.masterKey, relayRoots: w.relayRoots, resolver: w.resolver,
 			restmailRoots: w.restmailRoots, smtpRoots: w.smtpRoots,
@@ -755,6 +768,10 @@ func (w *Worker) processNext(workerID int) bool {
 		attribute.Int("queue.attempt", item.Attempts),
 	))
 	defer span.End()
+	if item.pin != "" {
+		ctx = context.WithValue(ctx, attemptPinKey{}, item.pin)
+		defer w.releaseAttemptPin(ctx, item.pin)
+	}
 
 	slog.InfoContext(ctx, "queue: processing",
 		"worker", workerID,
@@ -782,6 +799,7 @@ func (w *Worker) processNext(workerID int) bool {
 type claimedItem struct {
 	models.OutboundQueue
 	sourceOctets int64
+	pin          string
 }
 
 // destinationsAtLimitSQL lists the recipient domains with as many messages in
@@ -817,7 +835,7 @@ const claimableSQL = `status IN ('pending', 'deferred', 'delivering')
 // It returns the row's id and its source's length, not the source: octet_length
 // reads a stored value's length from its header without detoasting it, so a claim
 // learns how long a source is before deciding to load it (#2107 AC02).
-const claimSQL = `SELECT id, coalesce(octet_length(raw_message), 0) + coalesce(octet_length(raw_octets), 0) AS source_octets
+const claimSQL = `SELECT id, source_ref, coalesce(octet_length(raw_message), 0) + coalesce(octet_length(raw_octets), 0) AS source_octets
 	 FROM outbound_queue
 	 WHERE ` + claimableSQL + `
 	 AND lower(domain) NOT IN (` + destinationsAtLimitSQL + `)
@@ -858,6 +876,7 @@ func (w *Worker) claim(now time.Time) (claimedItem, error) {
 			}
 			var due struct {
 				ID           uint
+				SourceRef    *string
 				SourceOctets int64
 			}
 			result := tx.Raw(claimSQL, now, staleDelivering, now, staleDelivering, limit, string(skip)).Scan(&due)
@@ -867,7 +886,7 @@ func (w *Worker) claim(now time.Time) (claimedItem, error) {
 			if result.RowsAffected == 0 {
 				return gorm.ErrRecordNotFound
 			}
-			item = claimedItem{OutboundQueue: models.OutboundQueue{ID: due.ID}, sourceOctets: due.SourceOctets}
+			item = claimedItem{OutboundQueue: models.OutboundQueue{ID: due.ID, SourceRef: due.SourceRef}, sourceOctets: due.SourceOctets}
 			if w.maxPerDestination <= 0 {
 				break
 			}
@@ -883,13 +902,18 @@ func (w *Worker) claim(now time.Time) (claimedItem, error) {
 		}
 		// The claim holds the row's lock, so it is the row claimSQL found.
 		load := tx
-		if item.sourceOctets > w.maxSourceOctets {
+		if item.SourceRef != nil || item.sourceOctets > w.maxSourceOctets {
 			load = tx.Omit("raw_message", "raw_octets")
 		}
 		if err := load.Take(&item.OutboundQueue, item.ID).Error; err != nil {
 			return err
 		}
 		item.JoinSource()
+		if item.SourceRef != nil {
+			if err := w.claimSource(tx, &item); err != nil {
+				return err
+			}
+		}
 
 		// Mark as delivering
 		return tx.Model(&item.OutboundQueue).Updates(map[string]interface{}{
@@ -965,9 +989,11 @@ func (w *Worker) process(ctx context.Context, item models.OutboundQueue, now tim
 
 	if deliveryErr == nil {
 		// Success
-		w.db.Model(&item).Updates(map[string]interface{}{
+		if _, err := w.writeAttemptOutcome(ctx, item, false, map[string]interface{}{
 			"status": "delivered",
-		})
+		}); err != nil {
+			slog.ErrorContext(ctx, "queue: failed to record delivery", "id", item.ID, "error", err)
+		}
 		// Always-on outbound aggregate metrics (atomic, lock-free). This runs in
 		// the gateway process; the counter surfaces on that process's /metrics.
 		metrics.MessagesSent.Inc()
@@ -1071,14 +1097,12 @@ func (w *Worker) recordFailure(ctx context.Context, item models.OutboundQueue, d
 // it is reclaimed and tried again once its heartbeat is stale, rather than
 // notifying the sender of an outcome the queue does not show.
 func (w *Worker) recordAttemptOutcome(ctx context.Context, item models.OutboundQueue, values map[string]interface{}) bool {
-	result := w.db.Model(&models.OutboundQueue{}).
-		Where("id = ? AND status = ? AND attempts = ?", item.ID, "delivering", item.Attempts).
-		Updates(values)
-	if result.Error != nil {
-		slog.ErrorContext(ctx, "queue: failed to record the attempt's outcome", "id", item.ID, "attempt", item.Attempts, "error", result.Error)
+	rows, err := w.writeAttemptOutcome(ctx, item, true, values)
+	if err != nil {
+		slog.ErrorContext(ctx, "queue: failed to record the attempt's outcome", "id", item.ID, "attempt", item.Attempts, "error", err)
 		return false
 	}
-	if result.RowsAffected == 0 {
+	if rows == 0 {
 		slog.WarnContext(ctx, "queue: this attempt no longer holds its row, its outcome is not recorded",
 			"id", item.ID, "attempt", item.Attempts, "outcome", values["status"])
 		setOutcome(ctx, "superseded")
@@ -1344,7 +1368,7 @@ func (w *Worker) recipientPolicy(ctx context.Context, item models.OutboundQueue,
 	}
 	// "If the REQUIRETLS MAIL FROM parameter is specified, the TLS-Required header field MUST
 	// be ignored" (RFC 8689 §4.1).
-	if !item.RequireTLS && outbound.TLSOptional(item.RawMessage) {
+	if !item.RequireTLS && outbound.TLSOptional(queueHeaders(item)) {
 		slog.InfoContext(ctx, "queue: TLS-Required: No, the recipient's MTA-STS policy is not applied", "domain", item.Domain)
 		return nil, errTLSOptional
 	}
@@ -1454,20 +1478,21 @@ func (w *Worker) cacheCapability(domain, mxHost string, supported bool) {
 // verified against its own host, in every environment (#291). The SMTP-only
 // tlsInsecure flag never applies to either RESTMAIL HTTPS connection.
 func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, item models.OutboundQueue) error {
-	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
-	// that cannot be loaded so the send retries rather than going out unsigned.
-	prepared, err := w.prepareOutbound(ctx, item)
-	if err != nil {
-		return fmt.Errorf("prepare outbound message: %w", err)
-	}
-	item.RawMessage = prepared
-
 	payload := map[string]interface{}{
-		"from":        item.Sender,
-		"to":          []string{item.Recipient},
-		"raw_message": []byte(item.RawMessage),
+		"from": item.Sender,
+		"to":   []string{item.Recipient},
 	}
-	payloadBytes, _ := json.Marshal(payload)
+	var payloadBytes []byte
+	if item.SourceRef == nil {
+		// Strip Bcc and DKIM-sign inline mail before transmission (#171).
+		prepared, err := w.prepareOutbound(ctx, item)
+		if err != nil {
+			return fmt.Errorf("prepare outbound message: %w", err)
+		}
+		item.RawMessage = prepared
+		payload["raw_message"] = []byte(prepared)
+		payloadBytes, _ = json.Marshal(payload)
+	}
 
 	messagesURL := endpointURL + "/messages"
 	if !strings.Contains(messagesURL, "://") {
@@ -1484,6 +1509,38 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 		return fmt.Errorf("RESTMAIL endpoint %q refused: only https is permitted, got scheme %q", endpointURL, parsed.Scheme)
 	}
 
+	octets := int64(len(item.RawMessage))
+	var body *apiclient.ExactDeliveryBody
+	if item.SourceRef != nil {
+		// Budget the open as well as the upload. The request and the backend
+		// share cancellation so a stalled read stops when the upload ends.
+		openCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		timer := time.AfterFunc(w.timeouts().DataBlock, cancel)
+		raw, size, err := w.openSource(openCtx, item)
+		if !timer.Stop() {
+			if raw != nil {
+				_ = raw.Close()
+			}
+			return context.DeadlineExceeded
+		}
+		if err != nil {
+			return err
+		}
+		octets = size
+		body, err = apiclient.NewExactDeliveryBody(openCtx, payload, raw, size)
+		if err != nil {
+			_ = raw.Close()
+			return err
+		}
+		defer func() {
+			cancel()
+			_ = body.Close()
+			body.Wait()
+		}()
+		ctx = openCtx
+	}
+
 	// Guarded dialer refuses non-public resolved addresses (#167) unless opted in
 	// — the discovered RESTMAIL host could point at loopback,
 	// link-local metadata, or internal relays. The check runs on the resolved IP,
@@ -1493,7 +1550,7 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 		// Size-aware upload budget (OSI-7): the payload carries the full raw
 		// message, so a fixed 30 s cannot transfer a large body. Bounded — a
 		// finite function of the message size — so this hop stays slowloris-safe.
-		Timeout: w.sendDeadline(int64(len(item.RawMessage))),
+		Timeout: w.sendDeadline(octets),
 		Transport: &http.Transport{
 			DialContext:         dialer.DialContext,
 			TLSClientConfig:     &tls.Config{RootCAs: w.restmailRoots, MinVersion: tls.VersionTLS12},
@@ -1505,21 +1562,35 @@ func (w *Worker) deliverRESTMAILHTTPS(ctx context.Context, endpointURL string, i
 			return http.ErrUseLastResponse
 		},
 	}
-	resp, err := httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
+	var resp *http.Response
+	if body == nil {
+		resp, err = httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
+	} else {
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, messagesURL, body)
+		if reqErr != nil {
+			return reqErr
+		}
+		req.ContentLength = body.Length
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = httpClient.Do(req)
+	}
 	if err != nil {
 		return fmt.Errorf("RESTMAIL POST to %s: %w", messagesURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if body != nil && !body.Complete() {
+			return fmt.Errorf("RESTMAIL POST to %s: %w", messagesURL, io.ErrUnexpectedEOF)
+		}
 		slog.InfoContext(ctx, "queue: RESTMAIL delivery succeeded", "url", messagesURL, "recipient", item.Recipient)
 		return nil
 	}
 
 	// Cap the error body read: an unbounded read would let a hostile endpoint
 	// exhaust worker memory with a huge response (#169).
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRESTMAILErrorBody))
-	return restmailRefusal(resp.StatusCode, body)
+	refusal, _ := io.ReadAll(io.LimitReader(resp.Body, maxRESTMAILErrorBody))
+	return restmailRefusal(resp.StatusCode, refusal)
 }
 
 // restmailRefusal reads a non-2xx answer to the RESTMAIL POST as a reply the
@@ -1984,7 +2055,7 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 
 	// Extract original headers from RawMessage for Part 3, without the hidden fields. Part 3 sits
 	// in the notice's body, where prepareOutbound's strip of the notice's own head can't reach it.
-	originalHeaders := outbound.StripBcc(item.RawMessage)
+	originalHeaders := outbound.StripBcc(queueHeaders(item))
 	if idx := strings.Index(originalHeaders, "\r\n\r\n"); idx >= 0 {
 		originalHeaders = originalHeaders[:idx]
 	} else if idx := strings.Index(originalHeaders, "\n\n"); idx >= 0 {
@@ -2119,18 +2190,20 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	if records != nil {
 		stsPolicy, stsErr = nil, nil
 	}
-	normal, err := forData(item.RawMessage, host)
-	if err != nil {
-		return err
+	if item.SourceRef == nil {
+		normal, err := forData(item.RawMessage, host)
+		if err != nil {
+			return err
+		}
+		item.RawMessage = normal
+		// Strip Bcc and DKIM-sign inline mail before transmission (#171).
+		prepared, err := w.prepareOutbound(ctx, item)
+		if err != nil {
+			return fmt.Errorf("prepare outbound message: %w", err)
+		}
+		item.RawMessage = prepared
 	}
-	item.RawMessage = normal
-	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
-	// that cannot be loaded so the send retries rather than going out unsigned.
-	prepared, err := w.prepareOutbound(ctx, item)
-	if err != nil {
-		return fmt.Errorf("prepare outbound message: %w", err)
-	}
-	item.RawMessage = prepared
+	var err error
 	if item.Sender, err = w.forwardSender(ctx, item); err != nil {
 		return err
 	}
@@ -2260,7 +2333,13 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 	// next MX; only if no MX offers 8BITMIME does the message bounce — never
 	// silently corrupted. Peers that advertise 8BITMIME (nearly all modern MTAs)
 	// are unaffected.
-	if ok, _ := client.Extension("8BITMIME"); !ok && messageRequires8BitTransport(item.BodyType, item.RawMessage) {
+	supports8Bit, _ := client.Extension("8BITMIME")
+	content, err := w.smtpContent(ctx, item, host, supports8Bit)
+	if err != nil {
+		return err
+	}
+	defer content.close()
+	if !supports8Bit && content.eightBit {
 		slog.WarnContext(ctx, "queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
 			"host", host, "domain", item.Domain, "body_type", item.BodyType)
 		return &SMTPError{
@@ -2272,13 +2351,13 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 		}
 	}
 
-	if err := checkSMTPUTF8(client, sender, recipient, item.RawMessage, host); err != nil {
+	if err := checkSMTPUTF8(client, sender, recipient, content.headers, host); err != nil {
 		return err
 	}
 
 	// From here every outcome is the MX's, so it counts against the IP version
 	// the MX was reached over (#1579).
-	err = sendOverSMTPLink(link, timeouts, host, sender, recipient, item.RawMessage, requireTLS)
+	err = sendOverSMTPLink(link, timeouts, host, sender, recipient, content, requireTLS)
 	countSMTPAttempt(link.remoteIP, err)
 	if err != nil {
 		return err
@@ -2292,11 +2371,11 @@ func (w *Worker) deliverSMTPWith(ctx context.Context, addr, host string, item mo
 
 // sendOverSMTPLink runs the mail transaction on an open link and says QUIT. Each
 // error it returns comes from the MX or the connection to it.
-func sendOverSMTPLink(link *smtpLink, timeouts config.OutboundSMTPTimeouts, host, sender, recipient, raw string, requireTLS bool) error {
+func sendOverSMTPLink(link *smtpLink, timeouts config.OutboundSMTPTimeouts, host, sender, recipient string, content smtpContent, requireTLS bool) error {
 	client := link.client
 	// Set sender, with REQUIRETLS when the message requires it (RFC 8689 §4.2.1).
 	armStep(link.conn, timeouts.Mail)
-	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, raw) != "", requireTLS); err != nil {
+	if err := mailFrom(client, sender, smtpUTF8Status(sender, recipient, content.headers) != "", requireTLS); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
@@ -2316,10 +2395,8 @@ func sendOverSMTPLink(link *smtpLink, timeouts config.OutboundSMTPTimeouts, host
 	if err != nil {
 		return fmt.Errorf("DATA to %s: %w", host, err)
 	}
-	err = writeDataBlocks(wc, client.Text.W.Flush, raw, func() { armStep(link.conn, timeouts.DataBlock) })
-	if err != nil {
-		wc.Close()
-		return fmt.Errorf("write message to %s: %w", host, err)
+	if err := writeSMTPContent(client, link.conn, wc, timeouts, host, content); err != nil {
+		return err
 	}
 	armStep(link.conn, timeouts.FinalReply)
 	if err := wc.Close(); err != nil {
