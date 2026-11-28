@@ -27,7 +27,7 @@ var (
 	// reloadFailing is the number of loaded TLS certificate/key pairs whose
 	// current files fail to load, so the process still serves the previous
 	// pair. Zero means every pair loaded from its current files at its last
-	// check. Checks happen on new handshakes, at most every few seconds.
+	// check. Handshakes and expiry scrapes share the same check interval.
 	reloadFailing = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "restmail_tls_cert_reload_failing",
 		Help: "TLS certificate pairs whose replacement files fail to load and that still serve the previous pair",
