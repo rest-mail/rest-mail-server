@@ -130,7 +130,8 @@ def imapsync(host, *names):
         capture_output=True, text=True, timeout=600, check=False,
     )
     if result.returncode != 0:
-        raise AssertionError("imapsync exited %d:\n%s" % (result.returncode, result.stdout[-4000:]))
+        raise AssertionError("imapsync exited %d:\nstdout:\n%s\nstderr:\n%s" % (
+            result.returncode, result.stdout[-4000:], result.stderr[-4000:]))
     return result.stdout
 
 
