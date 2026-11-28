@@ -39,6 +39,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/tracing"
 	apitypes "github.com/rest-mail/rest-mail-server/pkg/apitypes"
+	"github.com/rest-mail/rest-mail-server/pkg/requestid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -2844,6 +2845,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		ReceivedTLS: params.ReceivedTLS,
 		TLSVersion:  params.TLSVersion,
 		RequireTLS:  params.RequireTLS,
+	}
+	if id := requestid.FromContext(ctx); requestid.Valid(id) {
+		msg.RequestID = &id
 	}
 
 	flags := sieveFlagsOf(emailJSON)

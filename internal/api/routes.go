@@ -907,7 +907,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		ir.Use(chimw.Recoverer)
 		ir.Use(metrics.HTTPMetrics)
 		ir.Use(middleware.RequireClientCert)
-		registerInternal(ir)
+		registerInternal(ir.With(middleware.Tracing))
 		// A gateway acting for a mail client in its connection session calls the
 		// mail routes here, with its certificate and the session's token; they
 		// are the public router's, which sees the certificate this listener

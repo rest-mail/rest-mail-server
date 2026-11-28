@@ -21,7 +21,7 @@ const messageListColumns = `messages.id, messages.mailbox_id, messages.folder, m
 	messages.size_bytes, messages.raw_size, messages.downgraded_size, messages.pop3_utf8_size, messages.imap_size, messages.imap_utf8_size, messages.received_tls, messages.require_tls, messages.submitted_at,
 	messages.tls_version, messages.has_attachments, messages.is_answered, messages.is_read, messages.is_dsn,
 	messages.is_flagged, messages.is_starred, messages.keywords, messages.imap_deleted, messages.mod_seq, messages.is_draft,
-	messages.is_deleted, messages.received_at, messages.date_header, messages.created_at, messages.updated_at`
+	messages.is_deleted, messages.received_at, messages.date_header, messages.request_id, messages.created_at, messages.updated_at`
 
 // messageSourceHeaderSection reads a source up to the first blank line, ended by LF or
 // CRLF, whichever comes first, in each of the two columns a source can be in. A source
